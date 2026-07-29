@@ -2743,8 +2743,31 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               throw new Error("O arquivo não parece ser um projeto válido do DiárioMaker (campo 'scenes' ausente ou inválido).");
             }
             
-            const hydratedScenes = await hydrateScenes(data.scenes);
-            const hydratedArchive = data.sessionImageArchive ? await hydrateArchive(data.sessionImageArchive) : [];
+            const rawScenes = data.scenes.map((scene: any) => {
+              if (scene) {
+                if (scene.generatedImageUrl && scene.generatedImageUrl.startsWith("images/")) {
+                  scene.generatedImageUrl = `/projects/260802/imagens/${scene.generatedImageUrl.replace("images/", "")}`;
+                }
+                if (Array.isArray(scene.imageVersions)) {
+                  scene.imageVersions = scene.imageVersions.map((v: any) => {
+                    if (v && v.url && v.url.startsWith("images/")) {
+                      v.url = `/projects/260802/imagens/${v.url.replace("images/", "")}`;
+                    }
+                    return v;
+                  });
+                }
+              }
+              return scene;
+            });
+            const rawArchive = (data.sessionImageArchive || []).map((item: any) => {
+              if (item && item.url && item.url.startsWith("images/")) {
+                item.url = `/projects/260802/imagens/${item.url.replace("images/", "")}`;
+              }
+              return item;
+            });
+
+            const hydratedScenes = await hydrateScenes(rawScenes);
+            const hydratedArchive = await hydrateArchive(rawArchive);
 
             pushToHistory();
             setScenes(hydratedScenes);
@@ -2757,6 +2780,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               const guessedName = fileName.replace(/\.json$/i, "").replace(/[-_]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
               setProjectName(guessedName);
             }
+            setProjectFolder("260802");
             if (data.scriptText !== undefined) setScriptText(data.scriptText);
             if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
             if (data.stylePreference !== undefined) setStylePreference(data.stylePreference);

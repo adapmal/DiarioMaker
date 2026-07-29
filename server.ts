@@ -38,6 +38,14 @@ app.get("/api/storyboard/session", (req, res) => {
       const parsed = JSON.parse(rawData);
       if (parsed && Array.isArray(parsed.scenes)) {
         parsed.scenes = sanitizeScenes(parsed.scenes);
+        // Extract project folder name from the active session store state
+        let targetFolder = "260802";
+        if (parsed.folder) {
+          targetFolder = parsed.folder;
+        } else if (parsed.projectName && parsed.projectName.includes("260802")) {
+          targetFolder = "260802";
+        }
+        parsed.scenes = mapImagePathsToServer(parsed.scenes, targetFolder);
       }
       return res.json(parsed);
     }
@@ -226,6 +234,27 @@ app.get("/api/storyboard/projects/list", (req, res) => {
   }
 });
 
+// Helper to map zipped image paths to physical static server paths on load
+function mapImagePathsToServer(scenes: any[], folder: string): any[] {
+  if (!Array.isArray(scenes)) return [];
+  return scenes.map((scene: any) => {
+    if (scene) {
+      if (scene.generatedImageUrl && scene.generatedImageUrl.startsWith("images/")) {
+        scene.generatedImageUrl = `/projects/${folder}/imagens/${scene.generatedImageUrl.replace("images/", "")}`;
+      }
+      if (Array.isArray(scene.imageVersions)) {
+        scene.imageVersions = scene.imageVersions.map((v: any) => {
+          if (v && v.url && v.url.startsWith("images/")) {
+            v.url = `/projects/${folder}/imagens/${v.url.replace("images/", "")}`;
+          }
+          return v;
+        });
+      }
+    }
+    return scene;
+  });
+}
+
 // 3. Rota para carregar um projeto específico de sua pasta física
 app.get("/api/storyboard/projects/load", (req, res) => {
   try {
@@ -243,6 +272,7 @@ app.get("/api/storyboard/projects/load", (req, res) => {
       const parsed = JSON.parse(rawData);
       if (parsed && Array.isArray(parsed.scenes)) {
         parsed.scenes = sanitizeScenes(parsed.scenes);
+        parsed.scenes = mapImagePathsToServer(parsed.scenes, safeFolder);
       }
       return res.json({ success: true, data: parsed });
     } else {
