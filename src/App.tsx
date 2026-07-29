@@ -3959,15 +3959,34 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                 <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
                                   Modelo do ChatGPT
                                 </label>
-                                <select
-                                  value={openAiModel}
-                                  onChange={(e) => setOpenAiModel(e.target.value)}
-                                  className="w-full bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none"
-                                >
-                                  <option value="gpt-4o-mini">gpt-4o-mini (Recomendado)</option>
-                                  <option value="gpt-4o">gpt-4o (Ultra Inteligente)</option>
-                                  <option value="o1-mini">o1-mini (Raciocínio Lógico)</option>
-                                </select>
+                                <div className="flex gap-1.5">
+                                  <select
+                                    value={["gpt-4o-mini", "gpt-4o", "o1-mini"].includes(openAiModel) ? openAiModel : "custom"}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (val !== "custom") {
+                                        setOpenAiModel(val);
+                                      } else {
+                                        setOpenAiModel("");
+                                      }
+                                    }}
+                                    className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
+                                  >
+                                    <option value="gpt-4o-mini">gpt-4o-mini (Recomendado)</option>
+                                    <option value="gpt-4o">gpt-4o (Ultra Inteligente)</option>
+                                    <option value="o1-mini">o1-mini (Raciocínio Lógico)</option>
+                                    <option value="custom">✍ Digitar ID de Modelo Personalizado...</option>
+                                  </select>
+                                  {(!["gpt-4o-mini", "gpt-4o", "o1-mini"].includes(openAiModel) || openAiModel === "") && (
+                                    <input
+                                      type="text"
+                                      value={openAiModel}
+                                      placeholder="Ex: gpt-4.5-preview"
+                                      onChange={(e) => setOpenAiModel(e.target.value)}
+                                      className="w-1/2 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
+                                    />
+                                  )}
+                                </div>
                               </div>
                             )}
 
@@ -3976,14 +3995,33 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                               <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
                                 Modelo DALL-E (Imagem)
                               </label>
-                              <select
-                                value={openAiDalleModel}
-                                onChange={(e) => setOpenAiDalleModel(e.target.value)}
-                                className="w-full bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none"
-                              >
-                                <option value="dall-e-3">DALL-E 3 (Qualidade Cinematográfica)</option>
-                                <option value="dall-e-2">DALL-E 2 (Rápido e Simples)</option>
-                              </select>
+                              <div className="flex gap-1.5">
+                                <select
+                                  value={["dall-e-3", "dall-e-2"].includes(openAiDalleModel) ? openAiDalleModel : "custom"}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val !== "custom") {
+                                      setOpenAiDalleModel(val);
+                                    } else {
+                                      setOpenAiDalleModel("");
+                                    }
+                                  }}
+                                  className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
+                                >
+                                  <option value="dall-e-3">DALL-E 3 (Qualidade Cinematográfica)</option>
+                                  <option value="dall-e-2">DALL-E 2 (Rápido e Simples)</option>
+                                  <option value="custom">✍ Digitar ID de Modelo Personalizado...</option>
+                                </select>
+                                {(!["dall-e-3", "dall-e-2"].includes(openAiDalleModel) || openAiDalleModel === "") && (
+                                  <input
+                                    type="text"
+                                    value={openAiDalleModel}
+                                    placeholder="Ex: dall-e-3-hd"
+                                    onChange={(e) => setOpenAiDalleModel(e.target.value)}
+                                    className="w-1/2 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
+                                  />
+                                )}
+                              </div>
                             </div>
                           </>
                         )}

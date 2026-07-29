@@ -1047,10 +1047,13 @@ ${userPromptText}`;
                   <button
                     type="button"
                     onClick={() => handleDirectRender("chatgpt_dalle3")}
-                    className="px-2 py-1 bg-[#2a2a2a] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer"
-                    title="Renderizar instantaneamente com OpenAI DALL-E 3"
+                    className="px-2 py-1 bg-[#2a2a2a] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1.5 cursor-pointer"
+                    title={`Renderizar instantaneamente com OpenAI (${openAiDalleModel || "dall-e-3"})`}
                   >
-                    DALL-E 3
+                    <span>OpenAI</span>
+                    <span className="text-[7.5px] text-slate-400 lowercase font-normal italic">
+                      ({openAiDalleModel || "dall-e-3"})
+                    </span>
                   </button>
                 )}
               </div>
@@ -1539,20 +1542,42 @@ ${userPromptText}`;
                 <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
                   Modelo de IA (Prompt)
                 </label>
-                <select
-                  value={localAiModel}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setLocalAiModel(val);
-                    onUpdate(scene.id, { promptAiModel: val });
-                  }}
-                  className="w-full bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer"
-                >
-                  <option value="gemini-3.5-flash">Gemini 3.5 Flash (Padrão e Rápido)</option>
-                  <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Reforço Criativo)</option>
-                  <option value="chatgpt">ChatGPT (OpenAI API)</option>
-                  <option value="ollama">Ollama (Local / Direct-Browser)</option>
-                </select>
+                <div className="flex gap-1.5">
+                  <select
+                    value={["gemini-3.5-flash", "gemini-3.1-pro-preview", "chatgpt", "ollama"].includes(localAiModel) ? localAiModel : "custom"}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val !== "custom") {
+                        setLocalAiModel(val);
+                        onUpdate(scene.id, { promptAiModel: val });
+                      } else {
+                        setLocalAiModel("");
+                        onUpdate(scene.id, { promptAiModel: "" });
+                      }
+                    }}
+                    className="flex-1 bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer"
+                  >
+                    <option value="gemini-3.5-flash">Gemini 3.5 Flash (Padrão e Rápido)</option>
+                    <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Reforço Criativo)</option>
+                    <option value="chatgpt">ChatGPT (OpenAI API)</option>
+                    <option value="ollama">Ollama (Local / Direct-Browser)</option>
+                    <option value="custom">✍ Personalizado...</option>
+                  </select>
+
+                  {(!["gemini-3.5-flash", "gemini-3.1-pro-preview", "chatgpt", "ollama"].includes(localAiModel) || localAiModel === "") && (
+                    <input
+                      type="text"
+                      value={localAiModel}
+                      placeholder="Modelo ID"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setLocalAiModel(val);
+                        onUpdate(scene.id, { promptAiModel: val });
+                      }}
+                      className="w-24 bg-[#050505] border border-[#333] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 font-mono"
+                    />
+                  )}
+                </div>
               </div>
 
               {/* Destination Tool dropdown/input */}
@@ -1826,14 +1851,17 @@ ${userPromptText}`;
                         <button
                           type="button"
                           onClick={() => setSelectedChatModel("chatgpt_dalle3")}
-                          className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer ${
+                          className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer flex items-center gap-1 ${
                             selectedChatModel === "chatgpt_dalle3"
                               ? "bg-[#D4AF37] text-black font-bold"
                               : "text-zinc-400 hover:text-white hover:bg-[#2a2a2a]"
                           }`}
-                          title="Usar OpenAI DALL-E 3 para renderizar após a conversa"
+                          title={`Usar OpenAI (${openAiDalleModel || "dall-e-3"}) para renderizar após a conversa`}
                         >
-                          DALL-E 3
+                          <span>OpenAI</span>
+                          <span className={selectedChatModel === "chatgpt_dalle3" ? "text-[7.5px] text-black/60 lowercase" : "text-[7.5px] text-slate-500 lowercase"}>
+                            ({openAiDalleModel || "dall-e-3"})
+                          </span>
                         </button>
                       )}
                     </div>
