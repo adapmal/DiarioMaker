@@ -1,16 +1,45 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import fs from "fs";
+import multer from "multer";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
 
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 250 * 1024 * 1024 } });
+
 const SESSION_FILE_PATH = path.join(process.cwd(), "session_store.json");
+const USER_CONFIG_PATH = path.join(process.cwd(), "user_config.json");
+const PROJECTS_DIR = path.join(process.cwd(), "projects");
+const SERVER_LOG_FILE = path.join(process.cwd(), "server_error.log");
+
+function logErrorToFile(context: string, err: any) {
+  const timestamp = new Date().toISOString();
+  const message = err?.stack || err?.message || String(err);
+  const logLine = `[${timestamp}] [${context}] ${message}\n----------------------------------------\n`;
+  console.error(logLine);
+  try {
+    fs.appendFileSync(SERVER_LOG_FILE, logLine, "utf-8");
+  } catch (_) {}
+}
+
+// Helper to load settings from user_config.json with robust defaults
+function loadUserConfig() {
+  try {
+    if (fs.existsSync(USER_CONFIG_PATH)) {
+      const data = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.warn("Failed to load user_config.json:", err);
+  }
+  return {};
+}
 
 // Helper to sanitize scenes and ensure "Midjourney" is replaced with "Nano Banana"
 function sanitizeScenes(scenes: any[]): any[] {
@@ -83,7 +112,18 @@ app.post("/api/storyboard/autosave", (req, res) => {
       updatedAt: new Date().toISOString(),
       isAutosave: true
     };
-    fs.writeFileSync(SESSION_AUTOSAVE_PATH, JSON.stringify(sessionData, null, 2), "utf-8");
+    const jsonStr = JSON.stringify(sessionData, null, 2);
+    try {
+      fs.writeFileSync(SESSION_AUTOSAVE_PATH, jsonStr, "utf-8");
+    } catch (wErr) {
+      try {
+        const tmpPath = `${SESSION_AUTOSAVE_PATH}.tmp_${Date.now()}`;
+        fs.writeFileSync(tmpPath, jsonStr, "utf-8");
+        fs.renameSync(tmpPath, SESSION_AUTOSAVE_PATH);
+      } catch (rErr) {
+        console.warn("Retried atomic write for session_store_autosave.json:", rErr);
+      }
+    }
     return res.json({ success: true });
   } catch (error: any) {
     console.error("Error writing autosave file:", error);
@@ -183,6 +223,42 @@ app.post("/api/storyboard/session", (req, res) => {
   } catch (error: any) {
     console.error("Error writing session file:", error);
     return res.status(500).json({ error: "Failed to persist session to server storage." });
+  }
+});
+
+// Endpoint to physically clean up session_store.json, session_store_autosave.json, and temporary project images
+app.post("/api/storyboard/projects/clear-cache", (req, res) => {
+  try {
+    const { folder } = req.body;
+    
+    // Delete legacy local session stores
+    if (fs.existsSync(SESSION_FILE_PATH)) {
+      fs.unlinkSync(SESSION_FILE_PATH);
+    }
+    if (fs.existsSync(SESSION_AUTOSAVE_PATH)) {
+      fs.unlinkSync(SESSION_AUTOSAVE_PATH);
+    }
+
+    // Delete generated project images for target project folder if requested
+    if (folder && typeof folder === "string") {
+      const safeFolder = path.basename(folder);
+      const imagesDir = path.join(process.cwd(), "projects", safeFolder, "imagens");
+      
+      if (fs.existsSync(imagesDir)) {
+        const files = fs.readdirSync(imagesDir);
+        for (const file of files) {
+          const filePath = path.join(imagesDir, file);
+          if (fs.statSync(filePath).isFile()) {
+            fs.unlinkSync(filePath);
+          }
+        }
+      }
+    }
+
+    return res.json({ success: true, message: "Physical cache and autosave files successfully deleted." });
+  } catch (err: any) {
+    console.error("Error cleaning physical server cache:", err);
+    return res.status(500).json({ error: `Failed to clear server physical cache: ${err.message}` });
   }
 });
 
@@ -333,10 +409,24 @@ app.post("/api/storyboard/projects/save", (req, res) => {
     };
 
     const projectJsonPath = path.join(projectDir, "storyboard.json");
-    fs.writeFileSync(projectJsonPath, JSON.stringify(sessionData, null, 2), "utf-8");
+    const jsonStr = JSON.stringify(sessionData, null, 2);
+    try {
+      fs.writeFileSync(projectJsonPath, jsonStr, "utf-8");
+    } catch (wErr) {
+      try {
+        const tmpPath = `${projectJsonPath}.tmp_${Date.now()}`;
+        fs.writeFileSync(tmpPath, jsonStr, "utf-8");
+        fs.renameSync(tmpPath, projectJsonPath);
+      } catch (rErr) {
+        console.warn("Retried atomic write for project JSON:", rErr);
+      }
+    }
 
-    // Também salvar na sessão global padrão para manter compatibilidade
-    fs.writeFileSync(SESSION_FILE_PATH, JSON.stringify(sessionData, null, 2), "utf-8");
+    try {
+      fs.writeFileSync(SESSION_FILE_PATH, jsonStr, "utf-8");
+    } catch (sErr) {
+      console.warn("Failed to write global session file:", sErr);
+    }
 
     return res.json({ success: true, path: projectJsonPath, updatedAt: sessionData.updatedAt });
   } catch (error: any) {
@@ -425,8 +515,11 @@ app.get("/api/storyboard/proxy-image", async (req, res) => {
 // Lazy init of Gemini API Client to prevent startup failure if key is missing
 let aiClient: GoogleGenAI | null = null;
 function getGeminiClient(customApiKey?: string): GoogleGenAI {
-  if (customApiKey && customApiKey.trim()) {
-    const cleanedKey = customApiKey.trim().replace(/^["']|["']$/g, "");
+  const config = loadUserConfig();
+  const effectiveKey = (customApiKey && customApiKey.trim()) || config.customGeminiKey || process.env.GEMINI_API_KEY;
+
+  if (effectiveKey && effectiveKey.trim()) {
+    const cleanedKey = effectiveKey.trim().replace(/^["']|["']$/g, "");
     if (cleanedKey) {
       return new GoogleGenAI({
         apiKey: cleanedKey,
@@ -434,28 +527,13 @@ function getGeminiClient(customApiKey?: string): GoogleGenAI {
           headers: {
             "User-Agent": "aistudio-build",
           },
-          timeout: 120000,
+          timeout: 600000,
         },
       });
     }
   }
 
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("A chave GEMINI_API_KEY está ausente no ambiente do servidor. Por favor, adicione-a como um segredo nas configurações do applet.");
-    }
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-        timeout: 120000,
-      },
-    });
-  }
-  return aiClient;
+  throw new Error("A chave GEMINI_API_KEY está ausente no ambiente do servidor. Por favor, insira sua chave de API do Google Gemini (ex: AIzaSy...) no painel de Configurações.");
 }
 
 // Converts standard HTTP image URLs or data URIs to inline base64 data for Gemini multimodal APIs (skips unsupported SVGs)
@@ -501,6 +579,33 @@ async function imageUrlToInlineData(url: string): Promise<{ data: string; mimeTy
     }
   }
 
+  // Support local relative paths (e.g. starting with '/projects/') by reading directly from the filesystem
+  if (url.startsWith("/") || (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("data:"))) {
+    try {
+      const decodedUrl = decodeURIComponent(url);
+      const relativePath = decodedUrl.startsWith("/") ? decodedUrl.substring(1) : decodedUrl;
+      const localPath = path.join(process.cwd(), relativePath);
+      
+      if (fs.existsSync(localPath)) {
+        const stats = await fs.promises.stat(localPath);
+        if (stats.isFile()) {
+          const buffer = await fs.promises.readFile(localPath);
+          const ext = path.extname(localPath).toLowerCase();
+          if (ext.includes("svg") || ext.includes("xml")) {
+            return null;
+          }
+          const mimeType = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : ext === ".gif" ? "image/gif" : "image/jpeg";
+          return {
+            mimeType,
+            data: buffer.toString("base64")
+          };
+        }
+      }
+    } catch (err) {
+      console.warn(`[Gemini API] Failed to read local filesystem path for inlineData: ${url}`, err);
+    }
+  }
+
   return null;
 }
 
@@ -541,6 +646,16 @@ function formatGeminiError(error: any): string {
   return errStr;
 }
 
+// Helper to map fictional or deprecated model names to real, current Gemini model names
+function mapModelName(name: string): string {
+  if (!name) return "gemini-flash-latest";
+  const lower = name.toLowerCase();
+  if (lower === "gemini-3.1-pro-preview" || lower === "gemini-3.1-pro") {
+    return "gemini-2.5-pro";
+  }
+  return name;
+}
+
 // Map of model stability to avoid slow retries if a model is unstable
 const modelStabilityMap: Record<string, { lastFailureTime: number; failureCount: number }> = {};
 
@@ -574,9 +689,11 @@ async function callGeminiWithRetry<T>(
   
   for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
     const currentModel = modelsToTry[attempt];
+    const actualModel = mapModelName(currentModel);
     
     try {
-      const res = await apiCall(currentModel);
+      console.log(`[Gemini API] Routing call: ${currentModel} -> ${actualModel}`);
+      const res = await apiCall(actualModel);
       // Clear failure record upon successful call
       if (modelStabilityMap[currentModel]) {
         modelStabilityMap[currentModel].failureCount = 0;
@@ -587,6 +704,14 @@ async function callGeminiWithRetry<T>(
       const status = err?.status || err?.code || 0;
       const message = String(err?.message || err).toLowerCase();
       
+      const shouldFallback = 
+        status === 404 || 
+        status === 403 || 
+        message.includes("not found") ||
+        message.includes("not authorized") ||
+        message.includes("does not exist") ||
+        message.includes("permission");
+
       const isTransient = 
         status === 429 || 
         status === 503 || 
@@ -605,8 +730,8 @@ async function callGeminiWithRetry<T>(
         message.includes("aborted") ||
         message.includes("cancelled") ||
         status === 499;
-        
-      if (isTransient) {
+         
+      if (isTransient || shouldFallback) {
         // Update stability stats
         const errTime = Date.now();
         if (!modelStabilityMap[currentModel]) {
@@ -617,9 +742,13 @@ async function callGeminiWithRetry<T>(
         }
 
         if (attempt < modelsToTry.length - 1) {
-          console.warn(`[Gemini API] Modelo ${currentModel} instável ou sobrecarregado (tentativa ${attempt + 1}/${modelsToTry.length}): ${err?.message || err}. Retentando com o modelo ${modelsToTry[attempt + 1]} em ${delay}ms...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          delay *= 1.5; // Backoff exponencial suave
+          const reason = shouldFallback ? "indisponível/não encontrado" : "instável ou sobrecarregado";
+          console.warn(`[Gemini API] Modelo ${currentModel} ${reason} (tentativa ${attempt + 1}/${modelsToTry.length}): ${err?.message || err}. Tentando modelo fallback ${modelsToTry[attempt + 1]}...`);
+          const activeDelay = shouldFallback ? 50 : delay;
+          await new Promise((resolve) => setTimeout(resolve, activeDelay));
+          if (!shouldFallback) {
+            delay *= 1.5;
+          }
         } else {
           throw err;
         }
@@ -680,18 +809,19 @@ async function callOpenAiChat(apiKey: string, model: string, systemInstruction: 
 }
 
 // OpenAI image generations (DALL-E) proxy helper
-async function callOpenAiImage(apiKey: string, model: string, prompt: string) {
+async function callOpenAiImage(apiKey: string, model: string, prompt: string): Promise<string> {
   const url = "https://api.openai.com/v1/images/generations";
+  const targetModel = (model && model.trim()) ? model.trim() : "gpt-image-2";
   const payload: any = {
-    model: model || "dall-e-3",
+    model: targetModel,
     prompt: prompt,
     n: 1,
   };
   
-  if (model === "dall-e-3") {
-    payload.size = "1792x1024";
-  } else {
+  if (targetModel === "dall-e-2") {
     payload.size = "1024x1024";
+  } else {
+    payload.size = "1792x1024";
   }
 
   const response = await fetch(url, {
@@ -709,7 +839,28 @@ async function callOpenAiImage(apiKey: string, model: string, prompt: string) {
   }
 
   const data = await response.json();
-  return data.data[0].url;
+  const rawUrl = data.data[0]?.url;
+  const b64Json = data.data[0]?.b64_json;
+
+  if (b64Json) {
+    return `data:image/png;base64,${b64Json}`;
+  }
+
+  if (rawUrl && rawUrl.startsWith("http")) {
+    try {
+      const imgRes = await fetch(rawUrl);
+      if (imgRes.ok) {
+        const arrayBuf = await imgRes.arrayBuffer();
+        const base64Str = Buffer.from(arrayBuf).toString("base64");
+        const mime = imgRes.headers.get("content-type") || "image/png";
+        return `data:${mime};base64,${base64Str}`;
+      }
+    } catch (fetchErr) {
+      console.warn("[OpenAI API] Failed to convert image URL to Base64 server-side:", fetchErr);
+    }
+  }
+
+  return rawUrl || "";
 }
 
 // Algoritmo determinístico offline para segmentar o roteiro em partes caso o Gemini esteja 100% indisponível
@@ -880,6 +1031,30 @@ Language and Style Rules:
    - Separate the narrative logically on sentence boundaries or natural breathing points. Each scene should represent a logical visual unit. Do not cut off sentences in the middle of a thought.`;
 
 // API Routes
+app.get("/api/storyboard/config", (req, res) => {
+  try {
+    const config = loadUserConfig();
+    return res.json(config);
+  } catch (err: any) {
+    return res.status(500).json({ error: "Failed to load server configurations." });
+  }
+});
+
+app.post("/api/storyboard/config", (req, res) => {
+  try {
+    const currentConfig = loadUserConfig();
+    const newConfig = {
+      ...currentConfig,
+      ...req.body
+    };
+    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(newConfig, null, 2), "utf-8");
+    return res.json({ success: true, config: newConfig });
+  } catch (err: any) {
+    console.error("Error writing user_config.json:", err);
+    return res.status(500).json({ error: "Failed to save server configurations." });
+  }
+});
+
 app.post("/api/storyboard/test-key", async (req, res) => {
   const { customApiKey } = req.body;
   const activeKey = (req.headers["x-gemini-key"] as string) || customApiKey;
@@ -1090,6 +1265,298 @@ ${rawText}
   }
 });
 
+// Endpoint to list dynamically available Gemini and OpenAI models (both prompt/text and image/imagen)
+app.get("/api/storyboard/available-models", async (req, res) => {
+  const customApiKey = req.query.customApiKey as string || "";
+  const openAiKey = req.query.openAiKey as string || "";
+  
+  const activeGeminiKey = (req.headers["x-gemini-key"] as string) || customApiKey || process.env.GEMINI_API_KEY || "";
+  const activeOpenAiKey = (req.headers["x-openai-key"] as string) || openAiKey || process.env.OPENAI_API_KEY || "";
+
+  const geminiTextModels: string[] = [];
+  const geminiImageModels: string[] = [];
+  const openAiTextModels: string[] = [];
+  const openAiImageModels: string[] = [];
+
+  if (activeGeminiKey && activeGeminiKey.trim()) {
+    try {
+      const ai = getGeminiClient(activeGeminiKey);
+      const list = await ai.models.list();
+      if (list && Array.isArray(list)) {
+        list.forEach((m: any) => {
+          if (m.name) {
+            const name = m.name.replace(/^models\//, "");
+            // Filter text generation models
+            if (name.includes("gemini") && !name.includes("vision") && !name.includes("embed")) {
+              geminiTextModels.push(name);
+            }
+            // Filter image models
+            if (name.includes("imagen")) {
+              geminiImageModels.push(name);
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.warn("[Gemini API] Failed to list models dynamically, using defaults:", err);
+    }
+  }
+
+  // Fallback defaults for Gemini
+  if (geminiTextModels.length === 0) {
+    geminiTextModels.push(
+      "gemini-3.6-flash",
+      "gemini-3.5-flash",
+      "gemini-3.5-pro",
+      "gemini-2.5-flash",
+      "gemini-2.5-pro",
+      "gemini-2.0-flash-lite",
+      "gemini-1.5-flash",
+      "gemini-1.5-pro"
+    );
+  }
+  if (geminiImageModels.length === 0) {
+    geminiImageModels.push(
+      "imagen-3.0-generate-002",
+      "imagen-3.0-fast-001"
+    );
+  }
+
+  if (activeOpenAiKey && activeOpenAiKey.trim()) {
+    try {
+      const response = await fetch("https://api.openai.com/v1/models", {
+        headers: { "Authorization": `Bearer ${activeOpenAiKey}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && Array.isArray(data.data)) {
+          data.data.forEach((m: any) => {
+            const id = m.id || "";
+            if (id.includes("image") || id.startsWith("dall-e")) {
+              openAiImageModels.push(id);
+            } else if (id.startsWith("gpt-") || id.startsWith("o1") || id.startsWith("o3") || id.startsWith("chatgpt")) {
+              openAiTextModels.push(id);
+            }
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[OpenAI API] Failed to list models dynamically, using defaults:", err);
+    }
+  }
+
+  // Fallback defaults for OpenAI
+  if (openAiTextModels.length === 0) {
+    openAiTextModels.push(
+      "gpt-4o-mini",
+      "gpt-4o",
+      "gpt-4.5-preview",
+      "o1-mini",
+      "o3-mini"
+    );
+  }
+  if (openAiImageModels.length === 0) {
+    openAiImageModels.push(
+      "gpt-image-2",
+      "gpt-image-1.5",
+      "gpt-image-1",
+      "gpt-image-1-mini",
+      "dall-e-3",
+      "dall-e-2"
+    );
+  }
+
+  res.json({
+    gemini: {
+      text: [...new Set(geminiTextModels)].sort(),
+      image: [...new Set(geminiImageModels)].sort()
+    },
+    openai: {
+      text: [...new Set(openAiTextModels)].sort(),
+      image: [...new Set(openAiImageModels)].sort()
+    }
+  });
+});
+
+function sanitizeProjectName(name?: string): string {
+  if (!name || typeof name !== "string") return "meu-projeto";
+  const clean = path.basename(name).replace(/[^a-zA-Z0-9_\-]/g, "_").trim();
+  return clean || "meu-projeto";
+}
+
+// Audio Narration Transcription & Alignment Endpoint using Gemini Multimodal Audio API
+app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req: any, res: any) => {
+  if (req.setTimeout) req.setTimeout(600000);
+  if (res.setTimeout) res.setTimeout(600000);
+  try {
+    let audioBuffer: Buffer | null = null;
+    let audioMimeType = "audio/mp3";
+    let projectName = req.body?.projectName;
+
+    if (req.file) {
+      audioBuffer = req.file.buffer;
+      audioMimeType = req.file.mimetype || "audio/mp3";
+    } else if (req.body?.audioBase64) {
+      const cleanBase64 = req.body.audioBase64.includes(";base64,") ? req.body.audioBase64.split(";base64,")[1] : req.body.audioBase64;
+      audioBuffer = Buffer.from(cleanBase64, "base64");
+      if (req.body.audioMimeType) audioMimeType = req.body.audioMimeType;
+    } else if (projectName && typeof projectName === "string" && projectName.trim()) {
+      const safeName = sanitizeProjectName(projectName);
+      const projDir = path.join(PROJECTS_DIR, safeName);
+      const possibleFiles = ["narration.wav", "narration.mp3", "narration.m4a", "narration.ogg"];
+      for (const fname of possibleFiles) {
+        const fpath = path.join(projDir, fname);
+        if (fs.existsSync(fpath)) {
+          audioBuffer = fs.readFileSync(fpath);
+          audioMimeType = fname.endsWith(".wav") ? "audio/wav" : "audio/mp3";
+          break;
+        }
+      }
+    }
+
+    if (!audioBuffer) {
+      return res.status(400).json({ error: "Arquivo de áudio não encontrado no servidor para este projeto." });
+    }
+
+    // Normalize audio MIME type for Gemini API
+    let cleanMime = audioMimeType.toLowerCase();
+    if (req.file?.originalname) {
+      const origName = req.file.originalname.toLowerCase();
+      if (origName.endsWith(".wav")) cleanMime = "audio/wav";
+      else if (origName.endsWith(".mp3")) cleanMime = "audio/mp3";
+      else if (origName.endsWith(".m4a")) cleanMime = "audio/mp3";
+      else if (origName.endsWith(".aac")) cleanMime = "audio/aac";
+      else if (origName.endsWith(".ogg")) cleanMime = "audio/ogg";
+    }
+    if (cleanMime === "application/octet-stream" || cleanMime.includes("x-wav") || cleanMime.includes("wave")) {
+      cleanMime = "audio/wav";
+    }
+
+    if (projectName && audioBuffer) {
+      try {
+        const safeName = sanitizeProjectName(projectName);
+        const projDir = path.join(PROJECTS_DIR, safeName);
+        if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
+        const targetExt = cleanMime.includes("wav") ? ".wav" : ".mp3";
+        fs.writeFileSync(path.join(projDir, `narration${targetExt}`), audioBuffer);
+      } catch (saveErr) {
+        console.warn("[Audio Engine] Non-fatal error saving narration file to project disk:", saveErr);
+      }
+    }
+
+    const activeKey = (req.headers["x-gemini-key"] as string) || req.body?.customApiKey;
+    const ai = getGeminiClient(activeKey);
+
+    const base64Data = audioBuffer.toString("base64");
+    const audioPart = {
+      inlineData: {
+        data: base64Data,
+        mimeType: cleanMime
+      }
+    };
+
+    const promptText = `Listen to this Portuguese narration audio carefully.
+Perform the following tasks:
+1. Transcribe the entire narration text accurately into Brazilian Portuguese (PT-BR).
+2. Extract word-level or sentence-level timestamps in seconds.
+3. Automatically divide the narration into natural storyboard scenes based on natural speech pauses (silence gaps > 0.5s) or sentence boundaries.
+
+Return a JSON object containing:
+- "fullScript": full text transcription (string)
+- "timedWords": array of [{ "word": "palavra", "start": number, "end": number }]
+- "scenes": array of [{ "sceneNumber": "1", "text": "trecho falado", "startTime": number, "endTime": number }]`;
+
+    console.log("[Audio Engine] Transcribing narration audio using Gemini Multimodal Audio API...");
+    const { response } = await callGeminiWithRetry((modelName) => ai.models.generateContent({
+      model: modelName,
+      contents: { parts: [{ text: promptText }, audioPart] },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            fullScript: { type: Type.STRING },
+            timedWords: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  word: { type: Type.STRING },
+                  start: { type: Type.NUMBER },
+                  end: { type: Type.NUMBER }
+                },
+                required: ["word", "start", "end"]
+              }
+            },
+            scenes: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  sceneNumber: { type: Type.STRING },
+                  text: { type: Type.STRING },
+                  startTime: { type: Type.NUMBER },
+                  endTime: { type: Type.NUMBER }
+                },
+                required: ["text", "startTime", "endTime"]
+              }
+            }
+          },
+          required: ["fullScript", "scenes"]
+        }
+      }
+    }), "gemini-flash-latest", ["gemini-3.1-flash-lite", "gemini-3.5-flash"], 1000, req);
+
+    const jsonText = response.text;
+    if (!jsonText) throw new Error("A resposta da API de áudio retornou vazia.");
+
+    const parsedData = JSON.parse(jsonText);
+
+    // Save audio file locally if projectName provided
+    let audioUrl = "";
+    if (projectName && typeof projectName === "string" && projectName.trim()) {
+      const safeName = sanitizeProjectName(projectName);
+      const projDir = path.join(PROJECTS_DIR, safeName);
+      if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
+
+      const ext = audioMimeType && audioMimeType.includes("wav") ? "wav" : "mp3";
+      const audioPath = path.join(projDir, `narration.${ext}`);
+      fs.writeFileSync(audioPath, audioBuffer);
+      audioUrl = `/api/projects/${safeName}/narration.${ext}`;
+    }
+
+    res.json({
+      ...parsedData,
+      audioUrl
+    });
+  } catch (err: any) {
+    logErrorToFile("Audio Transcription Endpoint", err);
+    res.status(500).json({ error: `Erro na transcrição do áudio: ${err.message || err}` });
+  }
+});
+
+// Serve audio narration file statically for project audio previews
+app.get("/api/projects/:projectName/narration.:ext", (req, res) => {
+  const { projectName, ext } = req.params;
+  const safeName = sanitizeProjectName(projectName);
+  const audioPath = path.join(PROJECTS_DIR, safeName, `narration.${ext}`);
+  if (fs.existsSync(audioPath)) {
+    res.sendFile(audioPath);
+  } else {
+    res.status(404).json({ error: "Arquivo de áudio não encontrado." });
+  }
+});
+
+// System Log Viewer endpoint
+app.get("/api/storyboard/logs", (req, res) => {
+  if (fs.existsSync(SERVER_LOG_FILE)) {
+    const logs = fs.readFileSync(SERVER_LOG_FILE, "utf-8");
+    res.type("text/plain").send(logs);
+  } else {
+    res.type("text/plain").send("Nenhum erro registrado no servidor até o momento.");
+  }
+});
+
 app.post("/api/storyboard/regenerate-scene", async (req, res) => {
   const { 
     text, 
@@ -1186,23 +1653,10 @@ ${toolGuidance}${connectedContext}`;
         isCustomKeyUsed: true
       });
     } catch (gptErr: any) {
-      console.warn("[OpenAI API] Scene regeneration failed. Falling back to local fallback generator:", gptErr);
-      try {
-        const fallbackResult = localFallbackSceneGenerator(text, activeStyle || "auto", generationGuidelines, promptTargetTool);
-        return res.json({
-          description: fallbackResult.description,
-          prompt: fallbackResult.prompt,
-          promptAiModelUsed: "fallback",
-          isFallbackActive: true,
-          fallbackReason: `OpenAI falhou: ${gptErr.message || gptErr}`,
-          isCustomKeyUsed: true
-        });
-      } catch (fallbackErr: any) {
-        console.error("Local scene generation failed after OpenAI error:", fallbackErr);
-        return res.status(500).json({
-          error: `OpenAI error: ${gptErr.message || gptErr}`
-        });
-      }
+      console.error(`[OpenAI API] Scene regeneration failed for model ${openAiModel}:`, gptErr);
+      return res.status(500).json({
+        error: `Falha ao gerar prompt no modelo OpenAI (${openAiModel}): ${gptErr.message || gptErr}`
+      });
     }
   }
 
@@ -1230,7 +1684,7 @@ ${toolGuidance}${connectedContext}`;
           required: ["description", "prompt"]
         }
       }
-    }), modelToUse, modelToUse !== "gemini-3.1-flash-lite" ? ["gemini-3.1-flash-lite"] : [], 1000, req);
+    }), modelToUse, [], 1000, req);
 
     const textOutput = response.text;
     if (!textOutput) {
@@ -1244,23 +1698,10 @@ ${toolGuidance}${connectedContext}`;
       isCustomKeyUsed: isUsingCustomKey
     });
   } catch (error: any) {
-    console.warn(`Error regenerating individual scene using model ${modelToUse} with Gemini. Activating local fallback generator:`, error);
-    try {
-      const fallbackResult = localFallbackSceneGenerator(text, activeStyle || "auto", generationGuidelines, promptTargetTool);
-      res.json({
-         description: fallbackResult.description,
-         prompt: fallbackResult.prompt,
-         promptAiModelUsed: "fallback",
-         isFallbackActive: true,
-         fallbackReason: formatGeminiError(error),
-         isCustomKeyUsed: isUsingCustomKey
-      });
-    } catch (fallbackErr: any) {
-      console.error("Local scene generation failed:", fallbackErr);
-      res.status(500).json({
-        error: formatGeminiError(error)
-      });
-    }
+    console.error(`[Gemini API] Scene regeneration failed on requested model ${modelToUse}:`, error);
+    res.status(500).json({
+      error: `Falha ao gerar prompt no modelo Gemini (${modelToUse}): ${formatGeminiError(error)}`
+    });
   }
 });
 
@@ -1458,98 +1899,56 @@ Make sure your response matches the JSON structure perfectly.`;
 
 // Procedural generator for elegant cinematic visuals to completely avoid library/stock images (Unsplash) as requested by the user
 function getCinematicFallbackImage(prompt: string, searchQuery: string, model: string, errorReason?: string): string {
-  // Generate a warm, rich, elegant dark-gold cinematic SVG card with high contrast and golden borders
-  // This is returned as a base64 SVG data URL, completely offline, beautiful, and perfectly visible.
-
-  let gradientStart = "#2d2215"; // Warm golden charcoal
-  let gradientEnd = "#140e08";   // Deep cinematic amber dark
-  let styleName = "Cinemática Clássica";
+  let gradientStart = "#241812";
+  let gradientEnd = "#0f0a07";
+  let styleName = "Nano Banana 2 Lite";
   
   if (model === "nano_banana_pro") {
-    gradientStart = "#341a10"; // Warm bronze-copper
-    gradientEnd = "#120804";
-    styleName = "Diretor PRO Premium";
+    gradientStart = "#2e1610";
+    gradientEnd = "#0c0503";
+    styleName = "Nano Banana Pro";
   } else if (model === "nano_banana_2") {
-    gradientStart = "#182c2d"; // Deep teal-slate
-    gradientEnd = "#071213";
-    styleName = "HyperArt 2 Neural";
-  } else {
-    gradientStart = "#2d2215";
-    gradientEnd = "#140e08";
-    styleName = "Câmera Padrão v1.9";
+    gradientStart = "#142526";
+    gradientEnd = "#050d0e";
+    styleName = "Nano Banana 2";
   }
 
-  // Clean and wrap text without foreignObject to ensure 100% browser rendering compatibility in <img> tags
   const cleanPrompt = (prompt || "Visual").trim();
-  const rawWords = cleanPrompt.split(/\s+/);
-  const textLines: string[] = [];
-  let currentLine = "";
-  
-  for (const word of rawWords) {
-    if ((currentLine + " " + word).length > 60) {
-      textLines.push(currentLine.trim());
-      currentLine = word;
-    } else {
-      currentLine += (currentLine ? " " : "") + word;
-    }
-  }
-  if (currentLine) {
-    textLines.push(currentLine.trim());
-  }
 
-  // Generate safe SVG lines
-  const svgTextLines = textLines.slice(0, 5).map((line, idx) => {
-    const escapedLine = line
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&apos;");
-    return `<text x="60" y="${225 + idx * 35}" fill="#f5e6c4" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="22" font-weight="300" font-style="italic">${escapedLine}</text>`;
-  }).join("\n");
-
-  const escapedSearch = (searchQuery || "atmosfera")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-
-  // Determine a friendly, elegant warning message based on the error received from Gemini/OpenAI
-  let friendlyTitle = "RASCUNHO DE DIRETRIZ VISUAL PROCEDURAL (STANDBY)";
-  let friendlyReason = "Renderizador offline ativado para manter o fluxo criativo.";
+  // Determine error message title and detailed reason
+  let friendlyTitle = "FALHA NA RENDERIZAÇÃO DA IMAGEM";
+  let friendlyReason = "Não foi possível gerar a imagem com o modelo solicitado.";
 
   if (errorReason) {
     const errLower = errorReason.toLowerCase();
     if (errLower.includes("limit: 0") || errLower.includes("quota") || errLower.includes("limit") || errLower.includes("429")) {
-      friendlyTitle = "COTA EXCEDIDA / REQUISITO DE IMAGEM ADIADO";
-      friendlyReason = "A chave gratuita do Gemini possui limite de 0 imagens/dia. Adicione saldo de faturamento ou configure uma chave OpenAI.";
-    } else if (errLower.includes("api key") || errLower.includes("invalid") || errLower.includes("unauthorized") || errLower.includes("key")) {
-      friendlyTitle = "CHAVE DE API INVÁLIDA OU AUSENTE";
-      friendlyReason = "A chave de API configurada não possui permissão para gerar imagens Imagen-3. Configure a chave nos Secrets.";
+      friendlyTitle = "ERRO: COTA DE USO ATINGIDA (429)";
+      friendlyReason = "A cota gratuita da chave de API expirou ou o modelo não está liberado nesta conta. Adicione saldo de faturamento ou use sua chave pessoal nas configurações.";
+    } else if (errLower.includes("api key") || errLower.includes("invalid") || errLower.includes("unauthorized") || errLower.includes("key") || errLower.includes("403")) {
+      friendlyTitle = "ERRO: CHAVE DE API INVÁLIDA OU SEM PERMISSÃO (403)";
+      friendlyReason = "A chave de API informada não possui permissão para gerar imagens com o Imagen-3 / Nano Banana. Verifique a chave nas Configurações.";
+    } else if (errLower.includes("not found") || errLower.includes("404")) {
+      friendlyTitle = "ERRO: MODELO INDISPONÍVEL NA SUA CHAVE (404)";
+      friendlyReason = `O modelo ${styleName} não foi encontrado ou não está liberado para sua chave de API atual.`;
     } else if (errLower.includes("timeout") || errLower.includes("abort") || errLower.includes("fetch")) {
-      friendlyTitle = "TEMPO LIMITE EXCEDIDO NA RENDERIZAÇÃO";
-      friendlyReason = "O tempo limite de conexão expirou ao tentar renderizar esta imagem real. Tente gerar novamente.";
+      friendlyTitle = "ERRO: TEMPO LIMITE EXCEDIDO (504)";
+      friendlyReason = "O servidor da API demorou para responder e a conexão expirou. Tente gerar novamente.";
     } else {
-      friendlyTitle = "FALHA NA RENDERIZAÇÃO REAL VIA IA NATIVA";
-      const truncatedErr = errorReason.substring(0, 95) + (errorReason.length > 95 ? "..." : "");
-      friendlyReason = `O motor de renderização da IA reportou: "${truncatedErr}"`;
+      friendlyTitle = "FALHA NA RENDERIZAÇÃO REAL VIA IA";
+      friendlyReason = errorReason.substring(0, 140);
     }
   }
 
-  const escapedTitle = friendlyTitle
+  const escapeXml = (str: string) => str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
-  const escapedReason = friendlyReason
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+  const escapedTitle = escapeXml(friendlyTitle);
+  const escapedReason = escapeXml(friendlyReason);
+  const escapedPrompt = escapeXml(cleanPrompt.length > 85 ? cleanPrompt.substring(0, 85) + "..." : cleanPrompt);
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="100%" height="100%">
     <defs>
@@ -1557,58 +1956,43 @@ function getCinematicFallbackImage(prompt: string, searchQuery: string, model: s
         <stop offset="0%" stop-color="${gradientStart}" />
         <stop offset="100%" stop-color="${gradientEnd}" />
       </linearGradient>
-      <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stop-color="#D4AF37" />
-        <stop offset="100%" stop-color="#FFF3D6" />
-      </linearGradient>
       <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(212,175,55,0.06)" stroke-width="1"/>
+        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(212,175,55,0.05)" stroke-width="1"/>
       </pattern>
     </defs>
 
     <!-- Background -->
     <rect width="1200" height="675" fill="url(#bgGrad)" />
-    <!-- Fine technical grid overlay -->
     <rect width="1200" height="675" fill="url(#grid)" />
     
     <!-- Cinematic frame borders -->
-    <rect x="20" y="20" width="1160" height="635" fill="none" stroke="rgba(212,175,55,0.4)" stroke-width="2" />
-    <rect x="30" y="30" width="1140" height="615" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+    <rect x="25" y="25" width="1150" height="625" fill="none" stroke="rgba(225, 29, 72, 0.4)" stroke-width="2" rx="4" />
+    <rect x="35" y="35" width="1130" height="605" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1" rx="2" />
 
-    <!-- Abstract aperture visual decor -->
-    <circle cx="1000" cy="337" r="220" fill="none" stroke="rgba(212,175,55,0.12)" stroke-width="1.5" />
-    <circle cx="1000" cy="337" r="150" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1" />
-    <line x1="1000" y1="50" x2="1000" y2="625" stroke="rgba(212,175,55,0.08)" stroke-width="1" />
-    <line x1="600" y1="337" x2="1400" y2="337" stroke="rgba(212,175,55,0.08)" stroke-width="1" />
+    <!-- Top Badge -->
+    <rect x="60" y="60" width="450" height="32" rx="4" fill="rgba(225, 29, 72, 0.15)" stroke="rgba(225, 29, 72, 0.4)" stroke-width="1"/>
+    <text x="75" y="81" fill="#FCA5A5" font-family="monospace, sans-serif" font-size="13" font-weight="bold" letter-spacing="2">MODELO REQUISITADO: ${styleName.toUpperCase()}</text>
 
-    <!-- Header info -->
-    <text x="60" y="80" fill="rgba(212,175,55,0.7)" font-family="monospace, sans-serif" font-size="13" font-weight="bold" letter-spacing="4">ESTILO SELECIONADO: ${styleName.toUpperCase()}</text>
-    <text x="60" y="108" fill="url(#textGrad)" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-weight="bold" font-size="30" letter-spacing="1">ESBOÇO DE DIRETRIZ VISUAL AI</text>
-    
-    <!-- Central Prompt Block -->
-    <text x="60" y="180" fill="rgba(255,255,255,0.7)" font-family="monospace, sans-serif" font-size="12" font-weight="bold" letter-spacing="2">DIRETRIZ DE ENQUADRAMENTO E ELEMENTOS:</text>
-    
-    <!-- Render Wrapped Safe Text Lines -->
-    ${svgTextLines}
-
-    <!-- Elegant friendly Portuguese Warning Box inside the SVG itself -->
-    <rect x="60" y="420" width="750" height="65" rx="6" fill="rgba(212, 175, 55, 0.12)" stroke="rgba(212, 175, 55, 0.5)" stroke-width="1.5" />
-    <text x="80" y="445" fill="#FFE8A3" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-weight="bold" font-size="13" letter-spacing="1">⚠️ ${escapedTitle}</text>
-    <text x="80" y="468" fill="#ffffff" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="12" font-weight="normal">${escapedReason}</text>
-
-    <!-- Bottom metadata stats -->
-    <rect x="60" y="525" width="750" height="1" fill="rgba(212,175,55,0.3)" />
-    
-    <text x="60" y="560" fill="rgba(255,255,255,0.7)" font-family="monospace, sans-serif" font-size="12" letter-spacing="1">LENTE: 35MM CINEMATIC</text>
-    <text x="260" y="560" fill="rgba(255,255,255,0.7)" font-family="monospace, sans-serif" font-size="12" letter-spacing="1">ABERTURA: F/2.8</text>
-    <text x="420" y="560" fill="rgba(255,255,255,0.7)" font-family="monospace, sans-serif" font-size="12" letter-spacing="1">ASPECTO: 16:9</text>
-    <text x="560" y="560" fill="#D4AF37" font-family="monospace, sans-serif" font-size="12" font-weight="bold" letter-spacing="1">✦ MODO DE ASSISTÊNCIA VISUAL LOCAL</text>
-
-    <!-- Camera symbol SVG path -->
-    <g transform="translate(1080, 50) scale(0.6)" fill="#D4AF37">
-      <path d="M4 4h3l2-3h6l2 3h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>
-      <circle cx="12" cy="13" r="5"/>
+    <!-- Center Error Box & Large Highlighted Error Message -->
+    <g transform="translate(60, 140)">
+      <!-- Error Warning Icon & Large Title -->
+      <text x="0" y="60" fill="#F87171" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-weight="900" font-size="32" letter-spacing="1">⚠️ ${escapedTitle}</text>
+      
+      <!-- Highlighted Detailed Reason in Large Readable Font -->
+      <rect x="0" y="95" width="1080" height="130" rx="8" fill="rgba(0, 0, 0, 0.5)" stroke="rgba(248, 113, 113, 0.4)" stroke-width="1.5"/>
+      <text x="30" y="145" fill="#F1F5F9" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="20" font-weight="600">${escapedReason}</text>
     </g>
+
+    <!-- Context Info at Bottom -->
+    <g transform="translate(60, 470)">
+      <text x="0" y="30" fill="rgba(212,175,55,0.8)" font-family="monospace, sans-serif" font-size="12" font-weight="bold" letter-spacing="2">CONTEXTO DA CENA:</text>
+      <text x="0" y="60" fill="rgba(255,255,255,0.6)" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16" font-style="italic">"${escapedPrompt}"</text>
+    </g>
+
+    <!-- Footer Status -->
+    <line x1="60" y1="590" x2="1140" y2="590" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+    <text x="60" y="612" fill="rgba(255,255,255,0.4)" font-family="monospace, sans-serif" font-size="11">VERIFIQUE AS CONFIGURAÇÕES DA CHAVE DE API PARA LIBERAR A GERAÇÃO REAL DE IMAGEM.</text>
+    <text x="950" y="612" fill="#D4AF37" font-family="monospace, sans-serif" font-size="11" font-weight="bold">PROPORÇÃO 16:9</text>
   </svg>`;
 
   const base64Svg = Buffer.from(svg).toString("base64");
@@ -1757,13 +2141,20 @@ app.post("/api/storyboard/generate-image", async (req, res) => {
           ? "Exquisite neo-expressionist oil painting on high-texture canvas, vivid brush strokes"
           : "Warm ambient outdoor landscape photography, soft natural lighting style";
 
-      const generationPrompt = `${prompt}. Style: ${styleTag}. Aspect ratio: 16:9, widescreen, detailed, high resolution`;
+      const cleanedSubjectPrompt = prompt
+        .replace(/aspect ratio[:=]?\s*\d+[:/]\d+/gi, "")
+        .replace(/16:9/gi, "")
+        .replace(/widescreen/gi, "")
+        .trim();
 
-      console.log(`[Nano Banana] Attempting Imagen 3 image generation for prompt: "${prompt.substring(0, 40)}..."`);
-      
+      const generationPrompt = `${cleanedSubjectPrompt}. Style: ${styleTag}. High quality, clear focus.`;
+
+      const targetModel = model === "nano_banana" ? "imagen-3.0-fast-001" : "imagen-3.0-generate-002";
+
       try {
+        console.log(`[Nano Banana] Attempting Imagen 3 image generation with requested model: "${targetModel}" for prompt: "${prompt.substring(0, 40)}..."`);
         const imageResult: any = await (ai.models as any).generateImages({
-          model: "imagen-3.0-generate-002",
+          model: targetModel,
           prompt: generationPrompt,
           config: {
             numberOfImages: 1,
@@ -1776,28 +2167,13 @@ app.post("/api/storyboard/generate-image", async (req, res) => {
           const base64Data = imageResult.generatedImages[0].image.imageBytes;
           resolvedUrl = `data:image/jpeg;base64,${base64Data}`;
           isAiGenerated = true;
-          console.log("[Nano Banana] Native Imagen 3 generation successful!");
+          console.log(`[Nano Banana] Native Imagen 3 (${targetModel}) generation successful!`);
+        } else {
+          generationError = `O modelo ${targetModel} não retornou dados de imagem válidos.`;
         }
-      } catch (imagenErr: any) {
-        console.warn("[Nano Banana] ai.models.generateImages failed, trying generateContent fallback:", imagenErr?.message || imagenErr);
-        
-        // Secondary attempt with generateContent
-        const parts: any[] = [{ text: generationPrompt }];
-        const { response: imageResponse } = await callGeminiWithRetry((modelName) => ai.models.generateContent({
-          model: modelName,
-          contents: { parts }
-        }), "gemini-3.1-flash-image", ["gemini-3.1-flash-lite-image", "gemini-3.6-flash"], 1000, req);
-
-        if (imageResponse?.candidates?.[0]?.content?.parts) {
-          for (const part of imageResponse.candidates[0].content.parts) {
-            if (part.inlineData?.data) {
-              resolvedUrl = `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
-              isAiGenerated = true;
-              console.log("[Nano Banana] Native generateContent image generation successful!");
-              break;
-            }
-          }
-        }
+      } catch (mErr: any) {
+        generationError = mErr?.message || String(mErr);
+        console.warn(`[Nano Banana] Direct generation on requested model ${targetModel} failed:`, generationError);
       }
 
       if (!resolvedUrl) {
@@ -1808,68 +2184,9 @@ app.post("/api/storyboard/generate-image", async (req, res) => {
       console.warn("[Nano Banana] Native AI image generation failed:", generationError);
     }
 
-    // 2. High-relevance Pollinations AI generation fallback (Instant real photorealistic AI images)
+    // 2. Procedural SVG Error/Standby Card if native generation fails
     if (!resolvedUrl) {
-      try {
-        const seed = Math.floor(Math.random() * 900000) + 100000;
-        const cleanPromptForPollination = prompt
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "") // strip diacritics / accents safely
-          .replace(/[^a-zA-Z0-9\s,.-]/g, " ")
-          .trim();
-        const styleString = model === "nano_banana_pro" 
-          ? "cinematic 35mm photography dramatic lighting detailed" 
-          : model === "nano_banana_2" 
-          ? "vivid neo expressionist artwork painting colorful" 
-          : "clean atmospheric cinematic photography natural lighting";
-        const pollPrompt = encodeURIComponent(`${cleanPromptForPollination}, ${styleString}, 16:9 widescreen cinematic photography`);
-        const pollUrl = `https://image.pollinations.ai/prompt/${pollPrompt}?width=1280&height=720&seed=${seed}&model=flux&nologo=true&enhance=false`;
-        
-        console.log(`[Nano Banana] Attempting server fetch for Pollinations AI image...`);
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 20000);
-        const imgRes = await fetch(pollUrl, {
-          signal: controller.signal,
-          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
-        });
-        clearTimeout(timeout);
-        if (imgRes.ok) {
-          const buffer = await imgRes.arrayBuffer();
-          const base64 = Buffer.from(buffer).toString("base64");
-          const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-          resolvedUrl = `data:${contentType};base64,${base64}`;
-          isAiGenerated = true;
-          console.log(`[Nano Banana] Pollinations AI image fetched and converted to base64 (${base64.length} bytes)!`);
-        }
-      } catch (pollErr) {
-        console.warn("[Nano Banana] Pollinations fetch failed or timed out:", pollErr);
-      }
-    }
-
-    // 3. High-quality photographic Picsum fallback if Pollinations / Imagen failed (Guaranteed 100% success)
-    if (!resolvedUrl) {
-      try {
-        const seed = Math.floor(Math.random() * 900000) + 100000;
-        const picsumUrl = `https://picsum.photos/seed/${seed}/1280/720`;
-        console.log(`[Nano Banana] Fetching photographic fallback image from Picsum...`);
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        const imgRes = await fetch(picsumUrl, { signal: controller.signal });
-        clearTimeout(timeout);
-        if (imgRes.ok) {
-          const buffer = await imgRes.arrayBuffer();
-          const base64 = Buffer.from(buffer).toString("base64");
-          const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-          resolvedUrl = `data:${contentType};base64,${base64}`;
-          console.log(`[Nano Banana] Photographic fallback image converted to base64 (${base64.length} bytes)!`);
-        }
-      } catch (picsumErr) {
-        console.warn("[Nano Banana] Picsum fallback fetch failed:", picsumErr);
-      }
-    }
-
-    // 4. Procedural SVG Canvas Fallback as absolute last resort
-    if (!resolvedUrl) {
+      console.warn("[Nano Banana] Native AI image generation failed. Showing detailed error card with reason:", generationError);
       resolvedUrl = getCinematicFallbackImage(prompt, searchQuery, model || "", generationError);
     }
 
@@ -1915,8 +2232,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 // Setup Front-End serving mechanism
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
+  const isPackaged = typeof (process as any).pkg !== 'undefined';
+  if (process.env.NODE_ENV !== "production" && !isPackaged) {
     // Vite in development middleware mode
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -1924,7 +2243,9 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     // Serve production build files
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = isPackaged
+      ? __dirname
+      : path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));

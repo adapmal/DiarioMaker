@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from "react";
 import { StoryboardScene, StylePreference, ConnectionGroup } from "../types";
 import { getCachedImage } from "../lib/cacheStore";
 import { downloadSingleImageFile } from "../lib/imageUtils";
+import { secondsToSMPTE, formatDuration } from "../lib/timecodeUtils";
 import { 
   Scissors, 
   ChevronUp, 
@@ -28,6 +29,9 @@ import {
   Upload,
   Download,
   Copy,
+  Volume2,
+  Play,
+  Pause,
   Send,
   Link as LinkIcon,
   Unlink
@@ -63,6 +67,10 @@ interface StoryboardCardProps {
   selectedSceneIdsForConnection?: string[];
   onToggleSceneSelection?: (sceneId: string) => void;
   scenes?: StoryboardScene[];
+  availableModels?: { gemini: string[]; openai: string[] };
+  ollamaModels?: string[];
+  audioNarrationUrl?: string;
+  fps?: number;
 }
 
 export default function StoryboardCard({
@@ -92,12 +100,91 @@ export default function StoryboardCard({
   isConnectionMode = false,
   selectedSceneIdsForConnection = [],
   onToggleSceneSelection,
-  scenes = []
+  scenes = [],
+  availableModels = { gemini: [], openai: [] },
+  ollamaModels = [],
+  audioNarrationUrl,
+  fps = 24
 }: StoryboardCardProps) {
   const narrationRef = useRef<HTMLTextAreaElement>(null);
   const [isManualEditing, setIsManualEditing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [promptInputCopied, setPromptInputCopied] = useState(false);
+
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  const handlePlayAudioSnippet = () => {
+    if (!audioNarrationUrl || scene.startTime === undefined) return;
+
+    // 1. Stop any currently playing audio globally
+    if ((window as any)._currentStoryboardAudio) {
+      try {
+        (window as any)._currentStoryboardAudio.pause();
+        (window as any)._currentStoryboardAudio.ontimeupdate = null;
+        (window as any)._currentStoryboardAudio.oncanplay = null;
+      } catch (_) {}
+      (window as any)._currentStoryboardAudio = null;
+    }
+
+    if (isPlayingAudio) {
+      setIsPlayingAudio(false);
+      return;
+    }
+
+    const playStart = Math.max(0, scene.startTime ?? 0);
+    const playEnd = (scene.endTime !== undefined && scene.endTime > playStart) 
+      ? scene.endTime 
+      : (playStart + (scene.duration || 3));
+
+    const audio = new Audio(audioNarrationUrl);
+    (window as any)._currentStoryboardAudio = audio;
+    audioPlayerRef.current = audio;
+    setIsPlayingAudio(true);
+
+    let hasStarted = false;
+    const startSnippet = () => {
+      if (hasStarted) return;
+      hasStarted = true;
+
+      try {
+        audio.currentTime = playStart;
+      } catch (_) {}
+
+      audio.play().catch(err => {
+        console.error("Erro ao reproduzir áudio:", err);
+        setIsPlayingAudio(false);
+      });
+    };
+
+    audio.ontimeupdate = () => {
+      if (audio.currentTime >= playEnd) {
+        audio.pause();
+        audio.ontimeupdate = null;
+        setIsPlayingAudio(false);
+        audioPlayerRef.current = null;
+        if ((window as any)._currentStoryboardAudio === audio) {
+          (window as any)._currentStoryboardAudio = null;
+        }
+      }
+    };
+
+    audio.onended = () => {
+      setIsPlayingAudio(false);
+      audioPlayerRef.current = null;
+      if ((window as any)._currentStoryboardAudio === audio) {
+        (window as any)._currentStoryboardAudio = null;
+      }
+    };
+
+    if (audio.readyState >= 1) {
+      startSnippet();
+    } else {
+      audio.onloadedmetadata = () => {
+        startSnippet();
+      };
+    }
+  };
 
   const sceneNumText = consecutiveNumbering 
     ? String(index + 1).padStart(2, "0") 
@@ -135,7 +222,7 @@ export default function StoryboardCard({
 
   // Determine model/algorithm used to generate prompt
   const getModelIndicator = () => {
-    const chosen = scene.promptAiModel || "gemini-3.5-flash";
+    const chosen = scene.promptAiModel || "gemini-2.5-flash";
     const used = scene.promptAiModelUsed;
 
     if (!used) return null;
@@ -148,39 +235,60 @@ export default function StoryboardCard({
       };
     }
 
-    if (used === "ollama") {
+    if (used === "ollama" || used.startsWith("ollama:")) {
+      const modelName = used.replace(/^ollama:/, "");
       return {
         label: "OLL",
         colorClass: "text-blue-400 bg-blue-950/40 border-blue-900/60",
-        tooltip: "Ollama (Modelo local)",
+        tooltip: used === "ollama" ? "Ollama (Modelo local)" : `Ollama: ${modelName}`,
       };
     }
 
-    // Check if it matches chosen (modulo naming details)
-    if (used === chosen || (chosen === "gemini-3.5-flash" && used === "gemini-3.5-flash")) {
-      let label = "G3.5";
-      if (used.includes("3.1-pro")) label = "G3.1P";
-      else if (used.includes("3.1")) label = "G3.1";
+    // Format OpenAI model labels
+    if (used.startsWith("openai:") || used.startsWith("gpt-") || used.startsWith("o1-") || used.startsWith("o3-")) {
+      const modelName = used.replace(/^openai:/, "");
+      let label = "GPT";
+      if (modelName.includes("gpt-4o-mini")) label = "4o-M";
+      else if (modelName.includes("gpt-4o")) label = "4O";
+      else if (modelName.includes("o1-")) label = "O1";
+      else if (modelName.includes("o3-")) label = "O3";
+      
+      const isFallback = chosen !== "chatgpt" && !chosen.includes(modelName);
       return {
         label: label,
-        colorClass: "text-emerald-400 bg-emerald-950/40 border-emerald-900/60",
-        tooltip: `Modelo indicado utilizado: ${used}`,
+        colorClass: isFallback
+          ? "text-amber-400 bg-amber-950/40 border-amber-900/60"
+          : "text-[#D4AF37] bg-[#D4AF37]/10 border-[#D4AF37]/35",
+        tooltip: isFallback
+          ? `Recurso alternativo OpenAI utilizado: ${modelName} (Modelo preferencial: ${chosen})`
+          : `Modelo OpenAI utilizado: ${modelName}`,
       };
     }
 
-    // Gemini 3.1 fallback when it wasn't the chosen model
-    if (used.includes("3.1") || used.includes("flash-lite") || used.includes("flash-latest")) {
-      return {
-        label: "G3.1",
-        colorClass: "text-amber-400 bg-amber-950/40 border-amber-900/60",
-        tooltip: `Fallback automático para Gemini 3.1 Lite (Indicado: ${chosen})`,
-      };
-    }
+    // Format Gemini model labels
+    let label = "GEM";
+    if (used.includes("2.5-flash")) label = "G2.5F";
+    else if (used.includes("2.5-pro")) label = "G2.5P";
+    else if (used.includes("2.0-flash-lite")) label = "G2.0L";
+    else if (used.includes("2.0-flash")) label = "G2.0F";
+    else if (used.includes("1.5-flash")) label = "G1.5F";
+    else if (used.includes("1.5-pro")) label = "G1.5P";
+    else if (used.includes("3.6-flash")) label = "G3.6F";
+    else if (used.includes("3.5-flash")) label = "G3.5F";
+    else if (used.includes("3.1-pro")) label = "G3.1P";
+    else if (used.includes("3.1-flash-lite")) label = "G3.1L";
+
+    // Check if fallback was activated
+    const isFallback = chosen !== used && !(chosen === "gemini-3.5-flash" && used === "gemini-2.5-flash");
 
     return {
-      label: used.substring(0, 5).toUpperCase(),
-      colorClass: "text-stone-400 bg-stone-900 border-stone-800",
-      tooltip: `Modelo utilizado: ${used}`,
+      label: label,
+      colorClass: isFallback
+        ? "text-amber-400 bg-amber-950/40 border-amber-900/60"
+        : "text-emerald-400 bg-emerald-950/40 border-emerald-900/60",
+      tooltip: isFallback
+        ? `Recurso alternativo ativado: ${used} (Modelo preferencial: ${chosen})`
+        : `Modelo utilizado: ${used}`,
     };
   };
 
@@ -843,6 +951,31 @@ ${userPromptText}`;
               <span className="text-xl font-light text-[#E0D8D0] block font-serif">{sceneNumText}</span>
             </div>
 
+            {scene.startTime !== undefined && (
+              <div className="flex flex-col items-center my-1 font-mono">
+                <span className="text-[8px] text-[#D4AF37] font-bold tracking-wider">
+                  {secondsToSMPTE(scene.startTime, fps || 24)}
+                </span>
+                <span className="text-[7px] text-zinc-500 font-sans">
+                  {formatDuration(scene.duration || (scene.endTime ? scene.endTime - scene.startTime : 3))}
+                </span>
+                {audioNarrationUrl && (
+                  <button
+                    type="button"
+                    onClick={handlePlayAudioSnippet}
+                    className={`mt-1.5 p-1.5 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                      isPlayingAudio
+                        ? "bg-[#D4AF37] text-black border-[#D4AF37] animate-pulse"
+                        : "bg-[#111] text-[#D4AF37] border-[#D4AF37]/40 hover:border-[#D4AF37] hover:bg-[#222]"
+                    }`}
+                    title="Ouvir trecho da narração para esta cena"
+                  >
+                    {isPlayingAudio ? <Pause size={10} /> : <Play size={10} className="ml-0.5" />}
+                  </button>
+                )}
+              </div>
+            )}
+
             <button
               type="button"
               onClick={() => onMoveDown(index)}
@@ -879,23 +1012,6 @@ ${userPromptText}`;
         >
           {/* 16:9 Pure Unobstructed Image Viewport */}
           <div className="relative w-full aspect-[16/9] bg-black flex items-center justify-center overflow-hidden group">
-            {/* Friendly render fallback warning banner */}
-            {scene.generatedImageUrl && scene.generatedImageUrl.startsWith("data:image/svg+xml") && (
-              <div className="absolute top-2.5 left-2.5 right-2.5 bg-amber-950/90 border border-amber-500/35 backdrop-blur-md p-2 rounded text-[10px] text-amber-200 flex items-start gap-2.5 z-10 animate-fadeIn shadow-lg">
-                <AlertTriangle size={14} className="text-[#D4AF37] shrink-0 mt-0.5" />
-                <div className="flex-1 space-y-0.5 text-left">
-                  <span className="font-bold uppercase tracking-wider block text-[#D4AF37] text-[9px]">⚠️ Esboço de Diretriz Visual (Standby)</span>
-                  <p className="font-sans leading-relaxed text-zinc-300">
-                    O motor de renderização da IA real de imagem não pôde concluir a imagem final (geralmente por falta de cota/crédito na chave de API). Ativamos este rascunho visual offline com as diretrizes e motivos desenhados no próprio card.
-                  </p>
-                  {scene.renderError && (
-                    <p className="mt-1 font-mono text-[8px] bg-black/40 p-1 rounded border border-amber-500/10 text-[#D4AF37] overflow-x-auto select-all">
-                      Erro técnico: {scene.renderError}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
 
             {activeImageUrl ? (
               <img 
@@ -943,7 +1059,7 @@ ${userPromptText}`;
                     {scene.renderStatus === "rendering" ? "Renderizando..." : "Na Fila..."}
                   </span>
                   <span className="text-[8px] text-zinc-400 font-mono mt-1.5 uppercase">
-                    via {scene.selectedModel === "nano_banana_pro" ? "Nano Banana Pro" : scene.selectedModel === "nano_banana_2" ? "Nano Banana 2" : "Nano Banana 2 light"}
+                    via {scene.selectedModel === "nano_banana_pro" ? "Nano Banana Pro" : scene.selectedModel === "nano_banana_2" ? "Nano Banana 2" : "Nano Banana 2 Lite"}
                   </span>
                   {onCancelRender && (
                     <button
@@ -1013,7 +1129,7 @@ ${userPromptText}`;
 
           {/* Clean Dedicated AI Control Panel Docked Below Image (No Overlays or Dark Gradients over the Image) */}
           <div className="w-full bg-[#141414] border-t border-zinc-800/80 p-2.5 sm:p-3 text-left space-y-2 mt-auto">
-            {/* Line 1: Gerar label + NB2 light, NB Pro, NB2 */}
+            {/* Line 1: Gerar label + NB2 Lite, NB Pro, NB2 */}
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[10px] uppercase tracking-wider font-mono text-[#D4AF37] font-bold mr-1 shrink-0">
                 Gerar:
@@ -1023,15 +1139,15 @@ ${userPromptText}`;
                   type="button"
                   onClick={() => handleDirectRender("nano_banana")}
                   className="px-2 py-1 bg-[#161616] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer"
-                  title="Renderizar instantaneamente com Nano Banana 2 light"
+                  title="Renderizar com Nano Banana 2 Lite (gemini-3.1-flash-lite-image)"
                 >
-                  NB2 light
+                  NB2 Lite
                 </button>
                 <button
                   type="button"
                   onClick={() => handleDirectRender("nano_banana_pro")}
                   className="px-2 py-1 bg-[#161616] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer"
-                  title="Renderizar instantaneamente com Nano Banana Pro"
+                  title="Renderizar com Nano Banana Pro (gemini-3-pro-image)"
                 >
                   NB Pro
                 </button>
@@ -1039,7 +1155,7 @@ ${userPromptText}`;
                   type="button"
                   onClick={() => handleDirectRender("nano_banana_2")}
                   className="px-2 py-1 bg-[#161616] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer"
-                  title="Renderizar instantaneamente com Nano Banana 2"
+                  title="Renderizar com Nano Banana 2 (gemini-3.1-flash-image)"
                 >
                   NB2
                 </button>
@@ -1351,6 +1467,19 @@ ${userPromptText}`;
                     </button>
                   </div>
                 </div>
+
+                {/* Prompt Generation Error Notification */}
+                {(scene.promptQueueStatus === "failed" || scene.promptError) && (
+                  <div className="p-2 bg-rose-950/40 border border-rose-800/60 rounded text-[10px] text-rose-300 font-mono space-y-1 animate-fadeIn">
+                    <div className="font-bold flex items-center gap-1 text-rose-400">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      <span>⚠️ FALHA NA GERAÇÃO DO PROMPT NO MODELO SELECIONADO</span>
+                    </div>
+                    <p className="text-[9px] leading-relaxed text-rose-200">
+                      {scene.promptError || "O modelo de IA selecionado não pôde concluir a geração do prompt."}
+                    </p>
+                  </div>
+                )}
                 
                 {isManualEditing ? (
                   <textarea
@@ -1431,22 +1560,43 @@ ${userPromptText}`;
                     </span>
                   </button>
 
-                  {/* Button 2: Prompt + Imagem */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onUpdate(scene.id, { generationGuidelines: localGuidelines });
-                      onRegenerate(index, true);
-                    }}
-                    disabled={isRegenerating || isQueued}
-                    className={`h-[35px] border border-[#D4AF37] text-[#D4AF37] bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer rounded px-1.5 font-bold ${
-                      isRegenerating || isQueued ? "animate-pulse opacity-50 cursor-wait" : ""
-                    }`}
-                    title="Gerar prompt e em seguida iniciar a criação da imagem"
-                  >
-                    <Sparkles size={10} />
-                    <span>Prompt + Imagem</span>
-                  </button>
+                  {/* Button 2: Prompt + IMG with Model Select Dropdown */}
+                  <div className={`flex items-center rounded border border-[#D4AF37]/80 hover:border-[#D4AF37] h-[35px] overflow-hidden bg-[#D4AF37]/10 text-[#D4AF37] transition-all ${
+                    isRegenerating || isQueued ? "animate-pulse opacity-50 cursor-wait" : ""
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onUpdate(scene.id, { generationGuidelines: localGuidelines });
+                        onRegenerate(index, true);
+                      }}
+                      disabled={isRegenerating || isQueued}
+                      className="h-full bg-transparent hover:bg-[#D4AF37] hover:text-black text-[9px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer font-bold px-2 flex-1"
+                      title="Gerar prompt e em seguida iniciar a criação da imagem"
+                    >
+                      <Sparkles size={10} />
+                      <span>Prompt +IMG</span>
+                    </button>
+                    
+                    <div className="relative h-full flex items-center justify-center border-l border-[#D4AF37]/40 hover:bg-[#D4AF37] hover:text-black transition-colors cursor-pointer w-4">
+                      <select
+                        value={scene.selectedModel || "nano_banana"}
+                        disabled={isRegenerating || isQueued}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          onUpdate(scene.id, { selectedModel: val });
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        title="Escolher modelo de imagem para renderizar"
+                      >
+                        <option value="nano_banana">Nano Banana 2 Lite</option>
+                        <option value="nano_banana_pro">Nano Banana Pro</option>
+                        <option value="nano_banana_2">Nano Banana 2</option>
+                        {openAiKey && <option value="chatgpt_dalle3">OpenAI (DALL-E 3)</option>}
+                      </select>
+                      <span className="text-[7.5px] pointer-events-none select-none">▼</span>
+                    </div>
+                  </div>
 
                   {/* Compact Visual Instruction Droplet Zone */}
                   <div 
@@ -1544,7 +1694,15 @@ ${userPromptText}`;
                 </label>
                 <div className="flex gap-1.5">
                   <select
-                    value={["gemini-3.5-flash", "gemini-3.1-pro-preview", "chatgpt", "ollama"].includes(localAiModel) ? localAiModel : "custom"}
+                    value={
+                      (availableModels?.gemini?.text || []).includes(localAiModel) || 
+                      (availableModels?.openai?.text || []).includes(localAiModel) || 
+                      localAiModel === "ollama" ||
+                      localAiModel.startsWith("ollama:") ||
+                      ollamaModels.includes(localAiModel)
+                        ? localAiModel 
+                        : (localAiModel === "" ? "" : "custom")
+                    }
                     onChange={(e) => {
                       const val = e.target.value;
                       if (val !== "custom") {
@@ -1557,14 +1715,37 @@ ${userPromptText}`;
                     }}
                     className="flex-1 bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer"
                   >
-                    <option value="gemini-3.5-flash">Gemini 3.5 Flash (Padrão e Rápido)</option>
-                    <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Reforço Criativo)</option>
-                    <option value="chatgpt">ChatGPT (OpenAI API)</option>
-                    <option value="ollama">Ollama (Local / Direct-Browser)</option>
-                    <option value="custom">✍ Personalizado...</option>
+                    <optgroup label="Google Gemini">
+                      {(availableModels?.gemini?.text || []).map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="OpenAI GPT">
+                      {(availableModels?.openai?.text || []).map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </optgroup>
+                    {ollamaModels && ollamaModels.length > 0 && (
+                      <optgroup label="Ollama Local">
+                        {ollamaModels.map((m) => (
+                          <option key={`ollama-${m}`} value={`ollama:${m}`}>
+                            Ollama: {m}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="Outros">
+                      <option value="ollama">Ollama (Padrão Global)</option>
+                      <option value="custom">✍ Personalizado...</option>
+                    </optgroup>
                   </select>
 
-                  {(!["gemini-3.5-flash", "gemini-3.1-pro-preview", "chatgpt", "ollama"].includes(localAiModel) || localAiModel === "") && (
+                  {(!(availableModels?.gemini?.text || []).includes(localAiModel) && 
+                    !(availableModels?.openai?.text || []).includes(localAiModel) && 
+                    !ollamaModels.includes(localAiModel) && 
+                    !localAiModel.startsWith("ollama:") && 
+                    localAiModel !== "ollama" || 
+                    localAiModel === "") && (
                     <input
                       type="text"
                       value={localAiModel}
@@ -1823,7 +2004,7 @@ ${userPromptText}`;
                             : "text-zinc-400 hover:text-white hover:bg-zinc-900"
                         }`}
                       >
-                        NB2 light
+                        Img3 Fast
                       </button>
                       <button
                         type="button"
@@ -1834,7 +2015,7 @@ ${userPromptText}`;
                             : "text-zinc-400 hover:text-white hover:bg-zinc-900"
                         }`}
                       >
-                        NB Pro
+                        Img3 Pro
                       </button>
                       <button
                         type="button"
@@ -1845,7 +2026,7 @@ ${userPromptText}`;
                             : "text-zinc-400 hover:text-white hover:bg-zinc-900"
                         }`}
                       >
-                        NB2
+                        Img3 Art
                       </button>
                       {openAiKey && (
                         <button

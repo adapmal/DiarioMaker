@@ -1,0 +1,5645 @@
+{
+  "scenes": [
+    {
+      "id": "scene-audio-1785422226728-2",
+      "text": "Como é forte essa palavra de São Paulo! Ainda mais sabendo o quanto ele amava Jesus. Para mim o viver é Cristo, e o morrer é lucro.",
+      "description": "Uma cena dramática, inspirada na arte de Caravaggio, retratando São Paulo em um ambiente bíblico. Ele está em um cenário rústico, cercado por sombras profundas e raios de luz dourada que iluminam seu rosto com uma expressão intensa, repleta de amor e devoção a Jesus. A atmosfera é pesada e contemplativa, com tons terrosos como ocres e vermelhos profundos, enquanto elementos da época, como roupas simples e uma luz suave filtrada, criam um forte contraste entre luz e sombra, enfatizando a profundidade da frase 'o viver é Cristo, e o morrer é lucro'. A composição é cheia de emoção e respeito, capturando a essência da paixão de Paulo por sua fé.",
+      "prompt": "A powerful scene of Saint Paul inspired by Caravaggio's art, showcasing dramatic high contrast chiaroscuro with deep shadows and golden lighting. He has an intense expression of love and devotion to Jesus, surrounded by earthy tones like ochres and deep reds. The setting is a rustic biblical environment, emphasizing the depth of his quote, 'to live is Christ, and to die is gain.' The image captures raw human emotion and historical context, ideal for Nano Banana, --ar 16:9",
+      "sceneNumber": "1",
+      "startTime": 41,
+      "endTime": 50.6,
+      "duration": 9.6,
+      "timedWords": [
+        {
+          "word": "Como",
+          "start": 41,
+          "end": 41.2
+        },
+        {
+          "word": "é",
+          "start": 41.2,
+          "end": 41.3
+        },
+        {
+          "word": "forte",
+          "start": 41.3,
+          "end": 41.6
+        },
+        {
+          "word": "essa",
+          "start": 41.6,
+          "end": 41.8
+        },
+        {
+          "word": "palavra",
+          "start": 41.8,
+          "end": 42.2
+        },
+        {
+          "word": "de",
+          "start": 42.2,
+          "end": 42.3
+        },
+        {
+          "word": "São",
+          "start": 42.3,
+          "end": 42.5
+        },
+        {
+          "word": "Paulo!",
+          "start": 42.5,
+          "end": 42.9
+        },
+        {
+          "word": "Ainda",
+          "start": 43.1,
+          "end": 43.4
+        },
+        {
+          "word": "mais",
+          "start": 43.4,
+          "end": 43.6
+        },
+        {
+          "word": "sabendo",
+          "start": 43.6,
+          "end": 44.1
+        },
+        {
+          "word": "o",
+          "start": 44.1,
+          "end": 44.2
+        },
+        {
+          "word": "quanto",
+          "start": 44.2,
+          "end": 44.5
+        },
+        {
+          "word": "ele",
+          "start": 44.5,
+          "end": 44.7
+        },
+        {
+          "word": "amava",
+          "start": 44.7,
+          "end": 45.1
+        },
+        {
+          "word": "Jesus.",
+          "start": 45.1,
+          "end": 45.6
+        },
+        {
+          "word": "Para",
+          "start": 48,
+          "end": 48.2
+        },
+        {
+          "word": "mim",
+          "start": 48.2,
+          "end": 48.4
+        },
+        {
+          "word": "o",
+          "start": 48.4,
+          "end": 48.5
+        },
+        {
+          "word": "viver",
+          "start": 48.5,
+          "end": 48.8
+        },
+        {
+          "word": "é",
+          "start": 48.8,
+          "end": 48.9
+        },
+        {
+          "word": "Cristo,",
+          "start": 48.9,
+          "end": 49.3
+        },
+        {
+          "word": "e",
+          "start": 49.3,
+          "end": 49.5
+        },
+        {
+          "word": "o",
+          "start": 49.5,
+          "end": 49.6
+        },
+        {
+          "word": "morrer",
+          "start": 49.6,
+          "end": 50
+        },
+        {
+          "word": "é",
+          "start": 50,
+          "end": 50.1
+        },
+        {
+          "word": "lucro.",
+          "start": 50.1,
+          "end": 50.6
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-3",
+      "text": "São Paulo chega a desejar ser ele mesmo separado de Jesus para que o seu povo, os judeus, entrem em comunhão com Jesus Salvador. Está disposto a pagar um preço altíssimo para que o seu povo seja evangelizado. Está disposto a ser amaldiçoado para que os outros encontrem a bênção da fé.",
+      "description": "Uma cena poderosa que retrata um homem deitado sobre uma ponte em São Paulo, sua expressão de dor e sacrifício, com o céu dramático e sombrio acima dele. A cidade vibrante ao fundo, com seus edifícios desenhados sob um contraste forte de luz e sombra, destacando sua singularidade. A ponte simboliza a intercessão entre Jesus e seu povo, representados por judaicos em adoração ao longe, banhados em luz suave que representa a bênção da fé. Elementos de rusticidade e autenticação nas vestes do homem, com o asfalto da ponte e o brilho do sol filtrado entre as nuvens, sugerindo um profundo sentido de entrega e devoção. Uma imagem que evoca uma profunda conexão espiritual. --ar 16:9",
+      "prompt": "A man lying on a São Paulo bridge, expressing pain and sacrifice, with a dramatic and dark sky overhead. The vibrant city in the background shows its buildings in strong light and shadow contrasts. The bridge symbolizes intercession between Jesus and his people, who are depicted as Jewish worshippers in the distance, bathed in soft light representing the blessing of faith. Elements of rusticity in the man's garments, with the bridge's asphalt and sunlight filtering through clouds, suggesting deep sense of surrender and devotion. A powerful image evoking deep spiritual connection, edge-to-edge full scene, 16:9 aspect ratio",
+      "sceneNumber": "2",
+      "startTime": 53,
+      "endTime": 116.7,
+      "duration": 63.7,
+      "timedWords": [
+        {
+          "word": "São",
+          "start": 53,
+          "end": 53.2
+        },
+        {
+          "word": "Paulo",
+          "start": 53.2,
+          "end": 53.5
+        },
+        {
+          "word": "chega",
+          "start": 53.5,
+          "end": 53.8
+        },
+        {
+          "word": "a",
+          "start": 53.8,
+          "end": 53.9
+        },
+        {
+          "word": "desejar",
+          "start": 53.9,
+          "end": 54.3
+        },
+        {
+          "word": "ser",
+          "start": 54.3,
+          "end": 54.5
+        },
+        {
+          "word": "ele",
+          "start": 54.5,
+          "end": 54.7
+        },
+        {
+          "word": "mesmo",
+          "start": 54.7,
+          "end": 55
+        },
+        {
+          "word": "separado",
+          "start": 55,
+          "end": 55.6
+        },
+        {
+          "word": "de",
+          "start": 55.6,
+          "end": 55.8
+        },
+        {
+          "word": "Jesus",
+          "start": 55.8,
+          "end": 56.2
+        },
+        {
+          "word": "para",
+          "start": 56.3,
+          "end": 56.5
+        },
+        {
+          "word": "que",
+          "start": 56.5,
+          "end": 56.6
+        },
+        {
+          "word": "o",
+          "start": 56.6,
+          "end": 56.7
+        },
+        {
+          "word": "seu",
+          "start": 56.7,
+          "end": 56.9
+        },
+        {
+          "word": "povo,",
+          "start": 56.9,
+          "end": 57.2
+        },
+        {
+          "word": "os",
+          "start": 57.3,
+          "end": 57.5
+        },
+        {
+          "word": "judeus,",
+          "start": 57.5,
+          "end": 58
+        },
+        {
+          "word": "entrem",
+          "start": 58.1,
+          "end": 58.5
+        },
+        {
+          "word": "em",
+          "start": 58.5,
+          "end": 58.7
+        },
+        {
+          "word": "comunhão",
+          "start": 58.7,
+          "end": 59.2
+        },
+        {
+          "word": "com",
+          "start": 59.2,
+          "end": 59.4
+        },
+        {
+          "word": "Jesus",
+          "start": 59.4,
+          "end": 59.8
+        },
+        {
+          "word": "Salvador.",
+          "start": 59.8,
+          "end": 60.4
+        },
+        {
+          "word": "Está",
+          "start": 105,
+          "end": 105.3
+        },
+        {
+          "word": "disposto",
+          "start": 105.3,
+          "end": 105.8
+        },
+        {
+          "word": "a",
+          "start": 105.8,
+          "end": 105.9
+        },
+        {
+          "word": "pagar",
+          "start": 105.9,
+          "end": 106.3
+        },
+        {
+          "word": "um",
+          "start": 106.3,
+          "end": 106.4
+        },
+        {
+          "word": "preço",
+          "start": 106.4,
+          "end": 106.8
+        },
+        {
+          "word": "altíssimo",
+          "start": 106.8,
+          "end": 107.5
+        },
+        {
+          "word": "para",
+          "start": 107.6,
+          "end": 107.8
+        },
+        {
+          "word": "que",
+          "start": 107.8,
+          "end": 108
+        },
+        {
+          "word": "o",
+          "start": 108,
+          "end": 108.1
+        },
+        {
+          "word": "seu",
+          "start": 108.1,
+          "end": 108.3
+        },
+        {
+          "word": "povo",
+          "start": 108.3,
+          "end": 108.6
+        },
+        {
+          "word": "seja",
+          "start": 108.6,
+          "end": 108.9
+        },
+        {
+          "word": "evangelizado.",
+          "start": 108.9,
+          "end": 109.8
+        },
+        {
+          "word": "Está",
+          "start": 112,
+          "end": 112.3
+        },
+        {
+          "word": "disposto",
+          "start": 112.3,
+          "end": 112.8
+        },
+        {
+          "word": "a",
+          "start": 112.8,
+          "end": 112.9
+        },
+        {
+          "word": "ser",
+          "start": 112.9,
+          "end": 113.1
+        },
+        {
+          "word": "amaldiçoado",
+          "start": 113.1,
+          "end": 114
+        },
+        {
+          "word": "para",
+          "start": 114.1,
+          "end": 114.3
+        },
+        {
+          "word": "que",
+          "start": 114.3,
+          "end": 114.5
+        },
+        {
+          "word": "os",
+          "start": 114.5,
+          "end": 114.6
+        },
+        {
+          "word": "outros",
+          "start": 114.6,
+          "end": 115
+        },
+        {
+          "word": "encontrem",
+          "start": 115,
+          "end": 115.6
+        },
+        {
+          "word": "a",
+          "start": 115.6,
+          "end": 115.7
+        },
+        {
+          "word": "bênção",
+          "start": 115.7,
+          "end": 116.1
+        },
+        {
+          "word": "da",
+          "start": 116.1,
+          "end": 116.3
+        },
+        {
+          "word": "fé.",
+          "start": 116.3,
+          "end": 116.7
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [
+        {
+          "id": "bx1tmes",
+          "url": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAwIDY3NSIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSI+CiAgICA8ZGVmcz4KICAgICAgPGxpbmVhckdyYWRpZW50IGlkPSJiZ0dyYWQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMyNDE4MTIiIC8+CiAgICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMGYwYTA3IiAvPgogICAgICA8L2xpbmVhckdyYWRpZW50PgogICAgICA8cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgICA8cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDIxMiwxNzUsNTUsMC4wNSkiIHN0cm9rZS13aWR0aD0iMSIvPgogICAgICA8L3BhdHRlcm4+CiAgICA8L2RlZnM+CgogICAgPCEtLSBCYWNrZ3JvdW5kIC0tPgogICAgPHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjc1IiBmaWxsPSJ1cmwoI2JnR3JhZCkiIC8+CiAgICA8cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2NzUiIGZpbGw9InVybCgjZ3JpZCkiIC8+CiAgICAKICAgIDwhLS0gQ2luZW1hdGljIGZyYW1lIGJvcmRlcnMgLS0+CiAgICA8cmVjdCB4PSIyNSIgeT0iMjUiIHdpZHRoPSIxMTUwIiBoZWlnaHQ9IjYyNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDIyNSwgMjksIDcyLCAwLjQpIiBzdHJva2Utd2lkdGg9IjIiIHJ4PSI0IiAvPgogICAgPHJlY3QgeD0iMzUiIHk9IjM1IiB3aWR0aD0iMTEzMCIgaGVpZ2h0PSI2MDUiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjA2KSIgc3Ryb2tlLXdpZHRoPSIxIiByeD0iMiIgLz4KCiAgICA8IS0tIFRvcCBCYWRnZSAtLT4KICAgIDxyZWN0IHg9IjYwIiB5PSI2MCIgd2lkdGg9IjQ1MCIgaGVpZ2h0PSIzMiIgcng9IjQiIGZpbGw9InJnYmEoMjI1LCAyOSwgNzIsIDAuMTUpIiBzdHJva2U9InJnYmEoMjI1LCAyOSwgNzIsIDAuNCkiIHN0cm9rZS13aWR0aD0iMSIvPgogICAgPHRleHQgeD0iNzUiIHk9IjgxIiBmaWxsPSIjRkNBNUE1IiBmb250LWZhbWlseT0ibW9ub3NwYWNlLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEzIiBmb250LXdlaWdodD0iYm9sZCIgbGV0dGVyLXNwYWNpbmc9IjIiPk1PREVMTyBSRVFVSVNJVEFETzogTkFOTyBCQU5BTkEgMiBMSVRFPC90ZXh0PgoKICAgIDwhLS0gQ2VudGVyIEVycm9yIEJveCAmIExhcmdlIEhpZ2hsaWdodGVkIEVycm9yIE1lc3NhZ2UgLS0+CiAgICA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg2MCwgMTQwKSI+CiAgICAgIDwhLS0gRXJyb3IgV2FybmluZyBJY29uICYgTGFyZ2UgVGl0bGUgLS0+CiAgICAgIDx0ZXh0IHg9IjAiIHk9IjYwIiBmaWxsPSIjRjg3MTcxIiBmb250LWZhbWlseT0iJ0hlbHZldGljYSBOZXVlJywgSGVsdmV0aWNhLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjkwMCIgZm9udC1zaXplPSIzMiIgbGV0dGVyLXNwYWNpbmc9IjEiPuKaoO+4jyBGQUxIQSBOQSBSRU5ERVJJWkHDh8ODTyBSRUFMIFZJQSBJQTwvdGV4dD4KICAgICAgCiAgICAgIDwhLS0gSGlnaGxpZ2h0ZWQgRGV0YWlsZWQgUmVhc29uIGluIExhcmdlIFJlYWRhYmxlIEZvbnQgLS0+CiAgICAgIDxyZWN0IHg9IjAiIHk9Ijk1IiB3aWR0aD0iMTA4MCIgaGVpZ2h0PSIxMzAiIHJ4PSI4IiBmaWxsPSJyZ2JhKDAsIDAsIDAsIDAuNSkiIHN0cm9rZT0icmdiYSgyNDgsIDExMywgMTEzLCAwLjQpIiBzdHJva2Utd2lkdGg9IjEuNSIvPgogICAgICA8dGV4dCB4PSIzMCIgeT0iMTQ1IiBmaWxsPSIjRjFGNUY5IiBmb250LWZhbWlseT0iJ0hlbHZldGljYSBOZXVlJywgSGVsdmV0aWNhLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMCIgZm9udC13ZWlnaHQ9IjYwMCI+Q290YSBkZSBBUEkgZG8gR2VtaW5pIGF0aW5naWRhIG91IG1vZGVsbyBuw6NvIHN1cG9ydG91IHJlc3Bvc3RhIGRlIGJ5dGVzIGlubGluZS48L3RleHQ+CiAgICA8L2c+CgogICAgPCEtLSBDb250ZXh0IEluZm8gYXQgQm90dG9tIC0tPgogICAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNjAsIDQ3MCkiPgogICAgICA8dGV4dCB4PSIwIiB5PSIzMCIgZmlsbD0icmdiYSgyMTIsMTc1LDU1LDAuOCkiIGZvbnQtZmFtaWx5PSJtb25vc3BhY2UsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSJib2xkIiBsZXR0ZXItc3BhY2luZz0iMiI+Q09OVEVYVE8gREEgQ0VOQTo8L3RleHQ+CiAgICAgIDx0ZXh0IHg9IjAiIHk9IjYwIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuNikiIGZvbnQtZmFtaWx5PSInSGVsdmV0aWNhIE5ldWUnLCBIZWx2ZXRpY2EsIEFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmb250LXN0eWxlPSJpdGFsaWMiPiJBIG1hbiBseWluZyBvbiBhIFPDo28gUGF1bG8gYnJpZGdlLCBleHByZXNzaW5nIHBhaW4gYW5kIHNhY3JpZmljZSwgd2l0aCBhIGRyYW1hdGljIGFuZC4uLiI8L3RleHQ+CiAgICA8L2c+CgogICAgPCEtLSBGb290ZXIgU3RhdHVzIC0tPgogICAgPGxpbmUgeDE9IjYwIiB5MT0iNTkwIiB4Mj0iMTE0MCIgeTI9IjU5MCIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMSkiIHN0cm9rZS13aWR0aD0iMSIgLz4KICAgIDx0ZXh0IHg9IjYwIiB5PSI2MTIiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC40KSIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMSI+VkVSSUZJUVVFIEFTIENPTkZJR1VSQcOHw5VFUyBEQSBDSEFWRSBERSBBUEkgUEFSQSBMSUJFUkFSIEEgR0VSQcOHw4NPIFJFQUwgREUgSU1BR0VNLjwvdGV4dD4KICAgIDx0ZXh0IHg9Ijk1MCIgeT0iNjEyIiBmaWxsPSIjRDRBRjM3IiBmb250LWZhbWlseT0ibW9ub3NwYWNlLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjExIiBmb250LXdlaWdodD0iYm9sZCI+UFJPUE9Sw4fDg08gMTY6OTwvdGV4dD4KICA8L3N2Zz4=",
+          "timestamp": "11:47:39 AM",
+          "prompt": "A man lying on a São Paulo bridge, expressing pain and sacrifice, with a dramatic and dark sky overhead. The vibrant city in the background shows its buildings in strong light and shadow contrasts. The bridge symbolizes intercession between Jesus and his people, who are depicted as Jewish worshippers in the distance, bathed in soft light representing the blessing of faith. Elements of rusticity in the man's garments, with the bridge's asphalt and sunlight filtering through clouds, suggesting deep sense of surrender and devotion. A powerful image evoking deep spiritual connection, edge-to-edge full scene, 16:9 aspect ratio",
+          "model": "nano_banana",
+          "engineName": "Nano Banana Standard v1.9",
+          "renderTimeSeconds": 1.1,
+          "description": "Uma cena poderosa que retrata um homem deitado sobre uma ponte em São Paulo, sua expressão de dor e sacrifício, com o céu dramático e sombrio acima dele. A cidade vibrante ao fundo, com seus edifícios desenhados sob um contraste forte de luz e sombra, destacando sua singularidade. A ponte simboliza a intercessão entre Jesus e seu povo, representados por judaicos em adoração ao longe, banhados em luz suave que representa a bênção da fé. Elementos de rusticidade e autenticação nas vestes do homem, com o asfalto da ponte e o brilho do sol filtrado entre as nuvens, sugerindo um profundo sentido de entrega e devoção. Uma imagem que evoca uma profunda conexão espiritual. --ar 16:9",
+          "letter": "A"
+        }
+      ],
+      "imageCount": 1,
+      "isPromptModified": false,
+      "renderStatus": "completed",
+      "renderError": "Cota de API do Gemini atingida ou modelo não suportou resposta de bytes inline.",
+      "promptAiModelUsed": "openai:gpt-4o-mini",
+      "selectedModel": "nano_banana",
+      "generatedImageUrl": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAwIDY3NSIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSI+CiAgICA8ZGVmcz4KICAgICAgPGxpbmVhckdyYWRpZW50IGlkPSJiZ0dyYWQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMyNDE4MTIiIC8+CiAgICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMGYwYTA3IiAvPgogICAgICA8L2xpbmVhckdyYWRpZW50PgogICAgICA8cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgICA8cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDIxMiwxNzUsNTUsMC4wNSkiIHN0cm9rZS13aWR0aD0iMSIvPgogICAgICA8L3BhdHRlcm4+CiAgICA8L2RlZnM+CgogICAgPCEtLSBCYWNrZ3JvdW5kIC0tPgogICAgPHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjc1IiBmaWxsPSJ1cmwoI2JnR3JhZCkiIC8+CiAgICA8cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2NzUiIGZpbGw9InVybCgjZ3JpZCkiIC8+CiAgICAKICAgIDwhLS0gQ2luZW1hdGljIGZyYW1lIGJvcmRlcnMgLS0+CiAgICA8cmVjdCB4PSIyNSIgeT0iMjUiIHdpZHRoPSIxMTUwIiBoZWlnaHQ9IjYyNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDIyNSwgMjksIDcyLCAwLjQpIiBzdHJva2Utd2lkdGg9IjIiIHJ4PSI0IiAvPgogICAgPHJlY3QgeD0iMzUiIHk9IjM1IiB3aWR0aD0iMTEzMCIgaGVpZ2h0PSI2MDUiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjA2KSIgc3Ryb2tlLXdpZHRoPSIxIiByeD0iMiIgLz4KCiAgICA8IS0tIFRvcCBCYWRnZSAtLT4KICAgIDxyZWN0IHg9IjYwIiB5PSI2MCIgd2lkdGg9IjQ1MCIgaGVpZ2h0PSIzMiIgcng9IjQiIGZpbGw9InJnYmEoMjI1LCAyOSwgNzIsIDAuMTUpIiBzdHJva2U9InJnYmEoMjI1LCAyOSwgNzIsIDAuNCkiIHN0cm9rZS13aWR0aD0iMSIvPgogICAgPHRleHQgeD0iNzUiIHk9IjgxIiBmaWxsPSIjRkNBNUE1IiBmb250LWZhbWlseT0ibW9ub3NwYWNlLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEzIiBmb250LXdlaWdodD0iYm9sZCIgbGV0dGVyLXNwYWNpbmc9IjIiPk1PREVMTyBSRVFVSVNJVEFETzogTkFOTyBCQU5BTkEgMiBMSVRFPC90ZXh0PgoKICAgIDwhLS0gQ2VudGVyIEVycm9yIEJveCAmIExhcmdlIEhpZ2hsaWdodGVkIEVycm9yIE1lc3NhZ2UgLS0+CiAgICA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg2MCwgMTQwKSI+CiAgICAgIDwhLS0gRXJyb3IgV2FybmluZyBJY29uICYgTGFyZ2UgVGl0bGUgLS0+CiAgICAgIDx0ZXh0IHg9IjAiIHk9IjYwIiBmaWxsPSIjRjg3MTcxIiBmb250LWZhbWlseT0iJ0hlbHZldGljYSBOZXVlJywgSGVsdmV0aWNhLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjkwMCIgZm9udC1zaXplPSIzMiIgbGV0dGVyLXNwYWNpbmc9IjEiPuKaoO+4jyBGQUxIQSBOQSBSRU5ERVJJWkHDh8ODTyBSRUFMIFZJQSBJQTwvdGV4dD4KICAgICAgCiAgICAgIDwhLS0gSGlnaGxpZ2h0ZWQgRGV0YWlsZWQgUmVhc29uIGluIExhcmdlIFJlYWRhYmxlIEZvbnQgLS0+CiAgICAgIDxyZWN0IHg9IjAiIHk9Ijk1IiB3aWR0aD0iMTA4MCIgaGVpZ2h0PSIxMzAiIHJ4PSI4IiBmaWxsPSJyZ2JhKDAsIDAsIDAsIDAuNSkiIHN0cm9rZT0icmdiYSgyNDgsIDExMywgMTEzLCAwLjQpIiBzdHJva2Utd2lkdGg9IjEuNSIvPgogICAgICA8dGV4dCB4PSIzMCIgeT0iMTQ1IiBmaWxsPSIjRjFGNUY5IiBmb250LWZhbWlseT0iJ0hlbHZldGljYSBOZXVlJywgSGVsdmV0aWNhLCBBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMCIgZm9udC13ZWlnaHQ9IjYwMCI+Q290YSBkZSBBUEkgZG8gR2VtaW5pIGF0aW5naWRhIG91IG1vZGVsbyBuw6NvIHN1cG9ydG91IHJlc3Bvc3RhIGRlIGJ5dGVzIGlubGluZS48L3RleHQ+CiAgICA8L2c+CgogICAgPCEtLSBDb250ZXh0IEluZm8gYXQgQm90dG9tIC0tPgogICAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNjAsIDQ3MCkiPgogICAgICA8dGV4dCB4PSIwIiB5PSIzMCIgZmlsbD0icmdiYSgyMTIsMTc1LDU1LDAuOCkiIGZvbnQtZmFtaWx5PSJtb25vc3BhY2UsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtd2VpZ2h0PSJib2xkIiBsZXR0ZXItc3BhY2luZz0iMiI+Q09OVEVYVE8gREEgQ0VOQTo8L3RleHQ+CiAgICAgIDx0ZXh0IHg9IjAiIHk9IjYwIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuNikiIGZvbnQtZmFtaWx5PSInSGVsdmV0aWNhIE5ldWUnLCBIZWx2ZXRpY2EsIEFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmb250LXN0eWxlPSJpdGFsaWMiPiJBIG1hbiBseWluZyBvbiBhIFPDo28gUGF1bG8gYnJpZGdlLCBleHByZXNzaW5nIHBhaW4gYW5kIHNhY3JpZmljZSwgd2l0aCBhIGRyYW1hdGljIGFuZC4uLiI8L3RleHQ+CiAgICA8L2c+CgogICAgPCEtLSBGb290ZXIgU3RhdHVzIC0tPgogICAgPGxpbmUgeDE9IjYwIiB5MT0iNTkwIiB4Mj0iMTE0MCIgeTI9IjU5MCIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMSkiIHN0cm9rZS13aWR0aD0iMSIgLz4KICAgIDx0ZXh0IHg9IjYwIiB5PSI2MTIiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC40KSIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMSI+VkVSSUZJUVVFIEFTIENPTkZJR1VSQcOHw5VFUyBEQSBDSEFWRSBERSBBUEkgUEFSQSBMSUJFUkFSIEEgR0VSQcOHw4NPIFJFQUwgREUgSU1BR0VNLjwvdGV4dD4KICAgIDx0ZXh0IHg9Ijk1MCIgeT0iNjEyIiBmaWxsPSIjRDRBRjM3IiBmb250LWZhbWlseT0ibW9ub3NwYWNlLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjExIiBmb250LXdlaWdodD0iYm9sZCI+UFJPUE9Sw4fDg08gMTY6OTwvdGV4dD4KICA8L3N2Zz4=",
+      "engineName": "Nano Banana Standard v1.9",
+      "renderTimeSeconds": 1.1
+    },
+    {
+      "id": "scene-audio-1785422226728-4",
+      "text": "Será que eu estaria disposto a isso? Será que eu tenho esse fogo pela evangelização?",
+      "description": "Um close-up de um jovem pensativo, de olhos fechados, com uma expressão de vulnerabilidade e determinação. Seu rosto é iluminado por uma luz suave que emana de uma vela à sua frente, projetando sombras profundas que acentuam suas feições. Atrás dele, uma parede de pedras rústicas em um ambiente de oração, em que a umidade e a textura se tornam visíveis sob a luz amarelada. Elementos sutis, como uma Bíblia aberta e uma cruz pendurada, estão fora de foco no fundo, simbolizando a busca espiritual. O cenário transmite uma atmosfera de introspecção e fervor religioso, evocando uma sensação de conexão com a evangelização. --ar 16:9",
+      "prompt": "A close-up of a young man thoughtfully with closed eyes, showing a vulnerable yet determined expression. His face is softly illuminated by the glow of a candle in front of him, casting deep shadows that highlight his features. Behind him, a rustic stone wall in a prayer environment, where moisture and texture are visible under the warm yellow light. Subtle elements like an open Bible and a hanging cross are blurred in the background, symbolizing spiritual quest. The scene conveys a sense of introspection and religious fervor, evoking a feeling of connection to evangelization. 16:9 aspect ratio",
+      "sceneNumber": "3",
+      "startTime": 119,
+      "endTime": 125.7,
+      "duration": 6.7,
+      "timedWords": [
+        {
+          "word": "Será",
+          "start": 119,
+          "end": 119.3
+        },
+        {
+          "word": "que",
+          "start": 119.3,
+          "end": 119.4
+        },
+        {
+          "word": "eu",
+          "start": 119.4,
+          "end": 119.6
+        },
+        {
+          "word": "estaria",
+          "start": 119.6,
+          "end": 120
+        },
+        {
+          "word": "disposto",
+          "start": 120,
+          "end": 120.5
+        },
+        {
+          "word": "a",
+          "start": 120.5,
+          "end": 120.6
+        },
+        {
+          "word": "isso?",
+          "start": 120.6,
+          "end": 121
+        },
+        {
+          "word": "Será",
+          "start": 123,
+          "end": 123.3
+        },
+        {
+          "word": "que",
+          "start": 123.3,
+          "end": 123.4
+        },
+        {
+          "word": "eu",
+          "start": 123.4,
+          "end": 123.6
+        },
+        {
+          "word": "tenho",
+          "start": 123.6,
+          "end": 123.9
+        },
+        {
+          "word": "esse",
+          "start": 123.9,
+          "end": 124.1
+        },
+        {
+          "word": "fogo",
+          "start": 124.1,
+          "end": 124.5
+        },
+        {
+          "word": "pela",
+          "start": 124.5,
+          "end": 124.7
+        },
+        {
+          "word": "evangelização?",
+          "start": 124.7,
+          "end": 125.7
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-5",
+      "text": "Jesus se tornou pecado e maldição em nosso favor. Será que eu estou disposto a fazer o mesmo?",
+      "description": "Uma cena dramática iluminada por uma luz suave e dourada, onde Jesus está retratado em um ambiente rústico, cercado por sombras profundas que destacam Sua expressão de dor e sacrifício. Ele está vestido com vestes antigas, seus braços estendidos como se estivesse carregando o peso do mundo. Ao fundo, um céu nublado sugere um momento de reflexão e seriedade, enquanto raios de luz penetram pelas nuvens, simbolizando esperança. A composição enfatiza a luta interna, quase como um convite ao espectador a confrontar seus próprios dilemas morais, com elementos como um chão de terra e pedras, que adicionam profundidade à cena.",
+      "prompt": "A dramatic scene depicting Jesus bearing the weight of sin and curse for humanity, in a rustic environment with deep shadows and glowing golden highlights. His arms are outstretched, symbolizing sacrifice, set against a cloudy sky with hopeful beams of light emerging. The atmosphere conveys a sense of introspection and moral struggle, featuring earthy textures like dirt and stones, --ar 16:9",
+      "sceneNumber": "4",
+      "startTime": 129,
+      "endTime": 135.4,
+      "duration": 6.4,
+      "timedWords": [
+        {
+          "word": "Jesus",
+          "start": 129,
+          "end": 129.4
+        },
+        {
+          "word": "se",
+          "start": 129.4,
+          "end": 129.5
+        },
+        {
+          "word": "tornou",
+          "start": 129.5,
+          "end": 129.9
+        },
+        {
+          "word": "pecado",
+          "start": 129.9,
+          "end": 130.4
+        },
+        {
+          "word": "e",
+          "start": 130.4,
+          "end": 130.6
+        },
+        {
+          "word": "maldição",
+          "start": 130.6,
+          "end": 131.2
+        },
+        {
+          "word": "em",
+          "start": 131.2,
+          "end": 131.4
+        },
+        {
+          "word": "nosso",
+          "start": 131.4,
+          "end": 131.7
+        },
+        {
+          "word": "favor.",
+          "start": 131.7,
+          "end": 132.2
+        },
+        {
+          "word": "Será",
+          "start": 133,
+          "end": 133.3
+        },
+        {
+          "word": "que",
+          "start": 133.3,
+          "end": 133.4
+        },
+        {
+          "word": "eu",
+          "start": 133.4,
+          "end": 133.6
+        },
+        {
+          "word": "estou",
+          "start": 133.6,
+          "end": 133.9
+        },
+        {
+          "word": "disposto",
+          "start": 133.9,
+          "end": 134.4
+        },
+        {
+          "word": "a",
+          "start": 134.4,
+          "end": 134.5
+        },
+        {
+          "word": "fazer",
+          "start": 134.5,
+          "end": 134.8
+        },
+        {
+          "word": "o",
+          "start": 134.8,
+          "end": 134.9
+        },
+        {
+          "word": "mesmo?",
+          "start": 134.9,
+          "end": 135.4
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-8",
+      "text": "São Paulo, num lance instintivo de amor, manifesta o desejo imenso de que o povo da sua raça encontre Jesus e pronuncia uma frase fortíssima: Queria ser eu anátema que significa condenado para que eles se encontrem em Jesus. Seria como dizer: estou disposto a ir para o inferno para que eles ganhem o céu.",
+      "description": "Uma cena poderosa de São Paulo ao entardecer, onde a cidade se ilumina com um brilho dourado. Em primeiro plano, um homem de expressão intensa, com roupas simples e um semblante de grande compaixão, levanta os braços em um gesto de entrega. Ao fundo, a silhueta icônica da cidade, com edifícios altos e prédios históricos que refletem a luz suave do sol poente. As nuvens sobre a cidade têm um tom avermelhado, contribuindo para a atmosfera dramaticamente envolvente. A cena expressa um profundo desejo de amor e sacrifício com uma aura espiritual, simbolizando a luta por redenção e esperança em meio à urbanidade.",
+      "prompt": "A powerful scene of São Paulo at sunset, where the city is illuminated with a golden glow. In the foreground, a man with an intense expression, dressed in simple clothes and a look of great compassion, lifts his arms in a gesture of surrender. In the background, the iconic silhouette of the city with tall buildings and historical facades reflecting the soft light of the setting sun. The clouds above the city are tinted red, contributing to the dramatically engaging atmosphere. The scene captures a deep desire for love and sacrifice with a spiritual aura, symbolizing the struggle for redemption and hope amidst urbanity. --ar 16:9",
+      "sceneNumber": "5",
+      "startTime": 241,
+      "endTime": 264.3,
+      "duration": 23.3,
+      "timedWords": [
+        {
+          "word": "São",
+          "start": 241,
+          "end": 241.2
+        },
+        {
+          "word": "Paulo,",
+          "start": 241.2,
+          "end": 241.6
+        },
+        {
+          "word": "num",
+          "start": 241.8,
+          "end": 242
+        },
+        {
+          "word": "lance",
+          "start": 242,
+          "end": 242.4
+        },
+        {
+          "word": "instintivo",
+          "start": 242.4,
+          "end": 243
+        },
+        {
+          "word": "de",
+          "start": 243,
+          "end": 243.2
+        },
+        {
+          "word": "amor,",
+          "start": 243.2,
+          "end": 243.6
+        },
+        {
+          "word": "manifesta",
+          "start": 244,
+          "end": 244.6
+        },
+        {
+          "word": "o",
+          "start": 244.6,
+          "end": 244.7
+        },
+        {
+          "word": "desejo",
+          "start": 244.7,
+          "end": 245.2
+        },
+        {
+          "word": "imenso",
+          "start": 245.2,
+          "end": 245.7
+        },
+        {
+          "word": "de",
+          "start": 245.7,
+          "end": 245.9
+        },
+        {
+          "word": "que",
+          "start": 245.9,
+          "end": 246
+        },
+        {
+          "word": "o",
+          "start": 246,
+          "end": 246.1
+        },
+        {
+          "word": "povo",
+          "start": 246.1,
+          "end": 246.4
+        },
+        {
+          "word": "da",
+          "start": 246.4,
+          "end": 246.6
+        },
+        {
+          "word": "sua",
+          "start": 246.6,
+          "end": 246.8
+        },
+        {
+          "word": "raça",
+          "start": 246.8,
+          "end": 247.2
+        },
+        {
+          "word": "encontre",
+          "start": 247.5,
+          "end": 248
+        },
+        {
+          "word": "Jesus",
+          "start": 248,
+          "end": 248.5
+        },
+        {
+          "word": "e",
+          "start": 248.7,
+          "end": 248.9
+        },
+        {
+          "word": "pronuncia",
+          "start": 248.9,
+          "end": 249.5
+        },
+        {
+          "word": "uma",
+          "start": 249.5,
+          "end": 249.7
+        },
+        {
+          "word": "frase",
+          "start": 249.7,
+          "end": 250.1
+        },
+        {
+          "word": "fortíssima:",
+          "start": 250.1,
+          "end": 250.8
+        },
+        {
+          "word": "Queria",
+          "start": 252,
+          "end": 252.4
+        },
+        {
+          "word": "ser",
+          "start": 252.4,
+          "end": 252.6
+        },
+        {
+          "word": "eu",
+          "start": 252.6,
+          "end": 252.8
+        },
+        {
+          "word": "anátema",
+          "start": 252.8,
+          "end": 253.5
+        },
+        {
+          "word": "que",
+          "start": 254,
+          "end": 254.2
+        },
+        {
+          "word": "significa",
+          "start": 254.2,
+          "end": 254.8
+        },
+        {
+          "word": "condenado",
+          "start": 254.8,
+          "end": 255.4
+        },
+        {
+          "word": "para",
+          "start": 255.8,
+          "end": 256
+        },
+        {
+          "word": "que",
+          "start": 256,
+          "end": 256.2
+        },
+        {
+          "word": "eles",
+          "start": 256.2,
+          "end": 256.5
+        },
+        {
+          "word": "se",
+          "start": 256.5,
+          "end": 256.7
+        },
+        {
+          "word": "encontrem",
+          "start": 256.7,
+          "end": 257.3
+        },
+        {
+          "word": "em",
+          "start": 257.3,
+          "end": 257.5
+        },
+        {
+          "word": "Jesus.",
+          "start": 257.5,
+          "end": 258
+        },
+        {
+          "word": "Seria",
+          "start": 259,
+          "end": 259.3
+        },
+        {
+          "word": "como",
+          "start": 259.3,
+          "end": 259.6
+        },
+        {
+          "word": "dizer:",
+          "start": 259.6,
+          "end": 260
+        },
+        {
+          "word": "estou",
+          "start": 260.3,
+          "end": 260.6
+        },
+        {
+          "word": "disposto",
+          "start": 260.6,
+          "end": 261.2
+        },
+        {
+          "word": "a",
+          "start": 261.2,
+          "end": 261.3
+        },
+        {
+          "word": "ir",
+          "start": 261.3,
+          "end": 261.5
+        },
+        {
+          "word": "para",
+          "start": 261.5,
+          "end": 261.7
+        },
+        {
+          "word": "o",
+          "start": 261.7,
+          "end": 261.8
+        },
+        {
+          "word": "inferno",
+          "start": 261.8,
+          "end": 262.3
+        },
+        {
+          "word": "para",
+          "start": 262.6,
+          "end": 262.8
+        },
+        {
+          "word": "que",
+          "start": 262.8,
+          "end": 263
+        },
+        {
+          "word": "eles",
+          "start": 263,
+          "end": 263.3
+        },
+        {
+          "word": "ganhem",
+          "start": 263.3,
+          "end": 263.7
+        },
+        {
+          "word": "o",
+          "start": 263.7,
+          "end": 263.8
+        },
+        {
+          "word": "céu.",
+          "start": 263.8,
+          "end": 264.3
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-9",
+      "text": "A palavra segregado se diz anátema, que era o termo pior que se podia aplicar a uma pessoa. Diz o dicionário bíblico: excomungado, maldito, que deve ser morto, eliminado do povo para que termine a sua influência maléfica. Muitas vezes é usado para os hereges e as pessoas sem Deus. É assim que São Paulo queria ser considerado, desde que o seu povo pudesse abraçar plenamente a Jesus.",
+      "description": "Uma cena sombria e dramática, onde uma figura masculina, representando São Paulo, está em um ambiente rústico e arcaico, cercado por sombras profundas. Ele está vestido com túnicas de tecido simples, e seu rosto expressa intensa determinação e tristeza. Luzes douradas iluminam sua figura, criando um contraste dramático com o fundo escuro, simbolizando a sua luta interna e a marginalização dos hereges. Objetos simbólicos, como um livro aberto ao lado dele, exalam uma aura de condenação e resiliência, e pequenos feixes de luz destacam a palavra 'anátema' escrita em um pergaminho próximo. Todo o ambiente é envolto em uma atmosfera de gravidade e reflexão sobre a fé e a exclusão, capturando a essência da luta de São Paulo para que seu povo abrace a Jesus.",
+      "prompt": "A dramatic depiction of a man representing Saint Paul in a dark, rustic environment, dressed in simple robes, showcasing intense determination and sorrow. Golden light dramatically contrasts with deep shadows, symbolizing his internal struggle and the marginalization of heretics. An open book beside him emits an aura of condemnation and resilience, while light beams highlight the word 'anátema' written on a nearby scroll. The scene embodies gravity and reflection on faith and exclusion, capturing Saint Paul's fight for his people to embrace Jesus. --ar 16:9",
+      "sceneNumber": "6",
+      "startTime": 309,
+      "endTime": 340.1,
+      "duration": 31.1,
+      "timedWords": [
+        {
+          "word": "A",
+          "start": 309,
+          "end": 309.1
+        },
+        {
+          "word": "palavra",
+          "start": 309.1,
+          "end": 309.5
+        },
+        {
+          "word": "segregado",
+          "start": 309.5,
+          "end": 310.2
+        },
+        {
+          "word": "se",
+          "start": 310.2,
+          "end": 310.4
+        },
+        {
+          "word": "diz",
+          "start": 310.4,
+          "end": 310.7
+        },
+        {
+          "word": "anátema,",
+          "start": 310.7,
+          "end": 311.4
+        },
+        {
+          "word": "que",
+          "start": 311.8,
+          "end": 312
+        },
+        {
+          "word": "era",
+          "start": 312,
+          "end": 312.2
+        },
+        {
+          "word": "o",
+          "start": 312.2,
+          "end": 312.3
+        },
+        {
+          "word": "termo",
+          "start": 312.3,
+          "end": 312.6
+        },
+        {
+          "word": "pior",
+          "start": 312.6,
+          "end": 312.9
+        },
+        {
+          "word": "que",
+          "start": 312.9,
+          "end": 313.1
+        },
+        {
+          "word": "se",
+          "start": 313.1,
+          "end": 313.3
+        },
+        {
+          "word": "podia",
+          "start": 313.3,
+          "end": 313.7
+        },
+        {
+          "word": "aplicar",
+          "start": 313.7,
+          "end": 314.1
+        },
+        {
+          "word": "a",
+          "start": 314.1,
+          "end": 314.2
+        },
+        {
+          "word": "uma",
+          "start": 314.2,
+          "end": 314.4
+        },
+        {
+          "word": "pessoa.",
+          "start": 314.4,
+          "end": 314.9
+        },
+        {
+          "word": "Diz",
+          "start": 316,
+          "end": 316.3
+        },
+        {
+          "word": "o",
+          "start": 316.3,
+          "end": 316.4
+        },
+        {
+          "word": "dicionário",
+          "start": 316.4,
+          "end": 317
+        },
+        {
+          "word": "bíblico:",
+          "start": 317,
+          "end": 317.5
+        },
+        {
+          "word": "excomungado,",
+          "start": 317.8,
+          "end": 318.6
+        },
+        {
+          "word": "maldito,",
+          "start": 318.8,
+          "end": 319.4
+        },
+        {
+          "word": "que",
+          "start": 319.6,
+          "end": 319.8
+        },
+        {
+          "word": "deve",
+          "start": 319.8,
+          "end": 320.1
+        },
+        {
+          "word": "ser",
+          "start": 320.1,
+          "end": 320.3
+        },
+        {
+          "word": "morto,",
+          "start": 320.3,
+          "end": 320.8
+        },
+        {
+          "word": "eliminado",
+          "start": 321,
+          "end": 321.6
+        },
+        {
+          "word": "do",
+          "start": 321.6,
+          "end": 321.8
+        },
+        {
+          "word": "povo",
+          "start": 321.8,
+          "end": 322.1
+        },
+        {
+          "word": "para",
+          "start": 322.1,
+          "end": 322.3
+        },
+        {
+          "word": "que",
+          "start": 322.3,
+          "end": 322.5
+        },
+        {
+          "word": "termine",
+          "start": 322.5,
+          "end": 323
+        },
+        {
+          "word": "a",
+          "start": 323,
+          "end": 323.1
+        },
+        {
+          "word": "sua",
+          "start": 323.1,
+          "end": 323.3
+        },
+        {
+          "word": "influência",
+          "start": 323.3,
+          "end": 323.9
+        },
+        {
+          "word": "maléfica.",
+          "start": 323.9,
+          "end": 324.5
+        },
+        {
+          "word": "Muitas",
+          "start": 329,
+          "end": 329.4
+        },
+        {
+          "word": "vezes",
+          "start": 329.4,
+          "end": 329.7
+        },
+        {
+          "word": "é",
+          "start": 329.7,
+          "end": 329.8
+        },
+        {
+          "word": "usado",
+          "start": 329.8,
+          "end": 330.2
+        },
+        {
+          "word": "para",
+          "start": 330.2,
+          "end": 330.4
+        },
+        {
+          "word": "os",
+          "start": 330.4,
+          "end": 330.6
+        },
+        {
+          "word": "hereges",
+          "start": 330.6,
+          "end": 331.1
+        },
+        {
+          "word": "e",
+          "start": 331.1,
+          "end": 331.3
+        },
+        {
+          "word": "as",
+          "start": 331.3,
+          "end": 331.5
+        },
+        {
+          "word": "pessoas",
+          "start": 331.5,
+          "end": 331.9
+        },
+        {
+          "word": "sem",
+          "start": 331.9,
+          "end": 332.1
+        },
+        {
+          "word": "Deus.",
+          "start": 332.1,
+          "end": 332.6
+        },
+        {
+          "word": "É",
+          "start": 334,
+          "end": 334.2
+        },
+        {
+          "word": "assim",
+          "start": 334.2,
+          "end": 334.5
+        },
+        {
+          "word": "que",
+          "start": 334.5,
+          "end": 334.7
+        },
+        {
+          "word": "São",
+          "start": 334.7,
+          "end": 334.9
+        },
+        {
+          "word": "Paulo",
+          "start": 334.9,
+          "end": 335.2
+        },
+        {
+          "word": "queria",
+          "start": 335.2,
+          "end": 335.6
+        },
+        {
+          "word": "ser",
+          "start": 335.6,
+          "end": 335.8
+        },
+        {
+          "word": "considerado,",
+          "start": 335.8,
+          "end": 336.5
+        },
+        {
+          "word": "desde",
+          "start": 336.8,
+          "end": 337.1
+        },
+        {
+          "word": "que",
+          "start": 337.1,
+          "end": 337.3
+        },
+        {
+          "word": "o",
+          "start": 337.3,
+          "end": 337.4
+        },
+        {
+          "word": "seu",
+          "start": 337.4,
+          "end": 337.6
+        },
+        {
+          "word": "povo",
+          "start": 337.6,
+          "end": 337.9
+        },
+        {
+          "word": "pudesse",
+          "start": 337.9,
+          "end": 338.3
+        },
+        {
+          "word": "abraçar",
+          "start": 338.3,
+          "end": 338.8
+        },
+        {
+          "word": "plenamente",
+          "start": 338.8,
+          "end": 339.5
+        },
+        {
+          "word": "a",
+          "start": 339.5,
+          "end": 339.6
+        },
+        {
+          "word": "Jesus.",
+          "start": 339.6,
+          "end": 340.1
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-10",
+      "text": "No Novo Testamento, anátema já não significa simplesmente amaldiçoado. Em São Paulo, designa a condição de quem está separado da comunhão salvadora e entregue ao julgamento de Deus. Ao afirmar desejaria ser eu mesmo anátema por meus irmãos, Paulo não deseja a própria condenação eterna. Utiliza a palavra mais forte que conhecia para expressar a profundidade da sua caridade. Estaria disposto a suportar toda a vergonha, rejeição, sofrimento e exclusão se isso pudesse conduzir Israel ao encontro de Cristo.",
+      "description": "Uma cena poderosa e dramática, retratando o apóstolo Paulo em um ambiente sombrio e religioso. Ele está de pé em um cenário rústico, com rostos de pessoas ao fundo que expressam dor e rejeição. As sombras profundas envolvem o espaço, enquanto raios de luz dourada iluminam seu rosto marcado pela emoção. Paulo, vestido com uma túnica simples, ergue suas mãos em um gesto de intercessão, como se estivesse disposto a carregar o peso da condenação. O ambiente é preenchido por texturas terrosas, evocando a intensa caridade que ele sente por seus irmãos. Um contraste marcante entre luz e escuridão reforça a profundidade de sua determinação, refletindo sua disposição para o sofrimento em nome de Israel. Tudo isso é capturado em uma estética barroca que evoca o estilo de Caravaggio, enfatizando a força emocional da cena.",
+      "prompt": "A powerful and dramatic scene depicting the Apostle Paul in a dark, religious setting. He stands in a rustic environment, with faces of people in the background expressing pain and rejection. Deep shadows envelop the space, while dramatic golden light rays illuminate his emotionally marked face. Paul, dressed in a simple tunic, raises his hands in a gesture of intercession, as if willing to carry the weight of condemnation. The setting is filled with earthy textures, evoking the intense charity he feels for his brothers. A striking contrast between light and dark reinforces the depth of his determination, reflecting his willingness to suffer for the sake of Israel. Captured in a Baroque aesthetic that evokes Caravaggio's style emphasizing the emotional strength of the scene, --ar 16:9",
+      "sceneNumber": "7",
+      "startTime": 347,
+      "endTime": 428.4,
+      "duration": 81.4,
+      "timedWords": [
+        {
+          "word": "No",
+          "start": 347,
+          "end": 347.2
+        },
+        {
+          "word": "Novo",
+          "start": 347.2,
+          "end": 347.5
+        },
+        {
+          "word": "Testamento,",
+          "start": 347.5,
+          "end": 348.2
+        },
+        {
+          "word": "anátema",
+          "start": 348.5,
+          "end": 349.1
+        },
+        {
+          "word": "já",
+          "start": 349.1,
+          "end": 349.3
+        },
+        {
+          "word": "não",
+          "start": 349.3,
+          "end": 349.5
+        },
+        {
+          "word": "significa",
+          "start": 349.5,
+          "end": 350.1
+        },
+        {
+          "word": "simplesmente",
+          "start": 350.1,
+          "end": 350.9
+        },
+        {
+          "word": "amaldiçoado.",
+          "start": 350.9,
+          "end": 351.7
+        },
+        {
+          "word": "Em",
+          "start": 352,
+          "end": 352.2
+        },
+        {
+          "word": "São",
+          "start": 352.2,
+          "end": 352.4
+        },
+        {
+          "word": "Paulo,",
+          "start": 352.4,
+          "end": 352.8
+        },
+        {
+          "word": "designa",
+          "start": 353,
+          "end": 353.5
+        },
+        {
+          "word": "a",
+          "start": 353.5,
+          "end": 353.6
+        },
+        {
+          "word": "condição",
+          "start": 353.6,
+          "end": 354.1
+        },
+        {
+          "word": "de",
+          "start": 354.1,
+          "end": 354.3
+        },
+        {
+          "word": "quem",
+          "start": 354.3,
+          "end": 354.5
+        },
+        {
+          "word": "está",
+          "start": 354.5,
+          "end": 354.8
+        },
+        {
+          "word": "separado",
+          "start": 354.8,
+          "end": 355.4
+        },
+        {
+          "word": "da",
+          "start": 355.4,
+          "end": 355.6
+        },
+        {
+          "word": "comunhão",
+          "start": 355.6,
+          "end": 356.1
+        },
+        {
+          "word": "salvadora",
+          "start": 356.1,
+          "end": 356.8
+        },
+        {
+          "word": "e",
+          "start": 356.8,
+          "end": 357
+        },
+        {
+          "word": "entregue",
+          "start": 357,
+          "end": 357.5
+        },
+        {
+          "word": "ao",
+          "start": 357.5,
+          "end": 357.7
+        },
+        {
+          "word": "julgamento",
+          "start": 357.7,
+          "end": 358.3
+        },
+        {
+          "word": "de",
+          "start": 358.3,
+          "end": 358.5
+        },
+        {
+          "word": "Deus.",
+          "start": 358.5,
+          "end": 358.9
+        },
+        {
+          "word": "Ao",
+          "start": 400,
+          "end": 400.2
+        },
+        {
+          "word": "afirmar",
+          "start": 400.2,
+          "end": 400.7
+        },
+        {
+          "word": "desejaria",
+          "start": 401,
+          "end": 401.5
+        },
+        {
+          "word": "ser",
+          "start": 401.5,
+          "end": 401.7
+        },
+        {
+          "word": "eu",
+          "start": 401.7,
+          "end": 401.9
+        },
+        {
+          "word": "mesmo",
+          "start": 401.9,
+          "end": 402.3
+        },
+        {
+          "word": "anátema",
+          "start": 402.3,
+          "end": 402.9
+        },
+        {
+          "word": "por",
+          "start": 402.9,
+          "end": 403.1
+        },
+        {
+          "word": "meus",
+          "start": 403.1,
+          "end": 403.4
+        },
+        {
+          "word": "irmãos,",
+          "start": 403.4,
+          "end": 403.9
+        },
+        {
+          "word": "Paulo",
+          "start": 404.2,
+          "end": 404.6
+        },
+        {
+          "word": "não",
+          "start": 404.6,
+          "end": 404.8
+        },
+        {
+          "word": "deseja",
+          "start": 404.8,
+          "end": 405.2
+        },
+        {
+          "word": "a",
+          "start": 405.2,
+          "end": 405.4
+        },
+        {
+          "word": "própria",
+          "start": 405.4,
+          "end": 405.9
+        },
+        {
+          "word": "condenação",
+          "start": 405.9,
+          "end": 406.6
+        },
+        {
+          "word": "eterna.",
+          "start": 406.6,
+          "end": 407.1
+        },
+        {
+          "word": "Utiliza",
+          "start": 409,
+          "end": 409.5
+        },
+        {
+          "word": "a",
+          "start": 409.5,
+          "end": 409.6
+        },
+        {
+          "word": "palavra",
+          "start": 409.6,
+          "end": 410
+        },
+        {
+          "word": "mais",
+          "start": 410,
+          "end": 410.2
+        },
+        {
+          "word": "forte",
+          "start": 410.2,
+          "end": 410.6
+        },
+        {
+          "word": "que",
+          "start": 410.6,
+          "end": 410.8
+        },
+        {
+          "word": "conhecia",
+          "start": 410.8,
+          "end": 411.3
+        },
+        {
+          "word": "para",
+          "start": 411.3,
+          "end": 411.5
+        },
+        {
+          "word": "expressar",
+          "start": 411.5,
+          "end": 412.1
+        },
+        {
+          "word": "a",
+          "start": 412.1,
+          "end": 412.3
+        },
+        {
+          "word": "profundidade",
+          "start": 412.3,
+          "end": 413
+        },
+        {
+          "word": "da",
+          "start": 413,
+          "end": 413.2
+        },
+        {
+          "word": "sua",
+          "start": 413.2,
+          "end": 413.4
+        },
+        {
+          "word": "caridade.",
+          "start": 413.4,
+          "end": 414
+        },
+        {
+          "word": "Estaria",
+          "start": 416,
+          "end": 416.5
+        },
+        {
+          "word": "disposto",
+          "start": 416.5,
+          "end": 417
+        },
+        {
+          "word": "a",
+          "start": 417,
+          "end": 417.1
+        },
+        {
+          "word": "suportar",
+          "start": 417.1,
+          "end": 417.7
+        },
+        {
+          "word": "toda",
+          "start": 417.7,
+          "end": 418
+        },
+        {
+          "word": "vergonha,",
+          "start": 418,
+          "end": 418.6
+        },
+        {
+          "word": "rejeição,",
+          "start": 418.8,
+          "end": 419.4
+        },
+        {
+          "word": "sofrimento",
+          "start": 419.6,
+          "end": 420.3
+        },
+        {
+          "word": "e",
+          "start": 420.3,
+          "end": 420.5
+        },
+        {
+          "word": "exclusão",
+          "start": 420.5,
+          "end": 421.1
+        },
+        {
+          "word": "se",
+          "start": 421.4,
+          "end": 421.6
+        },
+        {
+          "word": "isso",
+          "start": 421.6,
+          "end": 421.8
+        },
+        {
+          "word": "pudesse",
+          "start": 421.8,
+          "end": 422.2
+        },
+        {
+          "word": "conduzir",
+          "start": 422.2,
+          "end": 422.7
+        },
+        {
+          "word": "Israel",
+          "start": 422.7,
+          "end": 423.2
+        },
+        {
+          "word": "ao",
+          "start": 423.2,
+          "end": 423.4
+        },
+        {
+          "word": "encontro",
+          "start": 423.4,
+          "end": 423.9
+        },
+        {
+          "word": "de",
+          "start": 423.9,
+          "end": 424.1
+        },
+        {
+          "word": "Cristo.",
+          "start": 424.1,
+          "end": 424.6
+        },
+        {
+          "word": "Trata-se",
+          "start": 428,
+          "end": 428.4
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-11",
+      "text": "Trata-se de uma linguagem extrema, inspirada no amor de Moisés pelo povo e, sobretudo, configurada ao próprio Cristo, que se faz maldição por nós.",
+      "description": "No centro da cena, Moisés, uma figura imponente com uma longa barba e vestes rústicas, ergue os braços para o céu, cercado por um povo angustiado que busca esperança e luz. A luz dramática penetra entre nuvens escuras, iluminando seu rosto com um brilho dourado, simbolizando seu amor e sacrifício. Ao fundo, uma representação de Cristo em uma cruz, envolto em sombras profundas, reflete a ideia de maldição e redenção. O solo é árido e rural, ao mesmo tempo que o céu é agitado, criando um ambiente de tensão, mas também de esperança renovada.",
+      "prompt": "Moses, towering figure with a long beard and rustic robes, raises arms to the sky amidst a distressed crowd seeking hope, dramatic light breaking through dark clouds illuminating his face with golden glow, Christ on the cross in the background shrouded in deep shadows, earthy tones, dramatic chiaroscuro, emotional weight, historical biblical setting, 16:9 aspect ratio",
+      "sceneNumber": "8",
+      "startTime": 428.4,
+      "endTime": 443.2,
+      "duration": 14.8,
+      "timedWords": [
+        {
+          "word": "de",
+          "start": 428.4,
+          "end": 428.5
+        },
+        {
+          "word": "uma",
+          "start": 428.5,
+          "end": 428.7
+        },
+        {
+          "word": "linguagem",
+          "start": 428.7,
+          "end": 429.2
+        },
+        {
+          "word": "extrema,",
+          "start": 429.2,
+          "end": 429.8
+        },
+        {
+          "word": "inspirada",
+          "start": 430.1,
+          "end": 430.7
+        },
+        {
+          "word": "no",
+          "start": 430.7,
+          "end": 430.9
+        },
+        {
+          "word": "amor",
+          "start": 430.9,
+          "end": 431.2
+        },
+        {
+          "word": "de",
+          "start": 431.2,
+          "end": 431.4
+        },
+        {
+          "word": "Moisés",
+          "start": 431.4,
+          "end": 431.9
+        },
+        {
+          "word": "pelo",
+          "start": 431.9,
+          "end": 432.2
+        },
+        {
+          "word": "povo",
+          "start": 432.2,
+          "end": 432.6
+        },
+        {
+          "word": "e,",
+          "start": 432.6,
+          "end": 432.8
+        },
+        {
+          "word": "sobretudo,",
+          "start": 432.8,
+          "end": 433.5
+        },
+        {
+          "word": "configurada",
+          "start": 433.8,
+          "end": 434.5
+        },
+        {
+          "word": "ao",
+          "start": 434.5,
+          "end": 434.7
+        },
+        {
+          "word": "próprio",
+          "start": 434.7,
+          "end": 435.1
+        },
+        {
+          "word": "Cristo,",
+          "start": 435.1,
+          "end": 435.6
+        },
+        {
+          "word": "que",
+          "start": 435.8,
+          "end": 436
+        },
+        {
+          "word": "se",
+          "start": 436,
+          "end": 436.1
+        },
+        {
+          "word": "faz",
+          "start": 436.1,
+          "end": 436.3
+        },
+        {
+          "word": "maldição",
+          "start": 436.3,
+          "end": 436.9
+        },
+        {
+          "word": "por",
+          "start": 436.9,
+          "end": 437.1
+        },
+        {
+          "word": "nós.",
+          "start": 437.1,
+          "end": 437.5
+        },
+        {
+          "word": "Quem",
+          "start": 443,
+          "end": 443.2
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-12",
+      "text": "Quem de nós teria essa coragem? Mas São Paulo fala claramente: Tenho no coração uma grande tristeza e uma dor contínua, a ponto de desejar ser eu mesmo segregado por Cristo em favor de meus irmãos, os da minha raça.",
+      "description": "Cena dramática de um apóstolo, São Paulo, em um momento de intensa reflexão e dor emocional. Ele se encontra em um ambiente rústico, com luz quente da tarde filtrando-se através de uma janela de madeira, criando sombras profundas ao seu redor. O foco é em seu rosto, onde a tristeza e a determinação estão claramente expressas, as mãos levantadas em um gesto de súplica ou entrega. O fundo é obscurecido, ressaltando os tons terrosos da cena - como ocre e vermelho profundo - para intensificar a sensação de vulnerabilidade e sacrifício, repleto de uma atmosfera histórica e religiosa. Raios de luz dramáticos iluminam os contornos da figura, evocando uma conexão intensa com a divindade e a sua raça.",
+      "prompt": "Dramatic portrayal of Apostle Saint Paul in deep emotional reflection and sorrow. The scene captures him in a rustic setting with warm afternoon light filtering through a wooden window, creating deep shadows around him. His face, full of sadness and determination, is the focal point, with hands raised in a gesture of supplication. The background is darkened, enhancing the earthy tones - ochres and deep reds - to intensify the feeling of vulnerability and sacrifice, rich with historical and religious atmosphere. Dramatic light rays illuminate the contours of his figure, evoking an intense connection with divinity and his race --ar 16:9",
+      "sceneNumber": "9",
+      "startTime": 443.2,
+      "endTime": 504.3,
+      "duration": 61.1,
+      "timedWords": [
+        {
+          "word": "de",
+          "start": 443.2,
+          "end": 443.4
+        },
+        {
+          "word": "nós",
+          "start": 443.4,
+          "end": 443.6
+        },
+        {
+          "word": "teria",
+          "start": 443.6,
+          "end": 443.9
+        },
+        {
+          "word": "essa",
+          "start": 443.9,
+          "end": 444.1
+        },
+        {
+          "word": "coragem?",
+          "start": 444.1,
+          "end": 444.6
+        },
+        {
+          "word": "Mas",
+          "start": 446,
+          "end": 446.2
+        },
+        {
+          "word": "São",
+          "start": 446.2,
+          "end": 446.4
+        },
+        {
+          "word": "Paulo",
+          "start": 446.4,
+          "end": 446.7
+        },
+        {
+          "word": "fala",
+          "start": 446.7,
+          "end": 447
+        },
+        {
+          "word": "claramente:",
+          "start": 447,
+          "end": 447.6
+        },
+        {
+          "word": "Tenho",
+          "start": 448,
+          "end": 448.3
+        },
+        {
+          "word": "no",
+          "start": 448.3,
+          "end": 448.5
+        },
+        {
+          "word": "coração",
+          "start": 448.5,
+          "end": 449.1
+        },
+        {
+          "word": "uma",
+          "start": 449.1,
+          "end": 449.3
+        },
+        {
+          "word": "grande",
+          "start": 449.3,
+          "end": 449.7
+        },
+        {
+          "word": "tristeza",
+          "start": 449.7,
+          "end": 450.4
+        },
+        {
+          "word": "e",
+          "start": 450.4,
+          "end": 450.6
+        },
+        {
+          "word": "uma",
+          "start": 450.6,
+          "end": 450.8
+        },
+        {
+          "word": "dor",
+          "start": 450.8,
+          "end": 451.1
+        },
+        {
+          "word": "contínua,",
+          "start": 451.1,
+          "end": 451.8
+        },
+        {
+          "word": "a",
+          "start": 452.2,
+          "end": 452.3
+        },
+        {
+          "word": "ponto",
+          "start": 452.3,
+          "end": 452.6
+        },
+        {
+          "word": "de",
+          "start": 452.6,
+          "end": 452.8
+        },
+        {
+          "word": "desejar",
+          "start": 452.8,
+          "end": 453.4
+        },
+        {
+          "word": "ser",
+          "start": 453.4,
+          "end": 453.6
+        },
+        {
+          "word": "eu",
+          "start": 453.6,
+          "end": 453.8
+        },
+        {
+          "word": "mesmo",
+          "start": 453.8,
+          "end": 454.2
+        },
+        {
+          "word": "segregado",
+          "start": 454.2,
+          "end": 455
+        },
+        {
+          "word": "por",
+          "start": 455,
+          "end": 455.2
+        },
+        {
+          "word": "Cristo",
+          "start": 455.2,
+          "end": 455.7
+        },
+        {
+          "word": "em",
+          "start": 455.9,
+          "end": 456.1
+        },
+        {
+          "word": "favor",
+          "start": 456.1,
+          "end": 456.5
+        },
+        {
+          "word": "de",
+          "start": 456.5,
+          "end": 456.7
+        },
+        {
+          "word": "meus",
+          "start": 456.7,
+          "end": 457
+        },
+        {
+          "word": "irmãos,",
+          "start": 457,
+          "end": 457.5
+        },
+        {
+          "word": "os",
+          "start": 457.8,
+          "end": 458
+        },
+        {
+          "word": "da",
+          "start": 458,
+          "end": 458.2
+        },
+        {
+          "word": "minha",
+          "start": 458.2,
+          "end": 458.5
+        },
+        {
+          "word": "raça.",
+          "start": 458.5,
+          "end": 459
+        },
+        {
+          "word": "Esse",
+          "start": 504,
+          "end": 504.3
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-13",
+      "text": "Esse trecho de Romanos 9, 3 revela que o verdadeiro missionário não é movido principalmente pelo desejo de convencer, mas pela dor de ver os irmãos privados da comunhão com Cristo. Paulo não consegue contemplar a incredulidade de Israel com indiferença. Seu coração participa do próprio coração do Bom Pastor, que veio procurar e salvar o que estava perdido.",
+      "description": "A cena retrata uma noite sombria, em um vilarejo antigo com casas de pedra e telhados de barro. Em primeiro plano, Paulo, um homem de expressão profunda e angustiada, é iluminado por uma luz dourada que parece emanar de um lampião a óleo na sua mão. Seu olhar é intenso e cheio de dor ao observar um grupo de pessoas ao longe, que discutem entre si, totalmente alheias à sua presença. As sombras profundas ao seu redor destacam a solidão e a tristeza que sente por ver seus irmãos afastados da fé. O fundo revela a silhueta da cidade sob um céu estrelado, evocando uma sensação de esperança e busca. Essa composição dramática, inspirada na arte de Caravaggio, captura a essência do papel do missionário como alguém que sente a agonia da perda espiritual, refletindo o coração do Bom Pastor.",
+      "prompt": "A dramatic scene reflecting Romans 9:3: Paul, a man with a deep, anguished expression, illuminated by golden light from an oil lamp, looks sorrowfully at a distant group of people engrossed in heated discussion, oblivious to his presence. Deep shadows surround him, enhancing his solitude and pain as he mourns for his brethren's estrangement from Christ. The backdrop reveals an ancient stone village under a starlit sky, symbolizing hope and the mission of salvation. Emphasize emotional weight and chiaroscuro style inspired by Caravaggio, capturing the true heart of a missionary. Realistic human faces filled with raw emotion, historical biblical setting, high contrast shadows and dramatic golden lighting. --ar 16:9",
+      "sceneNumber": "10",
+      "startTime": 504.3,
+      "endTime": 538.2,
+      "duration": 33.9,
+      "timedWords": [
+        {
+          "word": "trecho",
+          "start": 504.3,
+          "end": 504.6
+        },
+        {
+          "word": "de",
+          "start": 504.6,
+          "end": 504.8
+        },
+        {
+          "word": "Romanos",
+          "start": 504.8,
+          "end": 505.3
+        },
+        {
+          "word": "9,",
+          "start": 505.3,
+          "end": 505.7
+        },
+        {
+          "word": "3",
+          "start": 505.7,
+          "end": 506
+        },
+        {
+          "word": "revela",
+          "start": 506,
+          "end": 506.5
+        },
+        {
+          "word": "que",
+          "start": 506.5,
+          "end": 506.7
+        },
+        {
+          "word": "o",
+          "start": 506.7,
+          "end": 506.8
+        },
+        {
+          "word": "verdadeiro",
+          "start": 506.8,
+          "end": 507.4
+        },
+        {
+          "word": "missionário",
+          "start": 507.4,
+          "end": 508.1
+        },
+        {
+          "word": "não",
+          "start": 508.1,
+          "end": 508.3
+        },
+        {
+          "word": "é",
+          "start": 508.3,
+          "end": 508.4
+        },
+        {
+          "word": "movido",
+          "start": 508.4,
+          "end": 508.8
+        },
+        {
+          "word": "principalmente",
+          "start": 508.8,
+          "end": 509.6
+        },
+        {
+          "word": "pelo",
+          "start": 509.6,
+          "end": 509.8
+        },
+        {
+          "word": "desejo",
+          "start": 509.8,
+          "end": 510.2
+        },
+        {
+          "word": "de",
+          "start": 510.2,
+          "end": 510.4
+        },
+        {
+          "word": "convencer,",
+          "start": 510.4,
+          "end": 511
+        },
+        {
+          "word": "mas",
+          "start": 511.2,
+          "end": 511.4
+        },
+        {
+          "word": "pela",
+          "start": 511.4,
+          "end": 511.7
+        },
+        {
+          "word": "dor",
+          "start": 511.7,
+          "end": 512
+        },
+        {
+          "word": "de",
+          "start": 512,
+          "end": 512.1
+        },
+        {
+          "word": "ver",
+          "start": 512.1,
+          "end": 512.3
+        },
+        {
+          "word": "os",
+          "start": 512.3,
+          "end": 512.5
+        },
+        {
+          "word": "irmãos",
+          "start": 512.5,
+          "end": 512.9
+        },
+        {
+          "word": "privados",
+          "start": 512.9,
+          "end": 513.5
+        },
+        {
+          "word": "da",
+          "start": 513.5,
+          "end": 513.7
+        },
+        {
+          "word": "comunhão",
+          "start": 513.7,
+          "end": 514.2
+        },
+        {
+          "word": "com",
+          "start": 514.2,
+          "end": 514.4
+        },
+        {
+          "word": "Cristo.",
+          "start": 514.4,
+          "end": 514.9
+        },
+        {
+          "word": "Paulo",
+          "start": 520,
+          "end": 520.3
+        },
+        {
+          "word": "não",
+          "start": 520.3,
+          "end": 520.5
+        },
+        {
+          "word": "consegue",
+          "start": 520.5,
+          "end": 521
+        },
+        {
+          "word": "contemplar",
+          "start": 521,
+          "end": 521.6
+        },
+        {
+          "word": "a",
+          "start": 521.6,
+          "end": 521.7
+        },
+        {
+          "word": "incredulidade",
+          "start": 521.7,
+          "end": 522.6
+        },
+        {
+          "word": "de",
+          "start": 522.6,
+          "end": 522.8
+        },
+        {
+          "word": "Israel",
+          "start": 522.8,
+          "end": 523.3
+        },
+        {
+          "word": "com",
+          "start": 523.3,
+          "end": 523.5
+        },
+        {
+          "word": "indiferença.",
+          "start": 523.5,
+          "end": 524.2
+        },
+        {
+          "word": "Seu",
+          "start": 528,
+          "end": 528.2
+        },
+        {
+          "word": "coração",
+          "start": 528.2,
+          "end": 528.7
+        },
+        {
+          "word": "participa",
+          "start": 528.7,
+          "end": 529.3
+        },
+        {
+          "word": "do",
+          "start": 529.3,
+          "end": 529.5
+        },
+        {
+          "word": "próprio",
+          "start": 529.5,
+          "end": 529.9
+        },
+        {
+          "word": "coração",
+          "start": 529.9,
+          "end": 530.4
+        },
+        {
+          "word": "do",
+          "start": 530.4,
+          "end": 530.6
+        },
+        {
+          "word": "Bom",
+          "start": 530.6,
+          "end": 530.8
+        },
+        {
+          "word": "Pastor,",
+          "start": 530.8,
+          "end": 531.3
+        },
+        {
+          "word": "que",
+          "start": 531.5,
+          "end": 531.7
+        },
+        {
+          "word": "veio",
+          "start": 531.7,
+          "end": 532
+        },
+        {
+          "word": "procurar",
+          "start": 532,
+          "end": 532.5
+        },
+        {
+          "word": "e",
+          "start": 532.5,
+          "end": 532.7
+        },
+        {
+          "word": "salvar",
+          "start": 532.7,
+          "end": 533.1
+        },
+        {
+          "word": "o",
+          "start": 533.1,
+          "end": 533.2
+        },
+        {
+          "word": "que",
+          "start": 533.2,
+          "end": 533.4
+        },
+        {
+          "word": "estava",
+          "start": 533.4,
+          "end": 533.8
+        },
+        {
+          "word": "perdido.",
+          "start": 533.8,
+          "end": 534.3
+        },
+        {
+          "word": "Por",
+          "start": 538,
+          "end": 538.2
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-14",
+      "text": "Por isso, sua afirmação não é um erro teológico, mas uma expressão espontânea inspirada pela caridade. Ela expressa um amor que, configurado ao de Cristo, está disposto a sacrificar tudo pela salvação dos outros. É exatamente esse amor pastoral que a Igreja reconhece como modelo de toda autêntica evangelização.",
+      "description": "Um interior de uma antiga igreja, iluminado por feixes de luz dourada que entram através de vitrais. Uma figura central, com expressões de profunda devoção e amor sacrificial, está ajoelhada diante de uma cruz, simbolizando a entrega total por outrem. Ao fundo, sombras profundas criam um contraste dramático, com detalhes em tons terrosos que ressaltam a atmosfera religiosa e contemplativa do espaço. A cena evoca uma forte sensação de caridade e amor pastoral, refletindo a essência da verdadeira evangelização. Elementos como velas acesas e bancos de madeira rústica completam a composição, trazendo vida e emoção ao ambiente.",
+      "prompt": "A dramatic scene set in an ancient church, illuminated by golden light beams streaming through stained glass windows. A central figure is kneeling in deep devotion before a cross, expressing sacrificial love for others. In the background, deep shadows create a striking contrast, with earthy tones emphasizing the sacred and contemplative atmosphere. The scene evokes a strong sense of charity and pastoral love, reflecting the essence of true evangelization. Elements like lit candles and rustic wooden benches enhance the composition, bringing life and emotion to the setting, --ar 16:9",
+      "sceneNumber": "11",
+      "startTime": 538.2,
+      "endTime": 609.2,
+      "duration": 71,
+      "timedWords": [
+        {
+          "word": "isso,",
+          "start": 538.2,
+          "end": 538.5
+        },
+        {
+          "word": "sua",
+          "start": 538.5,
+          "end": 538.7
+        },
+        {
+          "word": "afirmação",
+          "start": 538.7,
+          "end": 539.3
+        },
+        {
+          "word": "não",
+          "start": 539.3,
+          "end": 539.5
+        },
+        {
+          "word": "é",
+          "start": 539.5,
+          "end": 539.6
+        },
+        {
+          "word": "um",
+          "start": 539.6,
+          "end": 539.7
+        },
+        {
+          "word": "erro",
+          "start": 539.7,
+          "end": 540
+        },
+        {
+          "word": "teológico,",
+          "start": 540,
+          "end": 540.6
+        },
+        {
+          "word": "mas",
+          "start": 540.8,
+          "end": 541
+        },
+        {
+          "word": "uma",
+          "start": 541,
+          "end": 541.2
+        },
+        {
+          "word": "expressão",
+          "start": 541.2,
+          "end": 541.8
+        },
+        {
+          "word": "espontânea",
+          "start": 541.8,
+          "end": 542.5
+        },
+        {
+          "word": "inspirada",
+          "start": 542.5,
+          "end": 543.1
+        },
+        {
+          "word": "pela",
+          "start": 543.1,
+          "end": 543.4
+        },
+        {
+          "word": "caridade.",
+          "start": 543.4,
+          "end": 544
+        },
+        {
+          "word": "Ela",
+          "start": 548,
+          "end": 548.2
+        },
+        {
+          "word": "expressa",
+          "start": 548.2,
+          "end": 548.7
+        },
+        {
+          "word": "um",
+          "start": 548.7,
+          "end": 548.9
+        },
+        {
+          "word": "amor",
+          "start": 548.9,
+          "end": 549.2
+        },
+        {
+          "word": "que,",
+          "start": 549.2,
+          "end": 549.4
+        },
+        {
+          "word": "configurado",
+          "start": 549.4,
+          "end": 550.1
+        },
+        {
+          "word": "ao",
+          "start": 550.1,
+          "end": 550.3
+        },
+        {
+          "word": "de",
+          "start": 550.3,
+          "end": 550.4
+        },
+        {
+          "word": "Cristo,",
+          "start": 550.4,
+          "end": 550.9
+        },
+        {
+          "word": "está",
+          "start": 551.1,
+          "end": 551.4
+        },
+        {
+          "word": "disposto",
+          "start": 551.4,
+          "end": 551.9
+        },
+        {
+          "word": "a",
+          "start": 551.9,
+          "end": 552
+        },
+        {
+          "word": "sacrificar",
+          "start": 552,
+          "end": 552.6
+        },
+        {
+          "word": "tudo",
+          "start": 552.6,
+          "end": 553
+        },
+        {
+          "word": "pela",
+          "start": 553,
+          "end": 553.3
+        },
+        {
+          "word": "salvação",
+          "start": 553.3,
+          "end": 553.8
+        },
+        {
+          "word": "dos",
+          "start": 553.8,
+          "end": 554
+        },
+        {
+          "word": "outros.",
+          "start": 554,
+          "end": 554.4
+        },
+        {
+          "word": "É",
+          "start": 557,
+          "end": 557.1
+        },
+        {
+          "word": "exatamente",
+          "start": 557.1,
+          "end": 557.7
+        },
+        {
+          "word": "esse",
+          "start": 557.7,
+          "end": 558
+        },
+        {
+          "word": "amor",
+          "start": 558,
+          "end": 558.3
+        },
+        {
+          "word": "pastoral",
+          "start": 558.3,
+          "end": 558.8
+        },
+        {
+          "word": "que",
+          "start": 558.8,
+          "end": 559
+        },
+        {
+          "word": "a",
+          "start": 559,
+          "end": 559.1
+        },
+        {
+          "word": "Igreja",
+          "start": 559.1,
+          "end": 559.5
+        },
+        {
+          "word": "reconhece",
+          "start": 559.5,
+          "end": 560.1
+        },
+        {
+          "word": "como",
+          "start": 560.1,
+          "end": 560.4
+        },
+        {
+          "word": "modelo",
+          "start": 560.4,
+          "end": 560.9
+        },
+        {
+          "word": "de",
+          "start": 560.9,
+          "end": 561.1
+        },
+        {
+          "word": "toda",
+          "start": 561.1,
+          "end": 561.4
+        },
+        {
+          "word": "autêntica",
+          "start": 561.4,
+          "end": 562
+        },
+        {
+          "word": "evangelização.",
+          "start": 562,
+          "end": 562.9
+        },
+        {
+          "word": "São",
+          "start": 609,
+          "end": 609.2
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-15",
+      "text": "São João Crisóstomo dizia: Vês como Paulo amava os judeus? Depois de tantos ultrajes, perseguições e insultos, continua a chamá-los irmãos e chega a desejar sofrer por eles. Quanto mais eles se afastam dele, tanto mais ele os ama. E assim continua: Ele imita o Senhor. Assim como Cristo se fez maldição por nós, também Paulo deseja tornar-se anátema por seus irmãos. Depois de Cristo, quem amou os homens como Paulo?",
+      "description": "Uma cena dramática ambientada em um espaço de culto da antiguidade, iluminada por raios de luz dourada que atravessam uma janela alta, criando um forte contraste entre luz e sombra. São João Crisóstomo, com vestes rústicas, faz um gesto intenso enquanto fala sobre Paulo e sua profunda devoção aos judeus. Ao fundo, figuras representativas de judeus, com expressões de dor e confusão, escutam atentamente. O ambiente é enriquecido por elementos arqueológicos humildes, como pedras e madeira, refletindo a complexidade emocional da sua mensagem. As cores quentes e terrosas dominam a cena, evocando uma sensação de intimidade e sacrifício, enquanto a luz ressalta a paixão e a entrega de Paulo, personificando seu amor pelos irmãos.",
+      "prompt": "Dramatic scene depicting the moment São João Crisóstomo speaks of Paulo's love for the Jewish people, with incredible chiaroscuro lighting, emphasizing deep shadows and glowing golden highlights. The setting is an ancient worship space, rustic clothing, and raw emotions on human faces. São João makes a passionate gesture, while attentive Jewish figures listen in the background. Earthy tones dominate, creating intimacy and sacrifice. Emphasizing the emotional weight of the narrative and the dramatic rays of light showcasing the deep connection between Paulo and his brothers, 16:9 aspect ratio",
+      "sceneNumber": "12",
+      "startTime": 609.2,
+      "endTime": 650.5,
+      "duration": 41.3,
+      "timedWords": [
+        {
+          "word": "João",
+          "start": 609.2,
+          "end": 609.5
+        },
+        {
+          "word": "Crisóstomo",
+          "start": 609.5,
+          "end": 610.2
+        },
+        {
+          "word": "dizia:",
+          "start": 610.2,
+          "end": 610.6
+        },
+        {
+          "word": "Vês",
+          "start": 611,
+          "end": 611.3
+        },
+        {
+          "word": "como",
+          "start": 611.3,
+          "end": 611.5
+        },
+        {
+          "word": "Paulo",
+          "start": 611.5,
+          "end": 611.9
+        },
+        {
+          "word": "amava",
+          "start": 611.9,
+          "end": 612.3
+        },
+        {
+          "word": "os",
+          "start": 612.3,
+          "end": 612.5
+        },
+        {
+          "word": "judeus?",
+          "start": 612.5,
+          "end": 612.9
+        },
+        {
+          "word": "Depois",
+          "start": 613.5,
+          "end": 613.9
+        },
+        {
+          "word": "de",
+          "start": 613.9,
+          "end": 614.1
+        },
+        {
+          "word": "tantos",
+          "start": 614.1,
+          "end": 614.5
+        },
+        {
+          "word": "ultrajes,",
+          "start": 614.5,
+          "end": 615.1
+        },
+        {
+          "word": "perseguições",
+          "start": 615.3,
+          "end": 616.1
+        },
+        {
+          "word": "e",
+          "start": 616.1,
+          "end": 616.3
+        },
+        {
+          "word": "insultos,",
+          "start": 616.3,
+          "end": 616.9
+        },
+        {
+          "word": "continua",
+          "start": 617.2,
+          "end": 617.8
+        },
+        {
+          "word": "a",
+          "start": 617.8,
+          "end": 617.9
+        },
+        {
+          "word": "chamá-los",
+          "start": 617.9,
+          "end": 618.4
+        },
+        {
+          "word": "irmãos",
+          "start": 618.4,
+          "end": 618.9
+        },
+        {
+          "word": "e",
+          "start": 619.1,
+          "end": 619.3
+        },
+        {
+          "word": "chega",
+          "start": 619.3,
+          "end": 619.6
+        },
+        {
+          "word": "a",
+          "start": 619.6,
+          "end": 619.8
+        },
+        {
+          "word": "desejar",
+          "start": 619.8,
+          "end": 620.3
+        },
+        {
+          "word": "sofrer",
+          "start": 620.3,
+          "end": 620.8
+        },
+        {
+          "word": "por",
+          "start": 620.8,
+          "end": 621
+        },
+        {
+          "word": "eles.",
+          "start": 621,
+          "end": 621.4
+        },
+        {
+          "word": "Quanto",
+          "start": 622.5,
+          "end": 622.9
+        },
+        {
+          "word": "mais",
+          "start": 622.9,
+          "end": 623.2
+        },
+        {
+          "word": "eles",
+          "start": 623.2,
+          "end": 623.5
+        },
+        {
+          "word": "se",
+          "start": 623.5,
+          "end": 623.7
+        },
+        {
+          "word": "afastam",
+          "start": 623.7,
+          "end": 624.2
+        },
+        {
+          "word": "dele,",
+          "start": 624.2,
+          "end": 624.6
+        },
+        {
+          "word": "tanto",
+          "start": 624.9,
+          "end": 625.3
+        },
+        {
+          "word": "mais",
+          "start": 625.3,
+          "end": 625.6
+        },
+        {
+          "word": "ele",
+          "start": 625.6,
+          "end": 625.8
+        },
+        {
+          "word": "os",
+          "start": 625.8,
+          "end": 626
+        },
+        {
+          "word": "ama.",
+          "start": 626,
+          "end": 626.4
+        },
+        {
+          "word": "E",
+          "start": 631,
+          "end": 631.2
+        },
+        {
+          "word": "assim",
+          "start": 631.2,
+          "end": 631.5
+        },
+        {
+          "word": "continua:",
+          "start": 631.5,
+          "end": 632
+        },
+        {
+          "word": "Ele",
+          "start": 632.3,
+          "end": 632.6
+        },
+        {
+          "word": "imita",
+          "start": 632.6,
+          "end": 633
+        },
+        {
+          "word": "o",
+          "start": 633,
+          "end": 633.2
+        },
+        {
+          "word": "Senhor.",
+          "start": 633.2,
+          "end": 633.7
+        },
+        {
+          "word": "Assim",
+          "start": 634.5,
+          "end": 634.9
+        },
+        {
+          "word": "como",
+          "start": 634.9,
+          "end": 635.2
+        },
+        {
+          "word": "Cristo",
+          "start": 635.2,
+          "end": 635.7
+        },
+        {
+          "word": "se",
+          "start": 635.7,
+          "end": 635.9
+        },
+        {
+          "word": "fez",
+          "start": 635.9,
+          "end": 636.1
+        },
+        {
+          "word": "maldição",
+          "start": 636.1,
+          "end": 636.7
+        },
+        {
+          "word": "por",
+          "start": 636.7,
+          "end": 636.9
+        },
+        {
+          "word": "nós,",
+          "start": 636.9,
+          "end": 637.3
+        },
+        {
+          "word": "também",
+          "start": 637.6,
+          "end": 638
+        },
+        {
+          "word": "Paulo",
+          "start": 638,
+          "end": 638.4
+        },
+        {
+          "word": "deseja",
+          "start": 638.4,
+          "end": 638.8
+        },
+        {
+          "word": "tornar-se",
+          "start": 638.8,
+          "end": 639.4
+        },
+        {
+          "word": "anátema",
+          "start": 639.4,
+          "end": 640
+        },
+        {
+          "word": "por",
+          "start": 640,
+          "end": 640.2
+        },
+        {
+          "word": "seus",
+          "start": 640.2,
+          "end": 640.5
+        },
+        {
+          "word": "irmãos.",
+          "start": 640.5,
+          "end": 641
+        },
+        {
+          "word": "Depois",
+          "start": 644,
+          "end": 644.4
+        },
+        {
+          "word": "de",
+          "start": 644.4,
+          "end": 644.6
+        },
+        {
+          "word": "Cristo,",
+          "start": 644.6,
+          "end": 645.1
+        },
+        {
+          "word": "quem",
+          "start": 645.4,
+          "end": 645.7
+        },
+        {
+          "word": "amou",
+          "start": 645.7,
+          "end": 646.1
+        },
+        {
+          "word": "os",
+          "start": 646.1,
+          "end": 646.3
+        },
+        {
+          "word": "homens",
+          "start": 646.3,
+          "end": 646.7
+        },
+        {
+          "word": "como",
+          "start": 646.7,
+          "end": 647
+        },
+        {
+          "word": "Paulo?",
+          "start": 647,
+          "end": 647.5
+        },
+        {
+          "word": "Irmãos,",
+          "start": 650,
+          "end": 650.5
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-16",
+      "text": "Irmãos, continuamos nós. São Paulo tem o mesmo coração de Moisés, que intercede pelo povo depois do pecado do bezerro de ouro e diz: Senhor, perdoa-lhes o pecado; senão, risca-me do livro que escreveste.",
+      "description": "Uma cena dramática com Moisés em um montanha, com o rosto iluminado pela luz dourada do sol poente. Ele está de joelhos, com os braços erguidos, implorando a Deus em meio a uma paisagem árida, simbolizando a intercessão. Ao fundo, vemos a silhueta de uma multidão, representando o povo, com expressões de arrependimento e esperança. Nuvens escuras estão se juntando, simbolizando o peso do pecado, enquanto um raio de luz brilha sobre Moisés, enfatizando sua ligação divina. A composição é rica em contrastes, com sombras profundas e luzes quentes, trazendo um tom de urgência e preocupação, capturando o momento de intercessão e compaixão.",
+      "prompt": "A dramatic scene depicting Moses on a mountain, illuminated by golden sunset light. He kneels with arms raised, imploring God amidst an arid landscape, symbolizing intercession. In the background, a silhouette of a crowd representing the people shows expressions of remorse and hope. Dark clouds gather, symbolizing the weight of sin, while a beam of light shines on Moses, emphasizing his divine connection. Rich in contrasts, featuring deep shadows and warm lights, the image captures the urgency and concern of the moment of intercession and compassion. --ar 16:9",
+      "sceneNumber": "13",
+      "startTime": 650.8,
+      "endTime": 709.2,
+      "duration": 58.4,
+      "timedWords": [
+        {
+          "word": "continuamos",
+          "start": 650.8,
+          "end": 651.5
+        },
+        {
+          "word": "nós.",
+          "start": 651.5,
+          "end": 651.9
+        },
+        {
+          "word": "São",
+          "start": 652.5,
+          "end": 652.8
+        },
+        {
+          "word": "Paulo",
+          "start": 652.8,
+          "end": 653.2
+        },
+        {
+          "word": "tem",
+          "start": 653.2,
+          "end": 653.4
+        },
+        {
+          "word": "o",
+          "start": 653.4,
+          "end": 653.6
+        },
+        {
+          "word": "mesmo",
+          "start": 653.6,
+          "end": 654
+        },
+        {
+          "word": "coração",
+          "start": 654,
+          "end": 654.5
+        },
+        {
+          "word": "de",
+          "start": 654.5,
+          "end": 654.7
+        },
+        {
+          "word": "Moisés,",
+          "start": 654.7,
+          "end": 655.3
+        },
+        {
+          "word": "que",
+          "start": 655.6,
+          "end": 655.8
+        },
+        {
+          "word": "intercede",
+          "start": 655.8,
+          "end": 656.4
+        },
+        {
+          "word": "pelo",
+          "start": 656.4,
+          "end": 656.7
+        },
+        {
+          "word": "povo",
+          "start": 656.7,
+          "end": 657.1
+        },
+        {
+          "word": "depois",
+          "start": 657.1,
+          "end": 657.5
+        },
+        {
+          "word": "do",
+          "start": 657.5,
+          "end": 657.7
+        },
+        {
+          "word": "pecado",
+          "start": 657.7,
+          "end": 658.2
+        },
+        {
+          "word": "do",
+          "start": 658.2,
+          "end": 658.4
+        },
+        {
+          "word": "bezerro",
+          "start": 658.4,
+          "end": 658.9
+        },
+        {
+          "word": "de",
+          "start": 658.9,
+          "end": 659.1
+        },
+        {
+          "word": "ouro",
+          "start": 659.1,
+          "end": 659.5
+        },
+        {
+          "word": "e",
+          "start": 659.8,
+          "end": 660
+        },
+        {
+          "word": "diz:",
+          "start": 660,
+          "end": 660.4
+        },
+        {
+          "word": "Senhor,",
+          "start": 661,
+          "end": 661.5
+        },
+        {
+          "word": "perdoa-lhes",
+          "start": 661.8,
+          "end": 662.5
+        },
+        {
+          "word": "o",
+          "start": 662.5,
+          "end": 662.7
+        },
+        {
+          "word": "pecado;",
+          "start": 662.7,
+          "end": 663.2
+        },
+        {
+          "word": "senão,",
+          "start": 663.5,
+          "end": 664
+        },
+        {
+          "word": "risca-me",
+          "start": 664.3,
+          "end": 664.9
+        },
+        {
+          "word": "do",
+          "start": 664.9,
+          "end": 665.1
+        },
+        {
+          "word": "livro",
+          "start": 665.1,
+          "end": 665.5
+        },
+        {
+          "word": "que",
+          "start": 665.5,
+          "end": 665.7
+        },
+        {
+          "word": "escreveste.",
+          "start": 665.7,
+          "end": 666.4
+        },
+        {
+          "word": "É",
+          "start": 709,
+          "end": 709.2
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-17",
+      "text": "É claro que Deus não vai abandonar uma pessoa capaz de fazer um tal sacrifício de si por amor. Mas há um momento humano em que a própria pessoa experimenta isso, que é, sem dúvida, o momento mais doloroso da vida. Pensemos em Jesus na cruz, quando grita: Meu Deus, meu Deus, por que me abandonaste?",
+      "description": "Uma cena poderosa e emocional retratando Jesus na cruz. A iluminação dramática destaca o rosto angustiado de Jesus, com uma expressão intensa de dor e abandono. O fundo é uma paisagem escura e sombria, representando o desespero e a solidão do momento. Raízes e sombras profundas envolvem a cruz, enquanto uma luz dourada suave emana do céu, simbolizando a presença divina que observa silenciosamente. As cores saturadas contrastam fortemente com a escuridão ao redor, criando um efeito visual impactante e memorável.",
+      "prompt": "A dramatic moment depicting Jesus on the cross, showing His anguished face and expression of despair. The background is dark and somber, embodying the loneliness of the moment. Roots and deep shadows encircle the cross while a soft golden light emanates from the sky, symbolizing the divine presence silently observing. Vivid colors contrast sharply with the surrounding darkness, creating a striking and memorable visual. 16:9 aspect ratio",
+      "sceneNumber": "14",
+      "startTime": 709.2,
+      "endTime": 731.2,
+      "duration": 22,
+      "timedWords": [
+        {
+          "word": "claro",
+          "start": 709.2,
+          "end": 709.5
+        },
+        {
+          "word": "que",
+          "start": 709.5,
+          "end": 709.7
+        },
+        {
+          "word": "Deus",
+          "start": 709.7,
+          "end": 710
+        },
+        {
+          "word": "não",
+          "start": 710,
+          "end": 710.2
+        },
+        {
+          "word": "vai",
+          "start": 710.2,
+          "end": 710.4
+        },
+        {
+          "word": "abandonar",
+          "start": 710.4,
+          "end": 711
+        },
+        {
+          "word": "uma",
+          "start": 711,
+          "end": 711.2
+        },
+        {
+          "word": "pessoa",
+          "start": 711.2,
+          "end": 711.6
+        },
+        {
+          "word": "capaz",
+          "start": 711.6,
+          "end": 712
+        },
+        {
+          "word": "de",
+          "start": 712,
+          "end": 712.2
+        },
+        {
+          "word": "fazer",
+          "start": 712.2,
+          "end": 712.5
+        },
+        {
+          "word": "um",
+          "start": 712.5,
+          "end": 712.7
+        },
+        {
+          "word": "tal",
+          "start": 712.7,
+          "end": 712.9
+        },
+        {
+          "word": "sacrifício",
+          "start": 712.9,
+          "end": 713.6
+        },
+        {
+          "word": "de",
+          "start": 713.6,
+          "end": 713.8
+        },
+        {
+          "word": "si",
+          "start": 713.8,
+          "end": 714
+        },
+        {
+          "word": "por",
+          "start": 714,
+          "end": 714.2
+        },
+        {
+          "word": "amor.",
+          "start": 714.2,
+          "end": 714.6
+        },
+        {
+          "word": "Mas",
+          "start": 715.5,
+          "end": 715.8
+        },
+        {
+          "word": "há",
+          "start": 715.8,
+          "end": 716
+        },
+        {
+          "word": "um",
+          "start": 716,
+          "end": 716.1
+        },
+        {
+          "word": "momento",
+          "start": 716.1,
+          "end": 716.6
+        },
+        {
+          "word": "humano",
+          "start": 716.6,
+          "end": 717
+        },
+        {
+          "word": "em",
+          "start": 717,
+          "end": 717.2
+        },
+        {
+          "word": "que",
+          "start": 717.2,
+          "end": 717.4
+        },
+        {
+          "word": "a",
+          "start": 717.4,
+          "end": 717.5
+        },
+        {
+          "word": "própria",
+          "start": 717.5,
+          "end": 717.9
+        },
+        {
+          "word": "pessoa",
+          "start": 717.9,
+          "end": 718.3
+        },
+        {
+          "word": "experimenta",
+          "start": 718.3,
+          "end": 719.1
+        },
+        {
+          "word": "isso,",
+          "start": 719.1,
+          "end": 719.5
+        },
+        {
+          "word": "que",
+          "start": 719.8,
+          "end": 720
+        },
+        {
+          "word": "é,",
+          "start": 720,
+          "end": 720.2
+        },
+        {
+          "word": "sem",
+          "start": 720.2,
+          "end": 720.4
+        },
+        {
+          "word": "dúvida,",
+          "start": 720.4,
+          "end": 720.8
+        },
+        {
+          "word": "o",
+          "start": 720.8,
+          "end": 721
+        },
+        {
+          "word": "momento",
+          "start": 721,
+          "end": 721.4
+        },
+        {
+          "word": "mais",
+          "start": 721.4,
+          "end": 721.7
+        },
+        {
+          "word": "doloroso",
+          "start": 721.7,
+          "end": 722.3
+        },
+        {
+          "word": "da",
+          "start": 722.3,
+          "end": 722.5
+        },
+        {
+          "word": "vida.",
+          "start": 722.5,
+          "end": 722.9
+        },
+        {
+          "word": "Pensemos",
+          "start": 724,
+          "end": 724.5
+        },
+        {
+          "word": "em",
+          "start": 724.5,
+          "end": 724.7
+        },
+        {
+          "word": "Jesus",
+          "start": 724.7,
+          "end": 725.1
+        },
+        {
+          "word": "na",
+          "start": 725.1,
+          "end": 725.3
+        },
+        {
+          "word": "cruz,",
+          "start": 725.3,
+          "end": 725.7
+        },
+        {
+          "word": "quando",
+          "start": 726,
+          "end": 726.4
+        },
+        {
+          "word": "grita:",
+          "start": 726.4,
+          "end": 726.8
+        },
+        {
+          "word": "Meu",
+          "start": 727,
+          "end": 727.3
+        },
+        {
+          "word": "Deus,",
+          "start": 727.3,
+          "end": 727.6
+        },
+        {
+          "word": "meu",
+          "start": 727.6,
+          "end": 727.8
+        },
+        {
+          "word": "Deus,",
+          "start": 727.8,
+          "end": 728.1
+        },
+        {
+          "word": "por",
+          "start": 728.4,
+          "end": 728.6
+        },
+        {
+          "word": "que",
+          "start": 728.6,
+          "end": 728.8
+        },
+        {
+          "word": "me",
+          "start": 728.8,
+          "end": 729
+        },
+        {
+          "word": "abandonaste?",
+          "start": 729,
+          "end": 729.8
+        },
+        {
+          "word": "São",
+          "start": 731,
+          "end": 731.2
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-18",
+      "text": "São Paulo tem isso muito claro. Como ele mesmo diz na Segunda Carta aos Coríntios: Aquele que não cometeu pecado, Deus o fez pecado por nós, para que nele nos tornemos justiça de Deus.",
+      "description": "Uma vista imponente da cidade de São Paulo ao amanhecer, com a luz suave do sol filtrando-se pelas nuvens, criando um efeito dramático de luz e sombra. Edifícios altos e emblemáticos contrastam com a tocante mensagem espiritual, onde a mensagem da Segunda Carta aos Coríntios se entrelaça com a vida cotidiana. A cidade é mostrada vibrante e cheia de vida, com pedestres caminhando, refletindo a busca pela justiça e redenção em seus rostos expressivos. Um céu dourado se mistura com a paisagem urbana, simbolizando esperança e transformação.",
+      "prompt": "A powerful sunrise view of São Paulo, with soft sunlight filtering through the clouds, creating a dramatic play of light and shadow. Tall, iconic buildings form a vibrant urban landscape filled with ordinary people, illustrating the spiritual message from the Second Letter to the Corinthians about justice and redemption. Rich golden skies blend with the bustling life below, symbolizing hope and transformation. --ar 16:9",
+      "sceneNumber": "15",
+      "startTime": 731.2,
+      "endTime": 747.2,
+      "duration": 16,
+      "timedWords": [
+        {
+          "word": "Paulo",
+          "start": 731.2,
+          "end": 731.5
+        },
+        {
+          "word": "tem",
+          "start": 731.5,
+          "end": 731.7
+        },
+        {
+          "word": "isso",
+          "start": 731.7,
+          "end": 731.9
+        },
+        {
+          "word": "muito",
+          "start": 731.9,
+          "end": 732.3
+        },
+        {
+          "word": "claro.",
+          "start": 732.3,
+          "end": 732.7
+        },
+        {
+          "word": "Como",
+          "start": 733.5,
+          "end": 733.8
+        },
+        {
+          "word": "ele",
+          "start": 733.8,
+          "end": 734
+        },
+        {
+          "word": "mesmo",
+          "start": 734,
+          "end": 734.3
+        },
+        {
+          "word": "diz",
+          "start": 734.3,
+          "end": 734.6
+        },
+        {
+          "word": "na",
+          "start": 734.6,
+          "end": 734.8
+        },
+        {
+          "word": "Segunda",
+          "start": 734.8,
+          "end": 735.3
+        },
+        {
+          "word": "Carta",
+          "start": 735.3,
+          "end": 735.6
+        },
+        {
+          "word": "aos",
+          "start": 735.6,
+          "end": 735.8
+        },
+        {
+          "word": "Coríntios:",
+          "start": 735.8,
+          "end": 736.4
+        },
+        {
+          "word": "Aquele",
+          "start": 737,
+          "end": 737.4
+        },
+        {
+          "word": "que",
+          "start": 737.4,
+          "end": 737.6
+        },
+        {
+          "word": "não",
+          "start": 737.6,
+          "end": 737.8
+        },
+        {
+          "word": "cometeu",
+          "start": 737.8,
+          "end": 738.3
+        },
+        {
+          "word": "pecado,",
+          "start": 738.3,
+          "end": 738.8
+        },
+        {
+          "word": "Deus",
+          "start": 739,
+          "end": 739.3
+        },
+        {
+          "word": "o",
+          "start": 739.3,
+          "end": 739.4
+        },
+        {
+          "word": "fez",
+          "start": 739.4,
+          "end": 739.6
+        },
+        {
+          "word": "pecado",
+          "start": 739.6,
+          "end": 740.1
+        },
+        {
+          "word": "por",
+          "start": 740.1,
+          "end": 740.3
+        },
+        {
+          "word": "nós,",
+          "start": 740.3,
+          "end": 740.7
+        },
+        {
+          "word": "para",
+          "start": 741,
+          "end": 741.2
+        },
+        {
+          "word": "que",
+          "start": 741.2,
+          "end": 741.4
+        },
+        {
+          "word": "nele",
+          "start": 741.4,
+          "end": 741.7
+        },
+        {
+          "word": "nos",
+          "start": 741.7,
+          "end": 741.9
+        },
+        {
+          "word": "tornemos",
+          "start": 741.9,
+          "end": 742.5
+        },
+        {
+          "word": "justiça",
+          "start": 742.5,
+          "end": 743
+        },
+        {
+          "word": "de",
+          "start": 743,
+          "end": 743.2
+        },
+        {
+          "word": "Deus.",
+          "start": 743.2,
+          "end": 743.6
+        },
+        {
+          "word": "São",
+          "start": 747,
+          "end": 747.2
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-19",
+      "text": "São Gregório Magno escreveu em sua Regra Pastoral: O pastor deve estar próximo de cada pessoa pela compaixão e, acima de todos, pela contemplação, para que ele, pelas entranhas de misericórdia, transfira para si a fraqueza dos outros e, pela elevação da contemplação, ultrapasse diariamente a si mesmo.",
+      "description": "Um pastor, vestido com roupas simples e humildes, está em um ambiente sereno e natural, cercado por uma paisagem verdejante e montanhosa. Ele se agacha ao lado de uma criança que parece triste, segurando suas mãos com um olhar de compaixão genuína em seu rosto. O sol da manhã ilumina suavemente a cena, criando um jogo de luz e sombra que destaca a expressão acolhedora do pastor e o semblante vulnerável da criança. A atmosfera é de paz e contemplação, com detalhes sutis de flores silvestres ao redor, simbolizando a beleza da compaixão. 16:9 aspect ratio",
+      "prompt": "A compassionate pastor in humble clothing kneels beside a sad child in a serene, lush landscape. Their hands are clasped together in a warm and genuine exchange. Soft morning sunlight bathes the scene, enhancing the emotional connection and creating a breathtaking interplay of light and shadow. Surrounding them are wildflowers and rolling hills, illustrating the beauty of compassion and contemplation in everyday life, cinematic realism --ar 16:9",
+      "sceneNumber": "16",
+      "startTime": 747.2,
+      "endTime": 814.2,
+      "duration": 67,
+      "timedWords": [
+        {
+          "word": "Gregório",
+          "start": 747.2,
+          "end": 747.7
+        },
+        {
+          "word": "Magno",
+          "start": 747.7,
+          "end": 748.1
+        },
+        {
+          "word": "escreveu",
+          "start": 748.1,
+          "end": 748.6
+        },
+        {
+          "word": "em",
+          "start": 748.6,
+          "end": 748.8
+        },
+        {
+          "word": "sua",
+          "start": 748.8,
+          "end": 749
+        },
+        {
+          "word": "Regra",
+          "start": 749,
+          "end": 749.3
+        },
+        {
+          "word": "Pastoral:",
+          "start": 749.3,
+          "end": 749.9
+        },
+        {
+          "word": "O",
+          "start": 751,
+          "end": 751.1
+        },
+        {
+          "word": "pastor",
+          "start": 751.1,
+          "end": 751.5
+        },
+        {
+          "word": "deve",
+          "start": 751.5,
+          "end": 751.8
+        },
+        {
+          "word": "estar",
+          "start": 751.8,
+          "end": 752.1
+        },
+        {
+          "word": "próximo",
+          "start": 752.1,
+          "end": 752.6
+        },
+        {
+          "word": "de",
+          "start": 752.6,
+          "end": 752.8
+        },
+        {
+          "word": "cada",
+          "start": 752.8,
+          "end": 753.1
+        },
+        {
+          "word": "pessoa",
+          "start": 753.1,
+          "end": 753.5
+        },
+        {
+          "word": "pela",
+          "start": 753.5,
+          "end": 753.8
+        },
+        {
+          "word": "compaixão",
+          "start": 753.8,
+          "end": 754.5
+        },
+        {
+          "word": "e,",
+          "start": 754.5,
+          "end": 754.7
+        },
+        {
+          "word": "acima",
+          "start": 755,
+          "end": 755.4
+        },
+        {
+          "word": "de",
+          "start": 755.4,
+          "end": 755.6
+        },
+        {
+          "word": "todos,",
+          "start": 755.6,
+          "end": 756
+        },
+        {
+          "word": "pela",
+          "start": 756,
+          "end": 756.3
+        },
+        {
+          "word": "contemplação,",
+          "start": 756.3,
+          "end": 757.2
+        },
+        {
+          "word": "para",
+          "start": 757.5,
+          "end": 757.7
+        },
+        {
+          "word": "que",
+          "start": 757.7,
+          "end": 757.9
+        },
+        {
+          "word": "ele,",
+          "start": 757.9,
+          "end": 758.2
+        },
+        {
+          "word": "pelas",
+          "start": 758.5,
+          "end": 758.8
+        },
+        {
+          "word": "entranhas",
+          "start": 758.8,
+          "end": 759.4
+        },
+        {
+          "word": "de",
+          "start": 759.4,
+          "end": 759.6
+        },
+        {
+          "word": "misericórdia,",
+          "start": 759.6,
+          "end": 760.4
+        },
+        {
+          "word": "transfira",
+          "start": 760.7,
+          "end": 761.3
+        },
+        {
+          "word": "para",
+          "start": 761.3,
+          "end": 761.5
+        },
+        {
+          "word": "si",
+          "start": 761.5,
+          "end": 761.7
+        },
+        {
+          "word": "a",
+          "start": 761.7,
+          "end": 761.8
+        },
+        {
+          "word": "fraqueza",
+          "start": 761.8,
+          "end": 762.3
+        },
+        {
+          "word": "dos",
+          "start": 762.3,
+          "end": 762.5
+        },
+        {
+          "word": "outros",
+          "start": 762.5,
+          "end": 762.9
+        },
+        {
+          "word": "e,",
+          "start": 762.9,
+          "end": 763.1
+        },
+        {
+          "word": "pela",
+          "start": 763.5,
+          "end": 763.8
+        },
+        {
+          "word": "elevação",
+          "start": 763.8,
+          "end": 764.4
+        },
+        {
+          "word": "da",
+          "start": 764.4,
+          "end": 764.6
+        },
+        {
+          "word": "contemplação,",
+          "start": 764.6,
+          "end": 765.4
+        },
+        {
+          "word": "ultrapasse",
+          "start": 765.7,
+          "end": 766.4
+        },
+        {
+          "word": "diariamente",
+          "start": 766.4,
+          "end": 767.2
+        },
+        {
+          "word": "a",
+          "start": 767.2,
+          "end": 767.4
+        },
+        {
+          "word": "si",
+          "start": 767.4,
+          "end": 767.6
+        },
+        {
+          "word": "mesmo.",
+          "start": 767.6,
+          "end": 768
+        },
+        {
+          "word": "Esse",
+          "start": 814,
+          "end": 814.2
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-20",
+      "text": "Esse amor supremo que deseja dar a vida e pagar pela pessoa amada tem um nome: expiação, que é o poder que o amor tem de se unir a uma alma dilacerada pelo pecado para dar-lhe a vida.",
+      "description": "Uma cena dramática em uma paisagem sombria e contemplativa, onde a luz suave do amanhecer começa a penetrar através de nuvens escuras. No centro, uma figura humana de aspecto cansado e atormentado, ajoelhada em um terreno árido e infértil, simbolizando uma alma dilacerada pelo pecado. Ao redor, elementos como raízes expostas e pedras frias, sugerindo a luta interna e a busca pela redenção. Uma luz quente e dourada emana de uma mão que se estende da parte superior da imagem, simbolizando o amor supremo que busca unir-se à alma sofrida. A transição entre a escuridão e a luz reflete a esperança e a expiação, trazendo uma sensação de sacrifício e renovação.",
+      "prompt": "A dramatic sunrise scene depicting supreme love searching for redemption, featuring a weary figure kneeling on barren ground, surrounded by exposed roots and cold stones. A warm golden light emanates from an outstretched hand above, symbolizing the union with a sin-torn soul. This artwork encompasses themes of sacrifice and renewal, 16:9 aspect ratio.",
+      "sceneNumber": "17",
+      "startTime": 814.2,
+      "endTime": 831.1,
+      "duration": 16.9,
+      "timedWords": [
+        {
+          "word": "amor",
+          "start": 814.2,
+          "end": 814.5
+        },
+        {
+          "word": "supremo",
+          "start": 814.5,
+          "end": 815
+        },
+        {
+          "word": "que",
+          "start": 815,
+          "end": 815.2
+        },
+        {
+          "word": "deseja",
+          "start": 815.2,
+          "end": 815.6
+        },
+        {
+          "word": "dar",
+          "start": 815.6,
+          "end": 815.8
+        },
+        {
+          "word": "a",
+          "start": 815.8,
+          "end": 815.9
+        },
+        {
+          "word": "vida",
+          "start": 815.9,
+          "end": 816.3
+        },
+        {
+          "word": "e",
+          "start": 816.3,
+          "end": 816.5
+        },
+        {
+          "word": "pagar",
+          "start": 816.5,
+          "end": 816.9
+        },
+        {
+          "word": "pela",
+          "start": 816.9,
+          "end": 817.1
+        },
+        {
+          "word": "pessoa",
+          "start": 817.1,
+          "end": 817.5
+        },
+        {
+          "word": "amada",
+          "start": 817.5,
+          "end": 818
+        },
+        {
+          "word": "tem",
+          "start": 818,
+          "end": 818.2
+        },
+        {
+          "word": "um",
+          "start": 818.2,
+          "end": 818.3
+        },
+        {
+          "word": "nome:",
+          "start": 818.3,
+          "end": 818.7
+        },
+        {
+          "word": "expiação,",
+          "start": 819,
+          "end": 819.8
+        },
+        {
+          "word": "que",
+          "start": 821,
+          "end": 821.2
+        },
+        {
+          "word": "é",
+          "start": 821.2,
+          "end": 821.3
+        },
+        {
+          "word": "o",
+          "start": 821.3,
+          "end": 821.4
+        },
+        {
+          "word": "poder",
+          "start": 821.4,
+          "end": 821.8
+        },
+        {
+          "word": "que",
+          "start": 821.8,
+          "end": 822
+        },
+        {
+          "word": "o",
+          "start": 822,
+          "end": 822.1
+        },
+        {
+          "word": "amor",
+          "start": 822.1,
+          "end": 822.4
+        },
+        {
+          "word": "tem",
+          "start": 822.4,
+          "end": 822.6
+        },
+        {
+          "word": "de",
+          "start": 822.6,
+          "end": 822.8
+        },
+        {
+          "word": "se",
+          "start": 822.8,
+          "end": 823
+        },
+        {
+          "word": "unir",
+          "start": 823,
+          "end": 823.3
+        },
+        {
+          "word": "a",
+          "start": 823.3,
+          "end": 823.4
+        },
+        {
+          "word": "uma",
+          "start": 823.4,
+          "end": 823.6
+        },
+        {
+          "word": "alma",
+          "start": 823.6,
+          "end": 823.9
+        },
+        {
+          "word": "dilacerada",
+          "start": 823.9,
+          "end": 824.6
+        },
+        {
+          "word": "pelo",
+          "start": 824.6,
+          "end": 824.9
+        },
+        {
+          "word": "pecado",
+          "start": 824.9,
+          "end": 825.4
+        },
+        {
+          "word": "para",
+          "start": 825.7,
+          "end": 826
+        },
+        {
+          "word": "dar-lhe",
+          "start": 826,
+          "end": 826.4
+        },
+        {
+          "word": "a",
+          "start": 826.4,
+          "end": 826.5
+        },
+        {
+          "word": "vida.",
+          "start": 826.5,
+          "end": 827
+        },
+        {
+          "word": "A",
+          "start": 831,
+          "end": 831.1
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-21",
+      "text": "A evangelização não é somente um anúncio que passa pelo microfone de um show, mas uma escolha profunda de amor até o sacrifício extremo. Para nós da Missão Belém, isso é uma regra de vida, um aspecto fundamental do nosso carisma para os missionários e para todos os que seguem a missão de alguma forma.",
+      "description": "Um ambiente de adoração ao ar livre, onde um pequeno grupo de missionários se reúne em um local rodeado por árvores verdes e exuberantes. Eles estão em círculo, alguns de olhos fechados em oração e outros com as mãos levantadas, simbolizando sacrifício e devoção. A luz suave do sol permeia as folhas, criando um efeito de halo em torno dos missionários. O cenário transmite uma sensação de paz e profunda conexão com a espiritualidade, refletindo a ideia de que evangelização é um ato de amor e dedicação. As expressões faciais dos missionários são de seriedade e entrega, enfatizando a importância da escolha feita em seguir a missão com amor, até mesmo ao sacrifício extremo.",
+      "prompt": "A deep, spiritual outdoor setting: a small group of missionaries gathered in a circle under lush green trees, some with eyes closed in prayer, others with hands lifted high. Soft sunlight filters through the leaves, creating a halo effect around them. The scene conveys a sense of peace and deep spiritual connection, emphasizing that evangelization is a profound act of love and commitment, even to the point of extreme sacrifice. 16:9 aspect ratio",
+      "sceneNumber": "18",
+      "startTime": 831.1,
+      "endTime": 856.3,
+      "duration": 25.2,
+      "timedWords": [
+        {
+          "word": "evangelização",
+          "start": 831.1,
+          "end": 832
+        },
+        {
+          "word": "não",
+          "start": 832,
+          "end": 832.2
+        },
+        {
+          "word": "é",
+          "start": 832.2,
+          "end": 832.3
+        },
+        {
+          "word": "somente",
+          "start": 832.3,
+          "end": 832.8
+        },
+        {
+          "word": "um",
+          "start": 832.8,
+          "end": 833
+        },
+        {
+          "word": "anúncio",
+          "start": 833,
+          "end": 833.5
+        },
+        {
+          "word": "que",
+          "start": 833.5,
+          "end": 833.7
+        },
+        {
+          "word": "passa",
+          "start": 833.7,
+          "end": 834
+        },
+        {
+          "word": "pelo",
+          "start": 834,
+          "end": 834.3
+        },
+        {
+          "word": "microfone",
+          "start": 834.3,
+          "end": 835
+        },
+        {
+          "word": "de",
+          "start": 835,
+          "end": 835.2
+        },
+        {
+          "word": "um",
+          "start": 835.2,
+          "end": 835.3
+        },
+        {
+          "word": "show,",
+          "start": 835.3,
+          "end": 835.7
+        },
+        {
+          "word": "mas",
+          "start": 836,
+          "end": 836.2
+        },
+        {
+          "word": "uma",
+          "start": 836.2,
+          "end": 836.4
+        },
+        {
+          "word": "escolha",
+          "start": 836.4,
+          "end": 836.9
+        },
+        {
+          "word": "profunda",
+          "start": 836.9,
+          "end": 837.5
+        },
+        {
+          "word": "de",
+          "start": 837.5,
+          "end": 837.7
+        },
+        {
+          "word": "amor",
+          "start": 837.7,
+          "end": 838
+        },
+        {
+          "word": "até",
+          "start": 838,
+          "end": 838.2
+        },
+        {
+          "word": "o",
+          "start": 838.2,
+          "end": 838.3
+        },
+        {
+          "word": "sacrifício",
+          "start": 838.3,
+          "end": 838.9
+        },
+        {
+          "word": "extremo.",
+          "start": 838.9,
+          "end": 839.5
+        },
+        {
+          "word": "Para",
+          "start": 843,
+          "end": 843.2
+        },
+        {
+          "word": "nós",
+          "start": 843.2,
+          "end": 843.4
+        },
+        {
+          "word": "da",
+          "start": 843.4,
+          "end": 843.6
+        },
+        {
+          "word": "Missão",
+          "start": 843.6,
+          "end": 844
+        },
+        {
+          "word": "Belém,",
+          "start": 844,
+          "end": 844.5
+        },
+        {
+          "word": "isso",
+          "start": 844.8,
+          "end": 845
+        },
+        {
+          "word": "é",
+          "start": 845,
+          "end": 845.1
+        },
+        {
+          "word": "uma",
+          "start": 845.1,
+          "end": 845.3
+        },
+        {
+          "word": "regra",
+          "start": 845.3,
+          "end": 845.6
+        },
+        {
+          "word": "de",
+          "start": 845.6,
+          "end": 845.8
+        },
+        {
+          "word": "vida,",
+          "start": 845.8,
+          "end": 846.2
+        },
+        {
+          "word": "um",
+          "start": 846.5,
+          "end": 846.7
+        },
+        {
+          "word": "aspecto",
+          "start": 846.7,
+          "end": 847.2
+        },
+        {
+          "word": "fundamental",
+          "start": 847.2,
+          "end": 848
+        },
+        {
+          "word": "do",
+          "start": 848,
+          "end": 848.2
+        },
+        {
+          "word": "nosso",
+          "start": 848.2,
+          "end": 848.5
+        },
+        {
+          "word": "carisma",
+          "start": 848.5,
+          "end": 849
+        },
+        {
+          "word": "para",
+          "start": 849.2,
+          "end": 849.5
+        },
+        {
+          "word": "os",
+          "start": 849.5,
+          "end": 849.6
+        },
+        {
+          "word": "missionários",
+          "start": 849.6,
+          "end": 850.4
+        },
+        {
+          "word": "e",
+          "start": 850.4,
+          "end": 850.6
+        },
+        {
+          "word": "para",
+          "start": 850.6,
+          "end": 850.9
+        },
+        {
+          "word": "todos",
+          "start": 850.9,
+          "end": 851.3
+        },
+        {
+          "word": "os",
+          "start": 851.3,
+          "end": 851.4
+        },
+        {
+          "word": "que",
+          "start": 851.4,
+          "end": 851.6
+        },
+        {
+          "word": "seguem",
+          "start": 851.6,
+          "end": 852
+        },
+        {
+          "word": "a",
+          "start": 852,
+          "end": 852.1
+        },
+        {
+          "word": "missão",
+          "start": 852.1,
+          "end": 852.5
+        },
+        {
+          "word": "de",
+          "start": 852.5,
+          "end": 852.7
+        },
+        {
+          "word": "alguma",
+          "start": 852.7,
+          "end": 853.1
+        },
+        {
+          "word": "forma.",
+          "start": 853.1,
+          "end": 853.5
+        },
+        {
+          "word": "Jesus",
+          "start": 856,
+          "end": 856.3
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-22",
+      "text": "Jesus veio para nos abraçar e expiar os nossos pecados, carregar os nossos pecados, como diz o profeta Isaías: Javé quis consumi-lo em sofrimentos. Se ele oferece sua vida em expiação, como sacrifício pelo pecado, a vontade de Deus se cumprirá por ele. Por suas dores, o justo, meu servo, justificará muitos e levará sobre si suas transgressões.",
+      "description": "Uma representação poderosa de Jesus em um ambiente desolado, com expressões de dor e compaixão em seu rosto. Ele está cercado por escuridão, simbolizando os pecados do mundo que carrega. A luz suave e quente de um raio de sol ilumina seu corpo, ressaltando suas vestes simples e rústicas, enquanto seus braços estão abertos em um gesto de acolhimento e sacrifício. Ao fundo, silhuetas de pessoas podem ser vistas, simbolizando aqueles que Ele veio salvar, em um ambiente sombrio que reflete as transgressões da humanidade. A cena deve ter um forte contraste entre a luz e a escuridão, criando uma atmosfera dramática e emocional em homenagem ao sofrimento da redenção. Destaque para os detalhes das mãos de Jesus, expressivas e abertas, acentuando sua entrega e amor por todos. Uma visão simbólica que mistura dor e esperança, capturando o espírito do sacrifício.",
+      "prompt": "A powerful visual of Jesus surrounded by darkness, embodying pain and compassion, illuminated by warm sunlight revealing his rustic robes. His arms are outstretched in a gesture of embrace and sacrifice. Silhouettes of people in the background symbolize those He came to save, set against a somber environment reflecting humanity's transgressions. Focus on the dramatic chiaroscuro, with expressive hands accentuating his love and sacrifice. This composition emphasizes the duality of suffering and hope, in a Caravaggio-inspired art style, --ar 16:9",
+      "sceneNumber": "19",
+      "startTime": 856.3,
+      "endTime": 929.2,
+      "duration": 72.9,
+      "timedWords": [
+        {
+          "word": "veio",
+          "start": 856.3,
+          "end": 856.6
+        },
+        {
+          "word": "para",
+          "start": 856.6,
+          "end": 856.8
+        },
+        {
+          "word": "nos",
+          "start": 856.8,
+          "end": 857
+        },
+        {
+          "word": "abraçar",
+          "start": 857,
+          "end": 857.6
+        },
+        {
+          "word": "e",
+          "start": 857.6,
+          "end": 857.8
+        },
+        {
+          "word": "expiar",
+          "start": 857.8,
+          "end": 858.3
+        },
+        {
+          "word": "os",
+          "start": 858.3,
+          "end": 858.5
+        },
+        {
+          "word": "nossos",
+          "start": 858.5,
+          "end": 858.9
+        },
+        {
+          "word": "pecados,",
+          "start": 858.9,
+          "end": 859.5
+        },
+        {
+          "word": "carregar",
+          "start": 860,
+          "end": 860.6
+        },
+        {
+          "word": "os",
+          "start": 860.6,
+          "end": 860.8
+        },
+        {
+          "word": "nossos",
+          "start": 860.8,
+          "end": 861.2
+        },
+        {
+          "word": "pecados,",
+          "start": 861.2,
+          "end": 861.8
+        },
+        {
+          "word": "como",
+          "start": 862,
+          "end": 862.3
+        },
+        {
+          "word": "diz",
+          "start": 862.3,
+          "end": 862.5
+        },
+        {
+          "word": "o",
+          "start": 862.5,
+          "end": 862.6
+        },
+        {
+          "word": "profeta",
+          "start": 862.6,
+          "end": 863
+        },
+        {
+          "word": "Isaías:",
+          "start": 863,
+          "end": 863.5
+        },
+        {
+          "word": "Javé",
+          "start": 907,
+          "end": 907.3
+        },
+        {
+          "word": "quis",
+          "start": 907.3,
+          "end": 907.6
+        },
+        {
+          "word": "consumi-lo",
+          "start": 907.6,
+          "end": 908.2
+        },
+        {
+          "word": "em",
+          "start": 908.2,
+          "end": 908.4
+        },
+        {
+          "word": "sofrimentos.",
+          "start": 908.4,
+          "end": 909.1
+        },
+        {
+          "word": "Se",
+          "start": 909.5,
+          "end": 909.7
+        },
+        {
+          "word": "ele",
+          "start": 909.7,
+          "end": 909.9
+        },
+        {
+          "word": "oferece",
+          "start": 909.9,
+          "end": 910.4
+        },
+        {
+          "word": "sua",
+          "start": 910.4,
+          "end": 910.7
+        },
+        {
+          "word": "vida",
+          "start": 910.7,
+          "end": 911
+        },
+        {
+          "word": "em",
+          "start": 911,
+          "end": 911.2
+        },
+        {
+          "word": "expiação,",
+          "start": 911.2,
+          "end": 911.9
+        },
+        {
+          "word": "como",
+          "start": 912.2,
+          "end": 912.5
+        },
+        {
+          "word": "sacrifício",
+          "start": 912.5,
+          "end": 913.1
+        },
+        {
+          "word": "pelo",
+          "start": 913.1,
+          "end": 913.4
+        },
+        {
+          "word": "pecado,",
+          "start": 913.4,
+          "end": 913.9
+        },
+        {
+          "word": "a",
+          "start": 914.2,
+          "end": 914.4
+        },
+        {
+          "word": "vontade",
+          "start": 914.4,
+          "end": 914.9
+        },
+        {
+          "word": "de",
+          "start": 914.9,
+          "end": 915.1
+        },
+        {
+          "word": "Deus",
+          "start": 915.1,
+          "end": 915.4
+        },
+        {
+          "word": "se",
+          "start": 915.4,
+          "end": 915.6
+        },
+        {
+          "word": "cumprirá",
+          "start": 915.6,
+          "end": 916.1
+        },
+        {
+          "word": "por",
+          "start": 916.1,
+          "end": 916.3
+        },
+        {
+          "word": "ele.",
+          "start": 916.3,
+          "end": 916.7
+        },
+        {
+          "word": "Por",
+          "start": 918,
+          "end": 918.2
+        },
+        {
+          "word": "suas",
+          "start": 918.2,
+          "end": 918.5
+        },
+        {
+          "word": "dores,",
+          "start": 918.5,
+          "end": 919
+        },
+        {
+          "word": "o",
+          "start": 919.2,
+          "end": 919.4
+        },
+        {
+          "word": "justo,",
+          "start": 919.4,
+          "end": 919.8
+        },
+        {
+          "word": "meu",
+          "start": 919.8,
+          "end": 920
+        },
+        {
+          "word": "servo,",
+          "start": 920,
+          "end": 920.4
+        },
+        {
+          "word": "justificará",
+          "start": 920.7,
+          "end": 921.5
+        },
+        {
+          "word": "muitos",
+          "start": 921.5,
+          "end": 922
+        },
+        {
+          "word": "e",
+          "start": 922.2,
+          "end": 922.4
+        },
+        {
+          "word": "levará",
+          "start": 922.4,
+          "end": 922.8
+        },
+        {
+          "word": "sobre",
+          "start": 922.8,
+          "end": 923.1
+        },
+        {
+          "word": "si",
+          "start": 923.1,
+          "end": 923.3
+        },
+        {
+          "word": "suas",
+          "start": 923.3,
+          "end": 923.6
+        },
+        {
+          "word": "transgressões.",
+          "start": 923.6,
+          "end": 924.5
+        },
+        {
+          "word": "É",
+          "start": 929,
+          "end": 929.2
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-23",
+      "text": "É o milagre do sacrifício substitutivo de Jesus: Mas ele era transpassado por causa de nossas transgressões, esmagado em virtude de nossas iniquidades; por suas chagas fomos curados.",
+      "description": "Uma cena dramática em um cenário sombrio e profundo que simboliza o sacrifício de Jesus Cristo. Ele está no centro, envolto em sombras, seu corpo marcado e transpassado, em uma pose que expressa dor e redenção. Ao fundo, a luz suave e dourada de um céu ao amanhecer contrasta com as figuras obscuras que representam as transgressões da humanidade. As chagas em seu corpo brilham levemente, simbolizando cura e esperança. Detalhes como um manto rasgado e variações de luz e sombra enfatizam a intensidade emocional da cena, permeando um toque barroco. A composição busca capturar a essência do sacrifício e a profundidade do amor divino.",
+      "prompt": "A dramatic and emotional scene depicting the miraculous substitutionary sacrifice of Jesus, centered and surrounded by shadows, with wounds revealing golden light, deep contrasts emphasizing suffering and redemption, along with a soft golden dawn sky in the background, reflecting hope and healing --ar 16:9",
+      "sceneNumber": "20",
+      "startTime": 929.2,
+      "endTime": 947.2,
+      "duration": 18,
+      "timedWords": [
+        {
+          "word": "o",
+          "start": 929.2,
+          "end": 929.3
+        },
+        {
+          "word": "milagre",
+          "start": 929.3,
+          "end": 929.8
+        },
+        {
+          "word": "do",
+          "start": 929.8,
+          "end": 930
+        },
+        {
+          "word": "sacrifício",
+          "start": 930,
+          "end": 930.6
+        },
+        {
+          "word": "substitutivo",
+          "start": 930.6,
+          "end": 931.4
+        },
+        {
+          "word": "de",
+          "start": 931.4,
+          "end": 931.6
+        },
+        {
+          "word": "Jesus:",
+          "start": 931.6,
+          "end": 932.1
+        },
+        {
+          "word": "Mas",
+          "start": 934,
+          "end": 934.2
+        },
+        {
+          "word": "ele",
+          "start": 934.2,
+          "end": 934.4
+        },
+        {
+          "word": "era",
+          "start": 934.4,
+          "end": 934.6
+        },
+        {
+          "word": "transpassado",
+          "start": 934.6,
+          "end": 935.3
+        },
+        {
+          "word": "por",
+          "start": 935.3,
+          "end": 935.5
+        },
+        {
+          "word": "causa",
+          "start": 935.5,
+          "end": 935.8
+        },
+        {
+          "word": "de",
+          "start": 935.8,
+          "end": 936
+        },
+        {
+          "word": "nossas",
+          "start": 936,
+          "end": 936.4
+        },
+        {
+          "word": "transgressões,",
+          "start": 936.4,
+          "end": 937.1
+        },
+        {
+          "word": "esmagado",
+          "start": 937.5,
+          "end": 938.1
+        },
+        {
+          "word": "em",
+          "start": 938.1,
+          "end": 938.3
+        },
+        {
+          "word": "virtude",
+          "start": 938.3,
+          "end": 938.7
+        },
+        {
+          "word": "de",
+          "start": 938.7,
+          "end": 938.9
+        },
+        {
+          "word": "nossas",
+          "start": 938.9,
+          "end": 939.3
+        },
+        {
+          "word": "iniquidades;",
+          "start": 939.3,
+          "end": 940
+        },
+        {
+          "word": "por",
+          "start": 940.3,
+          "end": 940.5
+        },
+        {
+          "word": "suas",
+          "start": 940.5,
+          "end": 940.8
+        },
+        {
+          "word": "chagas",
+          "start": 940.8,
+          "end": 941.3
+        },
+        {
+          "word": "fomos",
+          "start": 941.3,
+          "end": 941.7
+        },
+        {
+          "word": "curados.",
+          "start": 941.7,
+          "end": 942.2
+        },
+        {
+          "word": "Na",
+          "start": 947,
+          "end": 947.2
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-24",
+      "text": "Na cruz, Jesus se uniu de forma indissolúvel e eterna ao coração do homem, um coração pecador, afastado de Deus e desobediente, um coração sem vida, porque o salário do pecado é a morte.",
+      "description": "Uma cena dramática de Jesus na cruz, cercado por uma escuridão intensa que contrasta com a luz dourada que emana do seu corpo. A cena é imbuída de um profundo simbolismo, com o coração do homem representado como uma figura sombria e distante, emergindo nas sombras, com expressões de dor e arrependimento. Jesus, com suas feições serenas, se estende em direção a esse coração, envolvendo-o em sua luz. As sombras dramáticas e a luz quente criam um ambiente de sofrimento, amor e redenção, evocando emoções profundas e reflexões sobre o sacrifício e a união eterna. O fundo é uma paisagem nebulosa, sem ou com baixos contornos de um mundo em desespero, enfatizando a conexão espiritual.",
+      "prompt": "I want a dramatic scene depicting Jesus on the cross, surrounded by intense darkness contrasted with golden light emanating from his body. The heart of man is portrayed as a shadowy figure in the background, embodying sin and distance from God. Jesus, with serene expression, reaches toward this heart, enveloping it in his light. Dramatic shadows and warm lighting create an atmosphere of suffering, love, and redemption. The background is a nebulous landscape, emphasizing the spiritual connection. --ar 16:9",
+      "sceneNumber": "21",
+      "startTime": 947.2,
+      "endTime": 1005.4,
+      "duration": 58.2,
+      "timedWords": [
+        {
+          "word": "cruz,",
+          "start": 947.2,
+          "end": 947.6
+        },
+        {
+          "word": "Jesus",
+          "start": 948,
+          "end": 948.3
+        },
+        {
+          "word": "se",
+          "start": 948.3,
+          "end": 948.5
+        },
+        {
+          "word": "uniu",
+          "start": 948.5,
+          "end": 948.8
+        },
+        {
+          "word": "de",
+          "start": 948.8,
+          "end": 949
+        },
+        {
+          "word": "forma",
+          "start": 949,
+          "end": 949.3
+        },
+        {
+          "word": "indissolúvel",
+          "start": 949.3,
+          "end": 950.1
+        },
+        {
+          "word": "e",
+          "start": 950.1,
+          "end": 950.3
+        },
+        {
+          "word": "eterna",
+          "start": 950.3,
+          "end": 950.8
+        },
+        {
+          "word": "ao",
+          "start": 950.8,
+          "end": 951
+        },
+        {
+          "word": "coração",
+          "start": 951,
+          "end": 951.5
+        },
+        {
+          "word": "do",
+          "start": 951.5,
+          "end": 951.7
+        },
+        {
+          "word": "homem,",
+          "start": 951.7,
+          "end": 952.1
+        },
+        {
+          "word": "um",
+          "start": 952.4,
+          "end": 952.6
+        },
+        {
+          "word": "coração",
+          "start": 952.6,
+          "end": 953.1
+        },
+        {
+          "word": "pecador,",
+          "start": 953.1,
+          "end": 953.7
+        },
+        {
+          "word": "afastado",
+          "start": 953.9,
+          "end": 954.5
+        },
+        {
+          "word": "de",
+          "start": 954.5,
+          "end": 954.7
+        },
+        {
+          "word": "Deus",
+          "start": 954.7,
+          "end": 955
+        },
+        {
+          "word": "e",
+          "start": 955,
+          "end": 955.2
+        },
+        {
+          "word": "desobediente,",
+          "start": 955.2,
+          "end": 956
+        },
+        {
+          "word": "um",
+          "start": 956.3,
+          "end": 956.5
+        },
+        {
+          "word": "coração",
+          "start": 956.5,
+          "end": 957
+        },
+        {
+          "word": "sem",
+          "start": 957,
+          "end": 957.2
+        },
+        {
+          "word": "vida,",
+          "start": 957.2,
+          "end": 957.6
+        },
+        {
+          "word": "porque",
+          "start": 958,
+          "end": 958.3
+        },
+        {
+          "word": "o",
+          "start": 958.3,
+          "end": 958.4
+        },
+        {
+          "word": "salário",
+          "start": 958.4,
+          "end": 958.9
+        },
+        {
+          "word": "do",
+          "start": 958.9,
+          "end": 959.1
+        },
+        {
+          "word": "pecado",
+          "start": 959.1,
+          "end": 959.6
+        },
+        {
+          "word": "é",
+          "start": 959.6,
+          "end": 959.8
+        },
+        {
+          "word": "a",
+          "start": 959.8,
+          "end": 959.9
+        },
+        {
+          "word": "morte.",
+          "start": 959.9,
+          "end": 960.4
+        },
+        {
+          "word": "Muitos",
+          "start": 1005,
+          "end": 1005.4
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-25",
+      "text": "Muitos santos viveram isso na sua pele. Dizia Santa Teresinha do Menino Jesus: Quisera salvar as almas e esquecer-me de mim mesma por elas. E Santa Catarina de Sena: Se fosse possível dar mil vidas, eu as daria todas pela salvação das almas. Padre Pio dizia: Não quero ir sozinho para o Paraíso; quero que venham também os meus filhos espirituais. Não quero ir sozinho para o Paraíso, quero que venham também os meus filhos espirituais.",
+      "description": "A cena retrata quatro santos em um ambiente sombrio e dramático, ressaltando o peso emocional de suas palavras. Santa Teresinha do Menino Jesus, uma jovem com semblante sereno, é iluminada por um feixe de luz dourada que destaca seu olhar profundamente compassivo. A seu lado, Santa Catarina de Sena, uma figura majestosa, ergue a mão para o céu, sua expressão de determinação e sacrifício cativando o espectador. Em um canto, Padre Pio, de olhar intenso, se volta para o povo, como se estivesse chamando seus filhos espirituais, tudo sob uma iluminação que cria intensos contrastes de luz e sombra. As vestes dos santos, em tons terrosos de ocre e vermelho profundo, contrastam com o fundo escuro, trazendo um senso de profundidade e reverência ao momento, evocando uma atmosfera carregada de significado espiritual e solidão, enquanto os rostos expressam amor e devoção, fixados em um ambiente que parece transcender o tempo. A cena convida o espectador a refletir sobre o sacrifício e a redenção que permeiam suas histórias.",
+      "prompt": "A dramatic representation of four saints, each embodying deep compassion and sacrifice under a divine glow. St. Therese of Lisieux, illuminated by a golden beam of light, expresses her desire to save souls. St. Catherine of Siena raises her hand to the heavens, exuding determination. Padre Pio looks intently at the audience, inviting his spiritual children to join him in Paradise. High contrast chiaroscuro, deep shadows, dramatic golden lighting, earthy tones. Emotional faces portraying raw emotion in a historical religious setting, emphasizing the weight of their spiritual messages. Full-screen, edge-to-edge, borderless, 16:9 aspect ratio",
+      "sceneNumber": "22",
+      "startTime": 1005.4,
+      "endTime": 1045.2,
+      "duration": 39.8,
+      "timedWords": [
+        {
+          "word": "santos",
+          "start": 1005.4,
+          "end": 1005.8
+        },
+        {
+          "word": "viveram",
+          "start": 1005.8,
+          "end": 1006.3
+        },
+        {
+          "word": "isso",
+          "start": 1006.3,
+          "end": 1006.6
+        },
+        {
+          "word": "na",
+          "start": 1006.6,
+          "end": 1006.8
+        },
+        {
+          "word": "sua",
+          "start": 1006.8,
+          "end": 1007
+        },
+        {
+          "word": "pele.",
+          "start": 1007,
+          "end": 1007.4
+        },
+        {
+          "word": "Dizia",
+          "start": 1008,
+          "end": 1008.3
+        },
+        {
+          "word": "Santa",
+          "start": 1008.3,
+          "end": 1008.7
+        },
+        {
+          "word": "Teresinha",
+          "start": 1008.7,
+          "end": 1009.3
+        },
+        {
+          "word": "do",
+          "start": 1009.3,
+          "end": 1009.5
+        },
+        {
+          "word": "Menino",
+          "start": 1009.5,
+          "end": 1009.9
+        },
+        {
+          "word": "Jesus:",
+          "start": 1009.9,
+          "end": 1010.4
+        },
+        {
+          "word": "Quisera",
+          "start": 1011,
+          "end": 1011.5
+        },
+        {
+          "word": "salvar",
+          "start": 1011.5,
+          "end": 1012
+        },
+        {
+          "word": "as",
+          "start": 1012,
+          "end": 1012.2
+        },
+        {
+          "word": "almas",
+          "start": 1012.2,
+          "end": 1012.6
+        },
+        {
+          "word": "e",
+          "start": 1012.9,
+          "end": 1013.1
+        },
+        {
+          "word": "esquecer-me",
+          "start": 1013.1,
+          "end": 1013.8
+        },
+        {
+          "word": "de",
+          "start": 1013.8,
+          "end": 1014
+        },
+        {
+          "word": "mim",
+          "start": 1014,
+          "end": 1014.2
+        },
+        {
+          "word": "mesma",
+          "start": 1014.2,
+          "end": 1014.6
+        },
+        {
+          "word": "por",
+          "start": 1014.6,
+          "end": 1014.8
+        },
+        {
+          "word": "elas.",
+          "start": 1014.8,
+          "end": 1015.2
+        },
+        {
+          "word": "E",
+          "start": 1017,
+          "end": 1017.2
+        },
+        {
+          "word": "Santa",
+          "start": 1017.2,
+          "end": 1017.6
+        },
+        {
+          "word": "Catarina",
+          "start": 1017.6,
+          "end": 1018.1
+        },
+        {
+          "word": "de",
+          "start": 1018.1,
+          "end": 1018.3
+        },
+        {
+          "word": "Sena:",
+          "start": 1018.3,
+          "end": 1018.7
+        },
+        {
+          "word": "Se",
+          "start": 1019,
+          "end": 1019.2
+        },
+        {
+          "word": "fosse",
+          "start": 1019.2,
+          "end": 1019.5
+        },
+        {
+          "word": "possível",
+          "start": 1019.5,
+          "end": 1020
+        },
+        {
+          "word": "dar",
+          "start": 1020,
+          "end": 1020.2
+        },
+        {
+          "word": "mil",
+          "start": 1020.2,
+          "end": 1020.5
+        },
+        {
+          "word": "vidas,",
+          "start": 1020.5,
+          "end": 1021
+        },
+        {
+          "word": "eu",
+          "start": 1021.2,
+          "end": 1021.4
+        },
+        {
+          "word": "as",
+          "start": 1021.4,
+          "end": 1021.6
+        },
+        {
+          "word": "daria",
+          "start": 1021.6,
+          "end": 1022
+        },
+        {
+          "word": "todas",
+          "start": 1022,
+          "end": 1022.4
+        },
+        {
+          "word": "pela",
+          "start": 1022.4,
+          "end": 1022.7
+        },
+        {
+          "word": "salvação",
+          "start": 1022.7,
+          "end": 1023.2
+        },
+        {
+          "word": "das",
+          "start": 1023.2,
+          "end": 1023.4
+        },
+        {
+          "word": "almas.",
+          "start": 1023.4,
+          "end": 1023.9
+        },
+        {
+          "word": "Padre",
+          "start": 1027,
+          "end": 1027.3
+        },
+        {
+          "word": "Pio",
+          "start": 1027.3,
+          "end": 1027.6
+        },
+        {
+          "word": "dizia:",
+          "start": 1027.6,
+          "end": 1028
+        },
+        {
+          "word": "Não",
+          "start": 1028.3,
+          "end": 1028.5
+        },
+        {
+          "word": "quero",
+          "start": 1028.5,
+          "end": 1028.8
+        },
+        {
+          "word": "ir",
+          "start": 1028.8,
+          "end": 1029
+        },
+        {
+          "word": "sozinho",
+          "start": 1029,
+          "end": 1029.5
+        },
+        {
+          "word": "para",
+          "start": 1029.5,
+          "end": 1029.7
+        },
+        {
+          "word": "o",
+          "start": 1029.7,
+          "end": 1029.8
+        },
+        {
+          "word": "Paraíso;",
+          "start": 1029.8,
+          "end": 1030.4
+        },
+        {
+          "word": "quero",
+          "start": 1030.7,
+          "end": 1031
+        },
+        {
+          "word": "que",
+          "start": 1031,
+          "end": 1031.2
+        },
+        {
+          "word": "venham",
+          "start": 1031.2,
+          "end": 1031.6
+        },
+        {
+          "word": "também",
+          "start": 1031.6,
+          "end": 1032
+        },
+        {
+          "word": "os",
+          "start": 1032,
+          "end": 1032.2
+        },
+        {
+          "word": "meus",
+          "start": 1032.2,
+          "end": 1032.5
+        },
+        {
+          "word": "filhos",
+          "start": 1032.5,
+          "end": 1032.9
+        },
+        {
+          "word": "espirituais.",
+          "start": 1032.9,
+          "end": 1033.7
+        },
+        {
+          "word": "Não",
+          "start": 1035,
+          "end": 1035.2
+        },
+        {
+          "word": "quero",
+          "start": 1035.2,
+          "end": 1035.5
+        },
+        {
+          "word": "ir",
+          "start": 1035.5,
+          "end": 1035.7
+        },
+        {
+          "word": "sozinho",
+          "start": 1035.7,
+          "end": 1036.2
+        },
+        {
+          "word": "para",
+          "start": 1036.2,
+          "end": 1036.4
+        },
+        {
+          "word": "o",
+          "start": 1036.4,
+          "end": 1036.5
+        },
+        {
+          "word": "Paraíso,",
+          "start": 1036.5,
+          "end": 1037.1
+        },
+        {
+          "word": "quero",
+          "start": 1037.4,
+          "end": 1037.7
+        },
+        {
+          "word": "que",
+          "start": 1037.7,
+          "end": 1037.9
+        },
+        {
+          "word": "venham",
+          "start": 1037.9,
+          "end": 1038.3
+        },
+        {
+          "word": "também",
+          "start": 1038.3,
+          "end": 1038.7
+        },
+        {
+          "word": "os",
+          "start": 1038.7,
+          "end": 1038.9
+        },
+        {
+          "word": "meus",
+          "start": 1038.9,
+          "end": 1039.2
+        },
+        {
+          "word": "filhos",
+          "start": 1039.2,
+          "end": 1039.6
+        },
+        {
+          "word": "espirituais.",
+          "start": 1039.6,
+          "end": 1040.4
+        },
+        {
+          "word": "Com",
+          "start": 1045,
+          "end": 1045.2
+        }
+      ],
+      "generationGuidelines": "",
+      "imageVersions": [],
+      "imageCount": 0,
+      "isPromptModified": true,
+      "promptAiModelUsed": "openai:gpt-4o-mini"
+    },
+    {
+      "id": "scene-audio-1785422226728-32",
+      "text": "Não quero ir sozinho para o Paraíso. Paz e alegria a todos! Pelas entranhas de misericórdia, transfira para si a fraqueza dos outros. Paz e alegria a todos!",
+      "description": "Cena extraída da narração em áudio.",
+      "prompt": "Cinematic landscape or scenery: Não quero ir sozinho para o Paraíso. Paz e alegria a todos! Pelas entranhas de misericórdia, transfira para si a fraqueza dos outros. Paz e alegria a todos!, 16:9 aspect ratio",
+      "sceneNumber": "23",
+      "startTime": 1638.3,
+      "endTime": 1650.4,
+      "duration": 12.1,
+      "promptQueueStatus": "idle",
+      "timedWords": [
+        {
+          "word": "quero",
+          "start": 1638.3,
+          "end": 1638.6
+        },
+        {
+          "word": "ir",
+          "start": 1638.6,
+          "end": 1638.8
+        },
+        {
+          "word": "sozinho",
+          "start": 1638.8,
+          "end": 1639.3
+        },
+        {
+          "word": "para",
+          "start": 1639.3,
+          "end": 1639.5
+        },
+        {
+          "word": "o",
+          "start": 1639.5,
+          "end": 1639.6
+        },
+        {
+          "word": "Paraíso.",
+          "start": 1639.6,
+          "end": 1640.2
+        },
+        {
+          "word": "Paz",
+          "start": 1640.5,
+          "end": 1640.8
+        },
+        {
+          "word": "e",
+          "start": 1640.8,
+          "end": 1640.9
+        },
+        {
+          "word": "alegria",
+          "start": 1640.9,
+          "end": 1641.4
+        },
+        {
+          "word": "a",
+          "start": 1641.4,
+          "end": 1641.5
+        },
+        {
+          "word": "todos!",
+          "start": 1641.5,
+          "end": 1641.9
+        },
+        {
+          "word": "Pelas",
+          "start": 1644,
+          "end": 1644.4
+        },
+        {
+          "word": "entranhas",
+          "start": 1644.4,
+          "end": 1645
+        },
+        {
+          "word": "de",
+          "start": 1645,
+          "end": 1645.2
+        },
+        {
+          "word": "misericórdia,",
+          "start": 1645.2,
+          "end": 1646
+        },
+        {
+          "word": "transfira",
+          "start": 1646.3,
+          "end": 1646.9
+        },
+        {
+          "word": "para",
+          "start": 1646.9,
+          "end": 1647.1
+        },
+        {
+          "word": "si",
+          "start": 1647.1,
+          "end": 1647.3
+        },
+        {
+          "word": "a",
+          "start": 1647.3,
+          "end": 1647.4
+        },
+        {
+          "word": "fraqueza",
+          "start": 1647.4,
+          "end": 1647.9
+        },
+        {
+          "word": "dos",
+          "start": 1647.9,
+          "end": 1648.1
+        },
+        {
+          "word": "outros.",
+          "start": 1648.1,
+          "end": 1648.6
+        },
+        {
+          "word": "Paz",
+          "start": 1648.9,
+          "end": 1649.2
+        },
+        {
+          "word": "e",
+          "start": 1649.2,
+          "end": 1649.3
+        },
+        {
+          "word": "alegria",
+          "start": 1649.3,
+          "end": 1649.8
+        },
+        {
+          "word": "a",
+          "start": 1649.8,
+          "end": 1649.9
+        },
+        {
+          "word": "todos!",
+          "start": 1649.9,
+          "end": 1650.4
+        }
+      ]
+    }
+  ],
+  "stylePreference": "auto",
+  "projectName": "DEMB_260809_V01",
+  "scriptText": "Bom dia, irmãos queridos, neste domingo, dia 19 de agosto. Bom dia, queridos irmãos e irmãs. Vamos hoje meditar a Carta de São Paulo aos Romanos, capítulo 9, versículos de 1 a 5. a ponto de desejar eu mesmo ser amaldiçoado e separado de Cristo em favor do meu povo. Como é forte essa palavra de São Paulo! Ainda mais sabendo o quanto ele amava Jesus. Para mim o viver é Cristo, e o morrer é lucro. São Paulo chega a desejar ser ele mesmo separado de Jesus para que o seu povo, os judeus, entrem em comunhão com Jesus Salvador. Está disposto a pagar um preço altíssimo para que o seu povo seja evangelizado. Está disposto a ser amaldiçoado para que os outros encontrem a bênção da fé. Será que eu estaria disposto a isso? Será que eu tenho esse fogo pela evangelização? Jesus se tornou pecado e maldição em nosso favor. Será que eu estou disposto a fazer o mesmo? Da Carta de São Paulo Apóstolo aos Romanos. Irmãos, não estou mentindo, mas em Cristo digo a verdade, apoiado no testemunho do Espírito Santo e da minha consciência. Tenho no coração uma grande tristeza e uma dor contínua, a ponto de desejar ser eu mesmo segregado por Cristo em favor de meus irmãos, os da minha raça. Eles são israelitas; a eles pertence a filiação adotiva, a glória, as alianças, as leis, o culto, as promessas e também os patriarcas. Deles é que descende, quanto à sua humanidade, Cristo, o qual está acima de todos, Deus bendito para sempre. Amém. Palavra do Senhor. Graças a Deus. São Paulo, num lance instintivo de amor, manifesta o desejo imenso de que o povo da sua raça encontre Jesus e pronuncia uma frase fortíssima: Queria ser eu anátema que significa condenado para que eles se encontrem em Jesus. Seria como dizer: estou disposto a ir para o inferno para que eles ganhem o céu. A palavra segregado se diz anátema, que era o termo pior que se podia aplicar a uma pessoa. Diz o dicionário bíblico: excomungado, maldito, que deve ser morto, eliminado do povo para que termine a sua influência maléfica. Muitas vezes é usado para os hereges e as pessoas sem Deus. É assim que São Paulo queria ser considerado, desde que o seu povo pudesse abraçar plenamente a Jesus. No Novo Testamento, anátema já não significa simplesmente amaldiçoado. Em São Paulo, designa a condição de quem está separado da comunhão salvadora e entregue ao julgamento de Deus. Ao afirmar desejaria ser eu mesmo anátema por meus irmãos, Paulo não deseja a própria condenação eterna. Utiliza a palavra mais forte que conhecia para expressar a profundidade da sua caridade. Estaria disposto a suportar toda a vergonha, rejeição, sofrimento e exclusão se isso pudesse conduzir Israel ao encontro de Cristo. Trata-se de uma linguagem extrema, inspirada no amor de Moisés pelo povo e, sobretudo, configurada ao próprio Cristo, que se faz maldição por nós. Quem de nós teria essa coragem? Mas São Paulo fala claramente: Tenho no coração uma grande tristeza e uma dor contínua, a ponto de desejar ser eu mesmo segregado por Cristo em favor de meus irmãos, os da minha raça. Esse trecho de Romanos 9, 3 revela que o verdadeiro missionário não é movido principalmente pelo desejo de convencer, mas pela dor de ver os irmãos privados da comunhão com Cristo. Paulo não consegue contemplar a incredulidade de Israel com indiferença. Seu coração participa do próprio coração do Bom Pastor, que veio procurar e salvar o que estava perdido. Por isso, sua afirmação não é um erro teológico, mas uma expressão espontânea inspirada pela caridade. Ela expressa um amor que, configurado ao de Cristo, está disposto a sacrificar tudo pela salvação dos outros. É exatamente esse amor pastoral que a Igreja reconhece como modelo de toda autêntica evangelização. São João Crisóstomo dizia: Vês como Paulo amava os judeus? Depois de tantos ultrajes, perseguições e insultos, continua a chamá-los irmãos e chega a desejar sofrer por eles. Quanto mais eles se afastam dele, tanto mais ele os ama. E assim continua: Ele imita o Senhor. Assim como Cristo se fez maldição por nós, também Paulo deseja tornar-se anátema por seus irmãos. Depois de Cristo, quem amou os homens como Paulo? Irmãos, continuamos nós. São Paulo tem o mesmo coração de Moisés, que intercede pelo povo depois do pecado do bezerro de ouro e diz: Senhor, perdoa-lhes o pecado; senão, risca-me do livro que escreveste. É claro que Deus não vai abandonar uma pessoa capaz de fazer um tal sacrifício de si por amor. Mas há um momento humano em que a própria pessoa experimenta isso, que é, sem dúvida, o momento mais doloroso da vida. Pensemos em Jesus na cruz, quando grita: Meu Deus, meu Deus, por que me abandonaste? São Paulo tem isso muito claro. Como ele mesmo diz na Segunda Carta aos Coríntios: Aquele que não cometeu pecado, Deus o fez pecado por nós, para que nele nos tornemos justiça de Deus. São Gregório Magno escreveu em sua Regra Pastoral: O pastor deve estar próximo de cada pessoa pela compaixão e, acima de todos, pela contemplação, para que ele, pelas entranhas de misericórdia, transfira para si a fraqueza dos outros e, pela elevação da contemplação, ultrapasse diariamente a si mesmo. Esse amor supremo que deseja dar a vida e pagar pela pessoa amada tem um nome: expiação, que é o poder que o amor tem de se unir a uma alma dilacerada pelo pecado para dar-lhe a vida. A evangelização não é somente um anúncio que passa pelo microfone de um show, mas uma escolha profunda de amor até o sacrifício extremo. Para nós da Missão Belém, isso é uma regra de vida, um aspecto fundamental do nosso carisma para os missionários e para todos os que seguem a missão de alguma forma. Jesus veio para nos abraçar e expiar os nossos pecados, carregar os nossos pecados, como diz o profeta Isaías: Javé quis consumi-lo em sofrimentos. Se ele oferece sua vida em expiação, como sacrifício pelo pecado, a vontade de Deus se cumprirá por ele. Por suas dores, o justo, meu servo, justificará muitos e levará sobre si suas transgressões. É o milagre do sacrifício substitutivo de Jesus: Mas ele era transpassado por causa de nossas transgressões, esmagado em virtude de nossas iniquidades; por suas chagas fomos curados. Na cruz, Jesus se uniu de forma indissolúvel e eterna ao coração do homem, um coração pecador, afastado de Deus e desobediente, um coração sem vida, porque o salário do pecado é a morte. Muitos santos viveram isso na sua pele. Dizia Santa Teresinha do Menino Jesus: Quisera salvar as almas e esquecer-me de mim mesma por elas. E Santa Catarina de Sena: Se fosse possível dar mil vidas, eu as daria todas pela salvação das almas. Padre Pio dizia: Não quero ir sozinho para o Paraíso; quero que venham também os meus filhos espirituais. Não quero ir sozinho para o Paraíso, quero que venham também os meus filhos espirituais. Com esta atitude no coração, vamos ler novamente o trecho de São Paulo e nos unir aos seus desejos e sentimentos: Irmãos, não estou mentindo, mas em Cristo digo a verdade, apoiado no testemunho do Espírito Santo e da minha consciência. Tenho no coração uma grande tristeza e uma dor contínua, a ponto de desejar ser eu mesmo segregado por Cristo em favor de meus irmãos, os da minha raça. Eles são israelitas; a eles pertence a filiação adotiva, a glória, as alianças, as leis, o culto, as promessas e também os patriarcas. Deles é que descende, quanto à sua humanidade, Cristo, o qual está acima de todos, Deus bendito para sempre. Amém. Vamos parar um pouco para sublinhar as palavras que mais nos atingem nessa leitura e na meditação que fizemos. Vamos agora escolher o nosso propósito, que seja um abraço concreto aos pobres que Deus nos coloca diante dos olhos, pobres materiais e espirituais. Dediquemos mais um minuto para pensar bem em como podemos colocar em prática esse nosso propósito. Não quero ir sozinho para o Paraíso. Paz e alegria a todos! Pelas entranhas de misericórdia, transfira para si a fraqueza dos outros. Paz e alegria a todos!",
+  "scriptReferenceImage": null,
+  "connectionGroups": [],
+  "selectedStyle": "auto",
+  "consecutiveNumbering": true,
+  "diaryDate": "2026-08-09",
+  "saveVersion": 1,
+  "updatedAt": "2026-07-30T16:03:44.821Z",
+  "isAutosave": false
+}

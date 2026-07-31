@@ -42,6 +42,7 @@ export interface StoryboardScene {
   promptQueueStatus?: "idle" | "queued" | "generating" | "completed" | "failed";
   generateImageAfterPrompt?: boolean;
   renderError?: string;
+  promptError?: string;
   isPromptModified?: boolean;
   sceneNumber?: string;
   chatHistory?: StudioChatMessage[];
@@ -49,6 +50,30 @@ export interface StoryboardScene {
   visualInstructionImage?: string;
   connectionGroupId?: string;
   imageCount?: number;
+  startTime?: number;
+  endTime?: number;
+  duration?: number;
+  wordStartIndex?: number;
+  wordEndIndex?: number;
+  timedWords?: { word: string; start: number; end: number }[];
+}
+
+export type Scene = StoryboardScene;
+
+export interface StoryboardProject {
+  id: string;
+  name: string;
+  scenes: StoryboardScene[];
+  connectionGroups?: ConnectionGroup[];
+  archivedImages?: ArchivedImage[];
+  stylePreference?: StylePreference;
+  promptAiModel?: string;
+  promptTargetTool?: string;
+  audioNarrationUrl?: string;
+  audioNarrationPath?: string;
+  totalAudioDuration?: number;
+  fps?: number;
+  updatedAt?: string;
 }
 
 export interface ConnectionGroup {

@@ -4,7 +4,8 @@ import { StoryboardScene, StylePreference, ArchivedImage, ConnectionGroup, Artis
 import ScriptInputArea from "./components/ScriptInputArea";
 import StoryboardCard from "./components/StoryboardCard";
 import { SAMPLE_SCRIPTS } from "./data/samples";
-import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, Plus, Info, Key, Eye, EyeOff, Lock, Check, Loader2, FileText, Save, Upload, Undo, Redo, Settings, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu } from "lucide-react";
+import { generateFCPXML, generateEDL, alignAudioToExistingScenes } from "./lib/timecodeUtils";
+import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, Plus, Info, Key, Eye, EyeOff, Lock, Check, Loader2, FileText, Save, Upload, Undo, Redo, Settings, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu, Mic, Edit3 } from "lucide-react";
 import { getCachedImage, setCachedImage, getCacheSizeMB, clearCache } from "./lib/cacheStore";
 import { prepareImageBlobForDownload } from "./lib/imageUtils";
 import { motion, AnimatePresence } from "motion/react";
@@ -425,6 +426,129 @@ export default function App() {
       return null;
     }
   });
+  const [availableModels, setAvailableModels] = useState<{
+    gemini: { text: string[]; image: string[] };
+    openai: { text: string[]; image: string[] };
+  }>({
+    gemini: {
+      text: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-pro", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"],
+      image: ["imagen-3.0-generate-002", "imagen-3.0-fast-001"]
+    },
+    openai: {
+      text: ["gpt-4o-mini", "gpt-4o", "gpt-4.5-preview", "o1-mini", "o3-mini"],
+      image: ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3", "dall-e-2"]
+    }
+  });
+
+  const [geminiSearchStatus, setGeminiSearchStatus] = useState<"idle" | "searching" | "success" | "error">("idle");
+  const [openaiSearchStatus, setOpenaiSearchStatus] = useState<"idle" | "searching" | "success" | "error">("idle");
+
+  const fetchAvailableModels = async (provider: "gemini" | "openai" | "all" = "all") => {
+    const isGemini = provider === "gemini" || provider === "all";
+    const isOpenai = provider === "openai" || provider === "all";
+
+    if (isGemini) setGeminiSearchStatus("searching");
+    if (isOpenai) setOpenaiSearchStatus("searching");
+
+    try {
+      const queryParams = new URLSearchParams();
+      if (customApiKey) queryParams.append("customApiKey", customApiKey);
+      if (openAiKey) queryParams.append("openAiKey", openAiKey);
+      const res = await fetch(`/api/storyboard/available-models?${queryParams.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && (data.gemini || data.openai)) {
+          const rawOpenAiText = data.openai?.text || [];
+          const rawOpenAiImage = data.openai?.image || [];
+          const allOpenAi = Array.from(new Set([...rawOpenAiText, ...rawOpenAiImage]));
+
+          const cleanOpenAiText = allOpenAi.filter(m => !m.includes("image") && !m.startsWith("dall-e"));
+          const cleanOpenAiImage = allOpenAi.filter(m => m.includes("image") || m.startsWith("dall-e"));
+
+          setAvailableModels({
+            gemini: {
+              text: data.gemini?.text || [],
+              image: data.gemini?.image || []
+            },
+            openai: {
+              text: cleanOpenAiText.length > 0 ? cleanOpenAiText : ["gpt-4o-mini", "gpt-4o", "gpt-4.5-preview", "o1-mini", "o3-mini"],
+              image: cleanOpenAiImage.length > 0 ? cleanOpenAiImage : ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3", "dall-e-2"]
+            }
+          });
+          if (isGemini) {
+            setGeminiSearchStatus("success");
+            setTimeout(() => setGeminiSearchStatus("idle"), 3000);
+          }
+          if (isOpenai) {
+            setOpenaiSearchStatus("success");
+            setTimeout(() => setOpenaiSearchStatus("idle"), 3000);
+          }
+        }
+      } else {
+        if (isGemini) {
+          setGeminiSearchStatus("error");
+          setTimeout(() => setGeminiSearchStatus("idle"), 3000);
+        }
+        if (isOpenai) {
+          setOpenaiSearchStatus("error");
+          setTimeout(() => setOpenaiSearchStatus("idle"), 3000);
+        }
+      }
+    } catch (err: any) {
+      console.warn("Failed to fetch available models:", err);
+      if (isGemini) {
+        setGeminiSearchStatus("error");
+        setTimeout(() => setGeminiSearchStatus("idle"), 3000);
+      }
+      if (isOpenai) {
+        setOpenaiSearchStatus("error");
+        setTimeout(() => setOpenaiSearchStatus("idle"), 3000);
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchAvailableModels("all");
+  }, [customApiKey, openAiKey]);
+
+  // Ollama local models integration
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [isFetchingOllamaModels, setIsFetchingOllamaModels] = useState(false);
+
+  const fetchOllamaModels = async () => {
+    setIsFetchingOllamaModels(true);
+    try {
+      const activeUrl = ollamaUrl.trim().replace(/\/$/, "");
+      const res = await fetch(`${activeUrl}/api/tags`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.models)) {
+          const names = data.models.map((m: any) => m.name);
+          setOllamaModels(names);
+          if (names.length > 0 && !names.includes(ollamaModel)) {
+            setOllamaModel(names[0]);
+          }
+          setNotification(`✓ Conexão com Ollama bem-sucedida! ${names.length} modelos locais encontrados.`);
+        } else {
+          throw new Error("Formato de resposta inesperado do Ollama.");
+        }
+      } else {
+        throw new Error(`Erro HTTP ${res.status}`);
+      }
+    } catch (err: any) {
+      console.warn("Failed to fetch Ollama models:", err);
+      setError(`Não foi possível conectar ao Ollama: ${err.message || err}. Verifique se o Ollama está rodando e configurado com OLLAMA_ORIGINS="*"`);
+    } finally {
+      setIsFetchingOllamaModels(false);
+    }
+  };
+
+  useEffect(() => {
+    if (ollamaUrl) {
+      fetchOllamaModels().catch(() => {});
+    }
+  }, []);
+
   const [isAutosaving, setIsAutosaving] = useState(false);
 
   const fetchAvailableBackups = async () => {
@@ -552,11 +676,17 @@ export default function App() {
     }
   }, [connectionGroups]);
 
+  const [audioNarrationUrl, setAudioNarrationUrl] = useState<string | undefined>();
+  const midProjectAudioInputRef = useRef<HTMLInputElement>(null);
+
+
+
   const [isConnectionMode, setIsConnectionMode] = useState(false);
   const [selectedSceneIdsForConnection, setSelectedSceneIdsForConnection] = useState<string[]>([]);
   const [selectedConnectionGroupId, setSelectedConnectionGroupId] = useState("group-1");
   const [selectedStyleTab, setSelectedStyleTab] = useState<string>("caravaggio");
   const [showEmptyScenesSubMenu, setShowEmptyScenesSubMenu] = useState(false);
+  const [showImageModelSubMenu, setShowImageModelSubMenu] = useState(false);
 
   const handleConfirmConnection = () => {
     if (selectedSceneIdsForConnection.length < 2) return;
@@ -633,9 +763,27 @@ export default function App() {
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectDate, setNewProjectDate] = useState("");
   const [newProjectScript, setNewProjectScript] = useState("");
+  const [newProjectAudioFile, setNewProjectAudioFile] = useState<File | null>(null);
+  const [newProjectAudioFileName, setNewProjectAudioFileName] = useState<string | undefined>();
+  const newProjectAudioInputRef = useRef<HTMLInputElement>(null);
   const [newProjectStyle, setNewProjectStyle] = useState<StylePreference>("auto");
   const [newProjectStyleRefImage, setNewProjectStyleRefImage] = useState<string | undefined>(undefined);
   const [newProjectEngine, setNewProjectEngine] = useState<"gemini" | "openai">("gemini");
+
+  const [showLogsModal, setShowLogsModal] = useState(false);
+  const [logsText, setLogsText] = useState("");
+
+  const handleFetchLogs = async () => {
+    try {
+      const res = await fetch("/api/storyboard/logs");
+      const txt = await res.text();
+      setLogsText(txt);
+      setShowLogsModal(true);
+    } catch (e: any) {
+      setLogsText(`Erro ao buscar logs do servidor: ${e.message || e}`);
+      setShowLogsModal(true);
+    }
+  };
 
   const [projectFolder, setProjectFolder] = useState<string>(() => {
     try {
@@ -666,12 +814,18 @@ export default function App() {
   }, [projectFolder]);
 
   useEffect(() => {
+    if (isHydrating) return;
     try {
       localStorage.setItem("ethos_project_folder", projectFolder);
+      fetch("/api/storyboard/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectFolder })
+      }).catch(() => {});
     } catch (e) {
       console.warn("Failed to persist project folder to local storage", e);
     }
-  }, [projectFolder]);
+  }, [projectFolder, isHydrating]);
 
   const [scriptReferenceImage, setScriptReferenceImage] = useState<string | undefined>(() => {
     try {
@@ -700,6 +854,34 @@ export default function App() {
       console.warn("Failed to persist project name to local storage", e);
     }
   }, [projectName]);
+
+  // Hydrate & persist audio narration URL on project reload / F5 refresh
+  useEffect(() => {
+    if (projectName) {
+      const savedUrl = localStorage.getItem(`ethos_storyboard_audio_url_${projectName}`) || localStorage.getItem("ethos_storyboard_audio_url");
+      if (savedUrl) {
+        setAudioNarrationUrl(savedUrl);
+      } else {
+        const url = `/api/projects/${projectName}/narration.wav`;
+        fetch(url, { method: "HEAD" })
+          .then((res) => {
+            if (res.ok) {
+              setAudioNarrationUrl(url);
+              localStorage.setItem(`ethos_storyboard_audio_url_${projectName}`, url);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [projectName]);
+
+  // Sync audioNarrationUrl to localStorage whenever it changes
+  useEffect(() => {
+    if (audioNarrationUrl && projectName) {
+      localStorage.setItem(`ethos_storyboard_audio_url_${projectName}`, audioNarrationUrl);
+      localStorage.setItem("ethos_storyboard_audio_url", audioNarrationUrl);
+    }
+  }, [audioNarrationUrl, projectName]);
 
   useEffect(() => {
     try {
@@ -987,26 +1169,46 @@ export default function App() {
     return data;
   };
 
-  // Synchronize state with LocalStorage and Server database for automatic session recovery
+  // Synchronize state with Server config file for automatic session recovery
   useEffect(() => {
+    if (isHydrating) return;
     try {
       localStorage.setItem("custom_gemini_key", customApiKey);
+      fetch("/api/storyboard/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customGeminiKey: customApiKey })
+      }).catch(() => {});
     } catch (err) {
       console.warn("Could not save customApiKey to localStorage:", err);
     }
-  }, [customApiKey]);
+  }, [customApiKey, isHydrating]);
 
   useEffect(() => {
+    if (isHydrating) return;
     try {
       localStorage.setItem("custom_openai_key", openAiKey);
       localStorage.setItem("use_openai_for_prompts", String(useOpenAiForPrompts));
       localStorage.setItem("openai_model", openAiModel);
       localStorage.setItem("openai_dalle_model", openAiDalleModel);
+      fetch("/api/storyboard/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customOpenAiKey: openAiKey,
+          useOpenAiForPrompts,
+          openAiModel,
+          openAiDalleModel
+        })
+      }).catch(() => {});
     } catch (err) {
       console.warn("Could not save OpenAI config to localStorage:", err);
     }
-  }, [openAiKey, useOpenAiForPrompts, openAiModel, openAiDalleModel]);
+  }, [openAiKey, useOpenAiForPrompts, openAiModel, openAiDalleModel, isHydrating]);
   useEffect(() => {
+    if (isHydrating) return;
+    if (scenes.length === 0) return;
+
     const persistScenes = async () => {
       try {
         const nowStr = new Date().toISOString();
@@ -1050,55 +1252,76 @@ export default function App() {
     persistScenes();
 
     // Sync to server storage asynchronously
-    if (scenes.length > 0) {
-      const nowStr = new Date().toISOString();
-      const payload = {
-        folder: projectFolder,
-        scenes, 
-        stylePreference,
-        projectName,
-        scriptText,
-        scriptReferenceImage,
-        connectionGroups,
-        selectedStyle,
-        consecutiveNumbering,
-        diaryDate,
-        saveVersion,
-        updatedAt: nowStr
-      };
+    const nowStr = new Date().toISOString();
+    const payload = {
+      folder: projectFolder,
+      scenes, 
+      stylePreference,
+      projectName,
+      scriptText,
+      scriptReferenceImage,
+      connectionGroups,
+      selectedStyle,
+      consecutiveNumbering,
+      diaryDate,
+      saveVersion,
+      updatedAt: nowStr
+    };
 
-      // 1. Salva no diretório do projeto físico
-      fetch("/api/storyboard/projects/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-      .then((res) => {
-        if (res.ok) {
-          setLastDiskSaveTime(new Date().toLocaleTimeString());
-        }
-      })
-      .catch((err) => console.info("Failed to save project physically:", err));
+    // 1. Salva no diretório do projeto físico
+    fetch("/api/storyboard/projects/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    .then((res) => {
+      if (res.ok) {
+        setLastDiskSaveTime(new Date().toLocaleTimeString());
+      }
+    })
+    .catch((err) => console.info("Failed to save project physically:", err));
 
-      // 2. Salva na sessão global para compatibilidade
-      fetch("/api/storyboard/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).catch((err) => console.info("Failed to sync session to legacy server storage:", err));
-    }
-  }, [scenes, stylePreference, localCacheEnabled, projectName, scriptText, scriptReferenceImage, connectionGroups, selectedStyle, consecutiveNumbering, projectFolder, diaryDate, saveVersion]);
+    // 2. Salva na sessão global para compatibilidade
+    fetch("/api/storyboard/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch((err) => console.info("Failed to sync session to legacy server storage:", err));
+  }, [scenes, stylePreference, localCacheEnabled, projectName, scriptText, scriptReferenceImage, connectionGroups, selectedStyle, consecutiveNumbering, projectFolder, diaryDate, saveVersion, isHydrating]);
 
   // Robust Session Retrieval on mount from both server and local storage with IndexedDB hydration support
   useEffect(() => {
     const loadSavedSession = async () => {
       setIsHydrating(true);
+      
+      // Load configurations from server-side user_config.json
+      let currentFolder = projectFolder;
+      try {
+        const configRes = await fetch("/api/storyboard/config");
+        if (configRes.ok) {
+          const configData = await configRes.json();
+          if (configData.customGeminiKey !== undefined) setCustomApiKey(configData.customGeminiKey);
+          if (configData.customOpenAiKey !== undefined) setOpenAiKey(configData.customOpenAiKey);
+          if (configData.useOpenAiForPrompts !== undefined) setUseOpenAiForPrompts(configData.useOpenAiForPrompts);
+          if (configData.openAiModel !== undefined) setOpenAiModel(configData.openAiModel);
+          if (configData.openAiDalleModel !== undefined) setOpenAiDalleModel(configData.openAiDalleModel);
+          if (configData.ollamaUrl !== undefined) setOllamaUrl(configData.ollamaUrl);
+          if (configData.ollamaModel !== undefined) setOllamaModel(configData.ollamaModel);
+          if (configData.projectFolder !== undefined) {
+            setProjectFolder(configData.projectFolder);
+            currentFolder = configData.projectFolder;
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load server configuration file:", err);
+      }
+
       let loadedData: any = null;
       let loadedSource: "disk" | "legacy" | "none" = "none";
 
       // 1. Tenta carregar o projeto ativo do servidor
       try {
-        const response = await fetch(`/api/storyboard/projects/load?folder=${encodeURIComponent(projectFolder)}`);
+        const response = await fetch(`/api/storyboard/projects/load?folder=${encodeURIComponent(currentFolder)}`);
         if (response.ok) {
           const resJson = await response.json();
           if (resJson.success && resJson.data && resJson.data.scenes && resJson.data.scenes.length > 0) {
@@ -1137,28 +1360,9 @@ export default function App() {
         if (localSavedScenes) {
           const parsedLocalScenes = JSON.parse(localSavedScenes);
           if (Array.isArray(parsedLocalScenes) && parsedLocalScenes.length > 0) {
-            // Se temos dados locais e dados do servidor, compara timestamps
-            if (loadedData && localUpdatedAtStr) {
-              const serverUpdatedAt = loadedData.updatedAt ? new Date(loadedData.updatedAt).getTime() : 0;
-              const localUpdatedAt = new Date(localUpdatedAtStr).getTime();
-
-              // Se o local for pelo menos 1.5 segundos mais recente, usa o local para evitar perda de dados do reload!
-              if (localUpdatedAt > serverUpdatedAt + 1500) {
-                finalData = {
-                  scenes: parsedLocalScenes,
-                  stylePreference: localStorage.getItem("ethos_storyboard_style") || loadedData.stylePreference,
-                  projectName: localStorage.getItem("ethos_storyboard_project_name") || loadedData.projectName,
-                  scriptText: localStorage.getItem("ethos_storyboard_script_text") || loadedData.scriptText,
-                  selectedStyle: localStorage.getItem("ethos_storyboard_selected_style") || loadedData.selectedStyle,
-                  connectionGroups: JSON.parse(localStorage.getItem("ethos_storyboard_connection_groups") || "[]"),
-                  consecutiveNumbering: localStorage.getItem("ethos_storyboard_consecutive_numbering") !== "false",
-                  diaryDate: localStorage.getItem("ethos_storyboard_diary_date") || loadedData.diaryDate || "",
-                  saveVersion: localStorage.getItem("ethos_storyboard_save_version") ? Number(localStorage.getItem("ethos_storyboard_save_version")) : (loadedData.saveVersion || 1),
-                  updatedAt: localUpdatedAtStr
-                };
-                usedLocalOverServer = true;
-              }
-            } else if (!loadedData) {
+            // LocalStorage fallback comparison is skipped unless server file has no scenes or fails.
+            // This ensures browser caching does not corrupt correct physical server assets.
+            if (!loadedData) {
               // Se não há dados no servidor, restaura local diretamente
               finalData = {
                 scenes: parsedLocalScenes,
@@ -1245,7 +1449,7 @@ export default function App() {
     };
 
     loadSavedSession();
-  }, [projectFolder]);
+  }, []);
 
   // Synchronize all scene images (active or versioned) into the session image archive to ensure they are always present in the "Acervo Imagens"
   useEffect(() => {
@@ -1663,11 +1867,13 @@ Output MUST be valid JSON only, matching this schema exactly:
         } else {
           setNotification("Storyboard gerado com sucesso pelo Art Director AI!");
         }
+        return initializedScenes;
       } else {
         throw new Error("Formato de resposta inválido recebido da IA.");
       }
     } catch (err: any) {
       setError(err.message || "Erro de conexão com o servidor.");
+      return [];
     } finally {
       setIsGenerating(false);
     }
@@ -1919,9 +2125,15 @@ Output MUST be valid JSON only, matching this schema exactly:
         const matchedStyle = artisticStyles.find(s => s.id === resolvedStyleId);
         const stylePrompt = matchedStyle ? matchedStyle.prompt : "";
 
-        if (requestedModel === "ollama") {
+        const isOllama = requestedModel === "ollama" || requestedModel.startsWith("ollama:");
+
+        if (isOllama) {
           // Local browser Ollama fetch!
           const activeOllamaUrl = ollamaUrl.trim().replace(/\/$/, "");
+          let resolvedOllamaModel = ollamaModel;
+          if (requestedModel.startsWith("ollama:")) {
+            resolvedOllamaModel = requestedModel.replace(/^ollama:/, "");
+          }
           const systemInstruction = `You are an expert film director and AI storyboard prompt engineer. Your task is to generate:
 1. A descriptive cinematic art direction segment in Brazilian Portuguese (PT-BR) under 150 words ("description").
 2. A matching high-quality English image prompt for an AI image generator, which MUST end with '16:9 aspect ratio' ("prompt").
@@ -1945,7 +2157,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               "Content-Type": "application/json"
             },
             body: JSON.stringify({
-              model: ollamaModel,
+              model: resolvedOllamaModel,
               prompt: `${systemInstruction}\n\n${userPromptText}`,
               stream: false,
               options: {
@@ -2026,10 +2238,11 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           description: data.description || nextToGenerate.description,
           prompt: data.prompt || nextToGenerate.prompt,
           promptQueueStatus: undefined,
+          promptError: undefined,
           generateImageAfterPrompt: undefined,
           renderStatus: shouldQueueImage ? "queued" : nextToGenerate.renderStatus,
           renderError: shouldQueueImage ? undefined : nextToGenerate.renderError,
-          promptAiModelUsed: requestedModel === "ollama" ? "ollama" : data.promptAiModelUsed,
+          promptAiModelUsed: isOllama ? requestedModel : data.promptAiModelUsed,
           isPromptModified: true, // Mark it so that "Gerar todos" transitions properly
         }, true);
 
@@ -2040,12 +2253,14 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         }
       } catch (err: any) {
         console.error(`Prompt queue generator fail for ${nextToGenerate.id}:`, err);
+        const errMsg = err.message || String(err);
         handleUpdateScene(nextToGenerate.id, {
           promptQueueStatus: "failed",
+          promptError: errMsg,
           generateImageAfterPrompt: undefined
         });
         const sceneIndex = scenes.findIndex((s) => s.id === nextToGenerate.id);
-        setError(`Erro ao gerar prompt da cena #${sceneIndex !== -1 ? sceneIndex + 1 : "?"}: ${err.message || err}`);
+        setError(`Erro ao gerar prompt da cena #${sceneIndex !== -1 ? sceneIndex + 1 : "?"}: ${errMsg}`);
       } finally {
         activePromptIdRef.current = null;
         setActivePromptId(null);
@@ -2227,8 +2442,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     setNotification("✓ Geração de imagem cancelada. A cena foi destravada!");
   };
 
-  // Add all scenes without images to the render queue
-  const handleQueueAllPendingImages = () => {
+  // Add all scenes without images to the render queue with optional explicit image model selection
+  const handleQueueAllPendingImages = (selectedModel?: string) => {
     const pendingCount = scenes.filter(s => !s.generatedImageUrl).length;
     if (pendingCount === 0) {
       setNotification("Todas as cenas já possuem imagens geradas.");
@@ -2238,12 +2453,17 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     setScenes((prev) =>
       prev.map((s) => {
         if (!s.generatedImageUrl) {
-          return { ...s, renderStatus: "queued", renderError: undefined };
+          return { 
+            ...s, 
+            renderStatus: "queued", 
+            renderError: undefined,
+            ...(selectedModel ? { selectedModel: selectedModel, promptTargetTool: selectedModel } : {})
+          };
         }
         return s;
       })
     );
-    setNotification(`${pendingCount} cenas sem imagem foram adicionadas à fila de renderização!`);
+    setNotification(`${pendingCount} cenas sem imagem foram adicionadas à fila de renderização${selectedModel ? ` (Modelo: ${selectedModel})` : ""}!`);
   };
 
   // Generate prompts for empty scenes AND auto-queue images once prompts complete
@@ -2272,6 +2492,34 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       })
     );
     setNotification("✓ Prompts + Imagens enfileirados para todas as cenas vazias!");
+    setShowQueuePanel(true);
+  };
+
+  // Generate prompts ONLY for empty/placeholder scenes (without generating images)
+  const handleGenerateAllEmptyPromptsOnly = () => {
+    pushToHistory();
+    let count = 0;
+    setScenes((prev) =>
+      prev.map((s) => {
+        const isPlaceholderPrompt = !s.prompt || 
+          s.prompt.trim() === "" || 
+          s.prompt.includes("Aguardando") || 
+          s.prompt.includes("Cinematic landscape or scenery:") ||
+          s.description.includes("Aguardando") ||
+          s.description.includes("Cena extraída da narração em áudio");
+
+        if (isPlaceholderPrompt) {
+          count++;
+          return {
+            ...s,
+            promptQueueStatus: "queued",
+            generateImageAfterPrompt: false
+          };
+        }
+        return s;
+      })
+    );
+    setNotification(`✓ Direção de Arte (Prompts) enfileirada para ${count} cenas!`);
     setShowQueuePanel(true);
   };
 
@@ -2359,6 +2607,35 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       scene1Num = parentNum;
       scene2Num = naturalNext;
     }
+
+    // Timecode split calculation
+    const totalDuration = originalScene.duration || 3;
+    const totalTextLength = (part1.length + part2.length) || 1;
+    const ratio1 = Math.max(0.2, Math.min(0.8, part1.length / totalTextLength));
+    
+    let splitTime = originalScene.startTime !== undefined
+      ? Number((originalScene.startTime + totalDuration * ratio1).toFixed(2))
+      : undefined;
+
+    if (originalScene.timedWords && originalScene.timedWords.length > 0) {
+      const part1Words = part1.trim().split(/\s+/).filter(Boolean);
+      if (part1Words.length > 0 && part1Words.length < originalScene.timedWords.length) {
+        const lastWordOfPart1 = originalScene.timedWords[part1Words.length - 1];
+        if (lastWordOfPart1) {
+          splitTime = Number(lastWordOfPart1.end.toFixed(2));
+        }
+      }
+    }
+
+    const startWIdx = originalScene.wordStartIndex;
+    const endWIdx = originalScene.wordEndIndex;
+    let splitWIdx: number | undefined = undefined;
+
+    if (startWIdx !== undefined && endWIdx !== undefined && endWIdx >= startWIdx) {
+      const totalWords = endWIdx - startWIdx + 1;
+      const part1WordCount = Math.max(1, Math.min(totalWords - 1, Math.round(totalWords * ratio1)));
+      splitWIdx = startWIdx + part1WordCount - 1;
+    }
     
     const newScene1: StoryboardScene = {
       id: `scene-split-${Date.now()}-1`,
@@ -2379,6 +2656,14 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       renderTimeSeconds: originalScene.renderTimeSeconds,
       isPromptModified: originalScene.isPromptModified,
       chatHistory: originalScene.chatHistory || [],
+      startTime: originalScene.startTime,
+      endTime: splitTime,
+      duration: (originalScene.startTime !== undefined && splitTime !== undefined)
+        ? Math.max(0.5, Number((splitTime - originalScene.startTime).toFixed(2)))
+        : undefined,
+      wordStartIndex: startWIdx,
+      wordEndIndex: splitWIdx ?? endWIdx,
+      timedWords: originalScene.timedWords ? originalScene.timedWords.slice(0, Math.ceil(originalScene.timedWords.length * ratio1)) : undefined
     };
 
     const newScene2: StoryboardScene = {
@@ -2391,6 +2676,14 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       sceneStylePreference: originalScene.sceneStylePreference || "auto",
       promptAiModel: originalScene.promptAiModel || "gemini-3.5-flash",
       promptTargetTool: originalScene.promptTargetTool || "Nano Banana",
+      startTime: splitTime,
+      endTime: originalScene.endTime,
+      duration: (splitTime !== undefined && originalScene.endTime !== undefined)
+        ? Math.max(0.5, Number((originalScene.endTime - splitTime).toFixed(2)))
+        : undefined,
+      wordStartIndex: splitWIdx !== undefined ? splitWIdx + 1 : startWIdx,
+      wordEndIndex: endWIdx,
+      timedWords: originalScene.timedWords ? originalScene.timedWords.slice(Math.ceil(originalScene.timedWords.length * ratio1)) : undefined
     };
 
     const updated = [...scenes];
@@ -2415,12 +2708,25 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     const num1 = current.sceneNumber || String(index + 1);
     const num2 = next.sceneNumber || String(index + 2);
 
+    const start = current.startTime;
+    const end = next.endTime ?? (next.startTime !== undefined ? next.startTime + (next.duration || 3) : undefined);
+    const duration = (start !== undefined && end !== undefined) ? Math.max(0.5, Number((end - start).toFixed(2))) : undefined;
+
     const mergedScene: StoryboardScene = {
       id: `scene-merge-${Date.now()}`,
       text: mergedText,
       description: mergedDescription,
       prompt: mergedPrompt,
       sceneNumber: num1,
+      startTime: start,
+      endTime: end,
+      duration: duration,
+      wordStartIndex: current.wordStartIndex ?? next.wordStartIndex,
+      wordEndIndex: next.wordEndIndex ?? current.wordEndIndex,
+      timedWords: [
+        ...(current.timedWords || []),
+        ...(next.timedWords || [])
+      ]
     };
 
     const updated = [...scenes];
@@ -2545,6 +2851,299 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     link.click();
     document.body.removeChild(link);
     setNotification("Arquivo de texto dos prompts exportado com sucesso!");
+  };
+
+  // Handle project creation with audio narration
+  const handleGenerateStoryboardWithAudio = async (params: {
+    text: string;
+    style: StylePreference;
+    referenceImage?: string;
+    selectedEngine?: "gemini" | "openai" | "ollama";
+    audioFile?: File | null;
+    audioBase64?: string;
+    audioMimeType?: string;
+    audioFileName?: string;
+    explicitProjectName?: string;
+  }) => {
+    const { text, style, referenceImage, selectedEngine, audioFile, audioBase64, audioMimeType, explicitProjectName } = params;
+
+    if (!audioFile && !audioBase64) {
+      handleGenerateStoryboard(text, style, referenceImage, selectedEngine);
+      return;
+    }
+
+    setIsGenerating(true);
+    setNotification("🎙️ Enviando e transcrevendo áudio da narração via IA...");
+
+    try {
+      const activeProjectName = explicitProjectName || projectName || "meu-projeto";
+      let response: Response;
+
+      if (audioFile) {
+        const formData = new FormData();
+        formData.append("audio", audioFile);
+        formData.append("projectName", activeProjectName);
+
+        response = await fetch("/api/storyboard/transcribe-audio", {
+          method: "POST",
+          headers: {
+            ...(customApiKey ? { "x-gemini-key": customApiKey } : {})
+          },
+          body: formData
+        });
+      } else {
+        response = await fetch("/api/storyboard/transcribe-audio", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(customApiKey ? { "x-gemini-key": customApiKey } : {})
+          },
+          body: JSON.stringify({
+            audioBase64,
+            audioMimeType,
+            projectName: activeProjectName
+          })
+        });
+      }
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Falha ao processar o áudio.");
+      }
+
+      const audioData = await response.json();
+      if (audioData.audioUrl) {
+        setAudioNarrationUrl(audioData.audioUrl);
+      }
+
+      const scriptToUse = (text && text.trim()) || audioData.fullScript || (audioData.scenes || []).map((s: any) => s.text).join("\n\n") || "Narração em áudio importada.";
+      setScriptText(scriptToUse);
+
+      let createdScenes: StoryboardScene[] = [];
+
+      // If text script was empty or if audio transcription produced scenes natively
+      if (!text && audioData.scenes && Array.isArray(audioData.scenes) && audioData.scenes.length > 0) {
+        createdScenes = audioData.scenes.map((s: any, idx: number) => ({
+          id: `scene-audio-${Date.now()}-${idx}`,
+          text: s.text || "",
+          description: "Cena extraída da narração em áudio.",
+          prompt: `Cinematic landscape or scenery: ${s.text || "narration"}, 16:9 aspect ratio`,
+          sceneNumber: String(idx + 1),
+          startTime: s.startTime,
+          endTime: s.endTime,
+          duration: s.endTime - s.startTime,
+          promptQueueStatus: "idle"
+        }));
+      } else {
+        // Generate scenes via text engine
+        createdScenes = await handleGenerateStoryboard(scriptToUse, style, referenceImage, selectedEngine) || [];
+      }
+
+      // Robust fallback: if createdScenes is empty, split scriptToUse into scenes locally
+      if (!createdScenes || createdScenes.length === 0) {
+        const sentences = scriptToUse.split(/(?<=[.!?])\s+|\n+/).map(s => s.trim()).filter(s => s.length > 0);
+        const segments = sentences.length > 0 ? sentences : [scriptToUse];
+        createdScenes = segments.map((segText, idx) => ({
+          id: `scene-audio-${Date.now()}-${idx}`,
+          text: segText,
+          description: "Cena extraída da narração em áudio.",
+          prompt: `Cinematic landscape or scenery: ${segText}, 16:9 aspect ratio`,
+          sceneNumber: String(idx + 1),
+          promptQueueStatus: "idle"
+        }));
+      }
+
+      // Align timecodes safely in memory
+      if (audioData.timedWords && Array.isArray(createdScenes) && createdScenes.length > 0) {
+        const aligned = alignAudioToExistingScenes(createdScenes, audioData.timedWords);
+        setScenes(aligned);
+        setNotification("✓ Narração transcrevida e timecodes sincronizados com sucesso!");
+      } else if (Array.isArray(createdScenes) && createdScenes.length > 0) {
+        setScenes(createdScenes);
+        setNotification("✓ Narração transcrevida com sucesso!");
+      }
+      setActiveView("storyboard");
+    } catch (err: any) {
+      console.error("Audio generation fail:", err);
+      setError(`Erro na transcrição do áudio: ${err.message || err}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Handle mid-project audio upload & alignment
+  const handleMidProjectAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+
+    setNotification(`🎙️ Enviando áudio "${file.name}" para alinhamento de timecodes...`);
+
+    try {
+      const formData = new FormData();
+      formData.append("audio", file);
+      formData.append("projectName", projectName || "meu-projeto");
+
+      const response = await fetch("/api/storyboard/transcribe-audio", {
+        method: "POST",
+        headers: {
+          ...(customApiKey ? { "x-gemini-key": customApiKey } : {})
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Falha ao processar áudio.");
+      }
+
+      const data = await response.json();
+      if (data.audioUrl) setAudioNarrationUrl(data.audioUrl);
+
+      if (data.timedWords && scenes.length > 0) {
+        const alignedScenes = alignAudioToExistingScenes(scenes, data.timedWords);
+        setScenes(alignedScenes);
+        setNotification("✓ Narração em áudio alinhada com sucesso! Timecodes gerados para todas as cenas.");
+      } else {
+        setNotification("✓ Arquivo de áudio anexado ao projeto.");
+      }
+    } catch (err: any) {
+      console.error("Mid-project audio fail:", err);
+      setError(`Erro ao alinhar áudio: ${err.message || err}`);
+    }
+  };
+
+  // Re-sync all current scene timecodes with audio narration using N-Gram matcher
+  const handleResyncCurrentProjectAudio = async () => {
+    if (!scenes || scenes.length === 0) {
+      setNotification("Nenhuma cena disponível para re-sincronizar.");
+      return;
+    }
+    setIsGenerating(true);
+    setNotification("🎙️ Re-processando áudio do projeto e calculando timecodes N-Gram de 8 palavras...");
+
+    try {
+      const cleanedScenes = scenes.map(s => ({
+        ...s,
+        wordStartIndex: undefined,
+        wordEndIndex: undefined,
+        startTime: undefined,
+        endTime: undefined
+      }));
+
+      const projName = projectName || "meu-projeto";
+      const formData = new FormData();
+      formData.append("projectName", projName);
+
+      // 1. Check if audioNarrationUrl is available in memory or localStorage
+      const currentAudioUrl = audioNarrationUrl || localStorage.getItem(`ethos_storyboard_audio_url_${projName}`) || localStorage.getItem("ethos_storyboard_audio_url");
+
+      if (currentAudioUrl) {
+        if (currentAudioUrl.startsWith("data:audio")) {
+          try {
+            const parts = currentAudioUrl.split(",");
+            const mimeMatch = parts[0].match(/:(.*?);/);
+            const mime = mimeMatch ? mimeMatch[1] : "audio/wav";
+            const bstr = atob(parts[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+              u8arr[n] = bstr.charCodeAt(n);
+            }
+            const audioBlob = new Blob([u8arr], { type: mime });
+            formData.append("audio", audioBlob, "narration.wav");
+          } catch (e) {
+            console.warn("Failed to parse data URL audio blob:", e);
+          }
+        } else if (currentAudioUrl.startsWith("blob:") || currentAudioUrl.startsWith("/api/projects")) {
+          try {
+            const blobRes = await fetch(currentAudioUrl);
+            if (blobRes.ok) {
+              const audioBlob = await blobRes.blob();
+              formData.append("audio", audioBlob, "narration.wav");
+            }
+          } catch (blobErr) {
+            console.warn("Failed to fetch audio blob for re-sync:", blobErr);
+          }
+        }
+      }
+
+      // 2. Stream FormData to transcribe-audio endpoint
+      const response = await fetch(`/api/storyboard/transcribe-audio`, {
+        method: "POST",
+        headers: { ...(customApiKey ? { "x-gemini-key": customApiKey } : {}) },
+        body: formData
+      });
+
+      if (response.ok) {
+        const audioData = await response.json();
+        if (audioData.audioUrl) {
+          setAudioNarrationUrl(audioData.audioUrl);
+          localStorage.setItem(`ethos_storyboard_audio_url_${projName}`, audioData.audioUrl);
+        }
+        if (audioData.timedWords && Array.isArray(audioData.timedWords) && audioData.timedWords.length > 0) {
+          const aligned = alignAudioToExistingScenes(cleanedScenes, audioData.timedWords);
+          setScenes(aligned);
+          setTimeout(() => triggerAutosave(aligned), 0);
+          setNotification("✓ Todos os timecodes do projeto foram re-sincronizados com 100% de precisão e salvos!");
+          return;
+        }
+      }
+
+      // Fallback: organize scenes sequentially if no audio transcription returned
+      const fallbackAligned = alignAudioToExistingScenes(cleanedScenes, []);
+      setScenes(fallbackAligned);
+      setTimeout(() => triggerAutosave(fallbackAligned), 0);
+      setNotification("✓ Timecodes organizados em sequência com sucesso!");
+    } catch (err: any) {
+      console.warn("Re-sync audio failed:", err);
+      const cleanedScenes = scenes.map(s => ({
+        ...s,
+        wordStartIndex: undefined,
+        wordEndIndex: undefined,
+        startTime: undefined,
+        endTime: undefined
+      }));
+      const fallbackAligned = alignAudioToExistingScenes(cleanedScenes, []);
+      setScenes(fallbackAligned);
+      setTimeout(() => triggerAutosave(fallbackAligned), 0);
+      setNotification("✓ Timecodes re-organizados em sequência!");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Export FCPXML / Premiere XML
+  const handleExportXML = () => {
+    if (scenes.length === 0) return;
+    const projName = projectName || "meu-projeto";
+    const xmlStr = generateFCPXML(scenes, "narration.mp3", 24, projName);
+    const blob = new Blob([xmlStr], { type: "application/xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${projName.replace(/\s+/g, "_")}_timeline.xml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setNotification("✓ Timeline XML (Premiere / DaVinci) exportada com sucesso!");
+  };
+
+  // Export CMX 3600 EDL
+  const handleExportEDL = () => {
+    if (scenes.length === 0) return;
+    const projName = projectName || "meu-projeto";
+    const edlStr = generateEDL(scenes, "narration.mp3", 24, projName);
+    const blob = new Blob([edlStr], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${projName.replace(/\s+/g, "_")}_timeline.edl`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setNotification("✓ Timeline EDL exportada com sucesso!");
   };
 
   // Export full project file (.dmaker) containing all text, state, prompts, and generated base64/remote images in a zip package
@@ -2931,6 +3530,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           const guessedName = fileName.replace(/\.(dmaker|diariomaker|zip)$/i, "").replace(/[-_]+/g, " ");
           setProjectName(guessedName);
         }
+        setProjectFolder("260802");
         if (data.scriptText !== undefined) setScriptText(data.scriptText);
         if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
         if (data.stylePreference !== undefined) setStylePreference(data.stylePreference);
@@ -3521,21 +4121,94 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 {showEmptyScenesSubMenu && (
                   <div className="absolute right-0 top-full mt-1.5 z-50 bg-[#161616] border border-[#333] rounded p-1.5 shadow-xl flex flex-col gap-1 min-w-[130px] animate-fadeIn">
                     
-                    {/* Button 1: Gera Imagens Vazias (Icon + "imagens") */}
+                    {/* Button 1: Gerar Apenas Prompts (Icon + "Prompts") */}
                     <button
                       type="button"
                       onClick={() => {
-                        handleQueueAllPendingImages();
+                        handleGenerateAllEmptyPromptsOnly();
                         setShowEmptyScenesSubMenu(false);
                       }}
-                      className="w-full px-2 py-1 bg-amber-950/40 hover:bg-amber-500 hover:text-black text-amber-300 border border-amber-800/50 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
-                      title="Gera imagens apenas para as cenas que não têm foto"
+                      className="w-full px-2 py-1 bg-amber-500/10 hover:bg-amber-500 hover:text-black text-amber-400 border border-amber-500/30 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
+                      title="Gera apenas as descrições visuais e prompts das cenas sem gerar imagens"
                     >
-                      <Image size={11} />
-                      <span>imagens</span>
+                      <Edit3 size={11} />
+                      <span>Prompts</span>
                     </button>
 
-                    {/* Button 2: Gerar Todos (Icon + "Prpt+Img") */}
+                    {/* Button 2: Gera Imagens Vazias (with Submenu Model Selection) */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowImageModelSubMenu(!showImageModelSubMenu)}
+                        className="w-full px-2 py-1 bg-amber-950/40 hover:bg-amber-500 hover:text-black text-amber-300 border border-amber-800/50 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center justify-between gap-1.5 transition-all cursor-pointer"
+                        title="Gera imagens apenas para as cenas que não têm foto — selecione o modelo de IA desejado"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Image size={11} />
+                          <span>Imagens</span>
+                        </div>
+                        <span className="text-[8px] ml-1">{showImageModelSubMenu ? "◄" : "►"}</span>
+                      </button>
+
+                      {/* Image Model Selection Flyout Submenu */}
+                      {showImageModelSubMenu && (
+                        <div className="absolute right-full top-0 mr-1.5 z-50 bg-[#141414] border border-[#D4AF37]/50 rounded p-1.5 shadow-2xl flex flex-col gap-1 min-w-[170px] animate-fadeIn">
+                          <div className="px-2 py-0.5 text-[8px] font-mono uppercase tracking-widest text-[#D4AF37] border-b border-[#333] font-bold mb-1">
+                            Modelo de Imagem:
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleQueueAllPendingImages("gemini-2.5-flash-image");
+                              setShowImageModelSubMenu(false);
+                              setShowEmptyScenesSubMenu(false);
+                            }}
+                            className="w-full px-2 py-1 text-left bg-[#1f1f1f] hover:bg-[#D4AF37] hover:text-black text-amber-300 text-[9px] font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <span>🍌 Nano Banana (Flash)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleQueueAllPendingImages("imagen-3.0-generate-002");
+                              setShowImageModelSubMenu(false);
+                              setShowEmptyScenesSubMenu(false);
+                            }}
+                            className="w-full px-2 py-1 text-left bg-[#1f1f1f] hover:bg-[#D4AF37] hover:text-black text-amber-300 text-[9px] font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <span>🎨 Google Imagen 3</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleQueueAllPendingImages("imagen-3.0-fast-generate-001");
+                              setShowImageModelSubMenu(false);
+                              setShowEmptyScenesSubMenu(false);
+                            }}
+                            className="w-full px-2 py-1 text-left bg-[#1f1f1f] hover:bg-[#D4AF37] hover:text-black text-amber-300 text-[9px] font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <span>⚡ Fast Imagen 3</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleQueueAllPendingImages("gpt-image-2");
+                              setShowImageModelSubMenu(false);
+                              setShowEmptyScenesSubMenu(false);
+                            }}
+                            className="w-full px-2 py-1 text-left bg-[#1f1f1f] hover:bg-[#D4AF37] hover:text-black text-amber-300 text-[9px] font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <span>🤖 OpenAI GPT-Image 2</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Button 3: Gerar Todos (Icon + "Prpt+Img") */}
                     <button
                       type="button"
                       onClick={() => {
@@ -3897,6 +4570,55 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                             <p className="text-[9px] text-slate-300">{keyTestResult.message}</p>
                           </div>
                         )}
+
+                        {/* Dynamic Gemini Models list */}
+                        <div className="space-y-3 pt-3 border-t border-[#2b2b2b]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase tracking-wider text-[#D4AF37] font-mono font-bold">
+                              Modelos Gemini Disponíveis
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => fetchAvailableModels("gemini")}
+                              disabled={geminiSearchStatus === "searching"}
+                              className={`text-[9px] uppercase font-mono px-2 py-0.5 rounded border transition-all cursor-pointer disabled:opacity-50 ${
+                                geminiSearchStatus === "success"
+                                  ? "bg-emerald-950/40 border-emerald-900/60 text-emerald-400 font-bold"
+                                  : geminiSearchStatus === "error"
+                                  ? "bg-rose-950/40 border-rose-900/60 text-rose-400 font-bold"
+                                  : "border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                              }`}
+                            >
+                              {geminiSearchStatus === "searching" && "⏳ Buscando..."}
+                              {geminiSearchStatus === "success" && "✓ Atualizado!"}
+                              {geminiSearchStatus === "error" && "✗ Falha!"}
+                              {geminiSearchStatus === "idle" && "🔎 Buscar Online"}
+                            </button>
+                          </div>
+                          
+                          <div className="space-y-2 max-h-36 overflow-y-auto bg-black/20 p-2.5 rounded border border-[#222]">
+                            <div className="space-y-1">
+                              <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Prompt (Texto):</span>
+                              <div className="flex flex-wrap gap-1">
+                                {(availableModels.gemini?.text || []).map((m) => (
+                                  <span key={m} className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 text-[9px] rounded text-slate-350 font-mono">
+                                    {m}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-1 pt-1.5 border-t border-[#222]">
+                              <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Imagem (Imagen):</span>
+                              <div className="flex flex-wrap gap-1">
+                                {(availableModels.gemini?.image || []).map((m) => (
+                                  <span key={m} className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 text-[9px] rounded text-emerald-450 font-mono">
+                                    {m}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -3961,7 +4683,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                 </label>
                                 <div className="flex gap-1.5">
                                   <select
-                                    value={["gpt-4o-mini", "gpt-4o", "o1-mini"].includes(openAiModel) ? openAiModel : "custom"}
+                                    value={(availableModels.openai?.text || []).includes(openAiModel) ? openAiModel : (openAiModel === "" ? "" : "custom")}
                                     onChange={(e) => {
                                       const val = e.target.value;
                                       if (val !== "custom") {
@@ -3972,12 +4694,12 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                     }}
                                     className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
                                   >
-                                    <option value="gpt-4o-mini">gpt-4o-mini (Recomendado)</option>
-                                    <option value="gpt-4o">gpt-4o (Ultra Inteligente)</option>
-                                    <option value="o1-mini">o1-mini (Raciocínio Lógico)</option>
+                                    {(availableModels.openai?.text || []).map((m) => (
+                                      <option key={m} value={m}>{m}</option>
+                                    ))}
                                     <option value="custom">✍ Digitar ID de Modelo Personalizado...</option>
                                   </select>
-                                  {(!["gpt-4o-mini", "gpt-4o", "o1-mini"].includes(openAiModel) || openAiModel === "") && (
+                                  {(!(availableModels.openai?.text || []).includes(openAiModel) || openAiModel === "") && (
                                     <input
                                       type="text"
                                       value={openAiModel}
@@ -3997,7 +4719,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                               </label>
                               <div className="flex gap-1.5">
                                 <select
-                                  value={["dall-e-3", "dall-e-2"].includes(openAiDalleModel) ? openAiDalleModel : "custom"}
+                                  value={(availableModels.openai?.image || []).includes(openAiDalleModel) ? openAiDalleModel : (openAiDalleModel === "" ? "" : "custom")}
                                   onChange={(e) => {
                                     const val = e.target.value;
                                     if (val !== "custom") {
@@ -4008,11 +4730,12 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                   }}
                                   className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
                                 >
-                                  <option value="dall-e-3">DALL-E 3 (Qualidade Cinematográfica)</option>
-                                  <option value="dall-e-2">DALL-E 2 (Rápido e Simples)</option>
+                                  {(availableModels.openai?.image || []).map((m) => (
+                                    <option key={m} value={m}>{m}</option>
+                                  ))}
                                   <option value="custom">✍ Digitar ID de Modelo Personalizado...</option>
                                 </select>
-                                {(!["dall-e-3", "dall-e-2"].includes(openAiDalleModel) || openAiDalleModel === "") && (
+                                {(!(availableModels.openai?.image || []).includes(openAiDalleModel) || openAiDalleModel === "") && (
                                   <input
                                     type="text"
                                     value={openAiDalleModel}
@@ -4021,6 +4744,55 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                     className="w-1/2 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
                                   />
                                 )}
+                              </div>
+                            </div>
+                            
+                            {/* Dynamic OpenAI Models list */}
+                            <div className="space-y-3 pt-3 border-t border-[#2b2b2b]">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] uppercase tracking-wider text-[#D4AF37] font-mono font-bold">
+                                  Modelos OpenAI Disponíveis
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => fetchAvailableModels("openai")}
+                                  disabled={openaiSearchStatus === "searching"}
+                                  className={`text-[9px] uppercase font-mono px-2 py-0.5 rounded border transition-all cursor-pointer disabled:opacity-50 ${
+                                    openaiSearchStatus === "success"
+                                      ? "bg-emerald-950/40 border-emerald-900/60 text-emerald-400 font-bold"
+                                      : openaiSearchStatus === "error"
+                                      ? "bg-rose-950/40 border-rose-900/60 text-rose-400 font-bold"
+                                      : "border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                                  }`}
+                                >
+                                  {openaiSearchStatus === "searching" && "⏳ Buscando..."}
+                                  {openaiSearchStatus === "success" && "✓ Atualizado!"}
+                                  {openaiSearchStatus === "error" && "✗ Falha!"}
+                                  {openaiSearchStatus === "idle" && "🔎 Buscar Online"}
+                                </button>
+                              </div>
+                              
+                              <div className="space-y-2 max-h-36 overflow-y-auto bg-black/20 p-2.5 rounded border border-[#222]">
+                                <div className="space-y-1">
+                                  <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Prompt (Texto):</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {(availableModels.openai?.text || []).map((m) => (
+                                      <span key={m} className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 text-[9px] rounded text-slate-350 font-mono">
+                                        {m}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="space-y-1 pt-1.5 border-t border-[#222]">
+                                  <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Imagem (DALL-E):</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {(availableModels.openai?.image || []).map((m) => (
+                                      <span key={m} className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 text-[9px] rounded text-emerald-450 font-mono">
+                                        {m}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </>
@@ -4076,15 +4848,54 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
                         <div className="space-y-1">
                           <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
-                            Nome do Modelo no Ollama
+                            Modelo no Ollama
                           </label>
-                          <input
-                            type="text"
-                            value={ollamaModel}
-                            onChange={(e) => setOllamaModel(e.target.value)}
-                            placeholder="llama3"
-                            className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-1.5 text-xs font-mono text-white focus:border-[#D4AF37] focus:outline-none"
-                          />
+                          <div className="flex gap-1.5">
+                            {ollamaModels.length > 0 ? (
+                              <select
+                                value={ollamaModels.includes(ollamaModel) ? ollamaModel : "custom"}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val !== "custom") {
+                                    setOllamaModel(val);
+                                  } else {
+                                    setOllamaModel("");
+                                  }
+                                }}
+                                className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono cursor-pointer"
+                              >
+                                {ollamaModels.map((m) => (
+                                  <option key={m} value={m}>{m}</option>
+                                ))}
+                                <option value="custom">✍ Digitar Personalizado...</option>
+                              </select>
+                            ) : (
+                              <input
+                                type="text"
+                                value={ollamaModel}
+                                onChange={(e) => setOllamaModel(e.target.value)}
+                                placeholder="Ex: llama3, mistral, deepseek-r1"
+                                className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-3 py-1.5 text-xs font-mono text-white focus:border-[#D4AF37] focus:outline-none"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              onClick={fetchOllamaModels}
+                              disabled={isFetchingOllamaModels}
+                              className="px-2.5 py-1.5 border border-[#D4AF37]/35 bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] text-[10px] uppercase tracking-wider font-mono rounded transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              {isFetchingOllamaModels ? "Buscando..." : "Buscar Modelos"}
+                            </button>
+                          </div>
+                          {(!ollamaModels.includes(ollamaModel) || ollamaModel === "") && ollamaModels.length > 0 && (
+                            <input
+                              type="text"
+                              value={ollamaModel}
+                              onChange={(e) => setOllamaModel(e.target.value)}
+                              placeholder="Digite o ID do modelo Ollama"
+                              className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-1.5 text-xs font-mono text-white focus:border-[#D4AF37] focus:outline-none mt-1.5"
+                            />
+                          )}
                         </div>
 
                         <div className="bg-black/35 p-3 rounded border border-zinc-850 space-y-1.5">
@@ -4315,7 +5126,16 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                               type="button"
                               onClick={async () => {
                                 try {
+                                  // Purge browser client cache
                                   await clearCache();
+
+                                  // Purge server-side physical image directory files and legacy autosave JSONs
+                                  await fetch("/api/storyboard/projects/clear-cache", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ folder: projectFolder })
+                                  }).catch((err) => console.warn("Failed to clear physical server cache:", err));
+
                                   const clearedScenes = scenes.map(s => ({
                                     ...s,
                                     generatedImageUrl: undefined,
@@ -4326,7 +5146,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                   setLocalStorageItemSafely("ethos_storyboard_scenes", JSON.stringify(clearedScenes));
                                   localStorage.removeItem("ethos_storyboard_image_archive");
                                   setCacheSizeMB(0);
-                                  setNotification("✓ Cache de imagens locais limpo com sucesso!");
+                                  setNotification("✓ Cache físico local e temporários excluídos com êxito!");
                                   setShowConfirmClearCache(false);
                                 } catch (err: any) {
                                   setError(`Erro ao limpar cache: ${err.message}`);
@@ -4579,6 +5399,65 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                         <span>CSV</span>
                       </button>
                     </div>
+
+                    {/* NLE Export Buttons (XML & EDL) & Mid-Project Audio Upload */}
+                    <div className="pt-2 border-t border-[#333]/60 space-y-2">
+                      <span className="text-[9px] font-mono uppercase tracking-widest text-[#D4AF37] font-bold block">
+                        🎬 Exportar Timeline NLE & Narração
+                      </span>
+
+                      <input
+                        ref={midProjectAudioInputRef}
+                        type="file"
+                        accept="audio/*"
+                        className="hidden"
+                        onChange={handleMidProjectAudioUpload}
+                      />
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => midProjectAudioInputRef.current?.click()}
+                          className="flex-1 py-2 bg-[#222] hover:bg-[#333] border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] text-[10px] uppercase tracking-widest font-mono font-bold rounded transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+                          title="Anexar ou alinhar arquivo de narração em áudio para calcular timecodes exatos"
+                        >
+                          <Mic size={12} />
+                          <span>{audioNarrationUrl ? "🎙️ Substituir Áudio" : "🎙️ Anexar Narração"}</span>
+                        </button>
+
+                        {audioNarrationUrl && (
+                          <button
+                            type="button"
+                            onClick={handleResyncCurrentProjectAudio}
+                            className="py-2 px-3 bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black border border-[#D4AF37]/60 text-[#D4AF37] text-[10px] uppercase tracking-widest font-mono font-bold rounded transition-all cursor-pointer flex items-center justify-center gap-1 shadow-md"
+                            title="Corrigir e re-alinhar todos os timecodes do projeto atual com o novo algoritmo N-Gram"
+                          >
+                            <RefreshCw size={12} />
+                            <span>Re-sincronizar TC</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={handleExportXML}
+                          className="py-2 border border-[#D4AF37]/50 text-[10px] uppercase tracking-widest text-[#D4AF37] bg-neutral-900/60 hover:bg-[#D4AF37] hover:text-black cursor-pointer font-mono font-bold rounded transition-all flex items-center justify-center gap-1"
+                          title="Exportar timeline XML para Premiere, DaVinci Resolve ou Final Cut Pro"
+                        >
+                          <span>FCP / Premiere XML</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleExportEDL}
+                          className="py-2 border border-[#D4AF37]/50 text-[10px] uppercase tracking-widest text-[#D4AF37] bg-neutral-900/60 hover:bg-[#D4AF37] hover:text-black cursor-pointer font-mono font-bold rounded transition-all flex items-center justify-center gap-1"
+                          title="Exportar Edit Decision List (.edl) padrão CMX 3600"
+                        >
+                          <span>Timeline EDL</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -4695,14 +5574,23 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 <div>
                   <strong className="block font-bold">Inconveniente de Processamento:</strong>
                   <p className="mt-1 text-slate-350 leading-relaxed">{error}</p>
-                  <div className="mt-2.5 flex gap-2">
+                  <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                     <button 
                       onClick={() => setError(null)} 
-                      className="px-2 py-1 bg-rose-900/50 hover:bg-rose-900 text-rose-100 text-[9px] uppercase tracking-wider rounded font-mono font-bold"
+                      className="px-2.5 py-1 bg-rose-900/50 hover:bg-rose-900 text-rose-100 text-[9px] uppercase tracking-wider rounded font-mono font-bold cursor-pointer"
                     >
                       Ignorar Aviso
                     </button>
-                    <p className="text-[10px] text-rose-400 text-slate-400/80 leading-normal italic">
+
+                    <button 
+                      onClick={handleFetchLogs} 
+                      className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-[#D4AF37] text-[9px] uppercase tracking-wider rounded font-mono font-bold cursor-pointer flex items-center gap-1"
+                    >
+                      <FileText size={10} />
+                      <span>📄 Ver Logs de Erro do Servidor</span>
+                    </button>
+
+                    <p className="text-[10px] text-slate-400/80 leading-normal italic ml-1">
                       Configure a GEMINI_API_KEY no menu Secrets se necessário.
                     </p>
                   </div>
@@ -4777,6 +5665,10 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       selectedSceneIdsForConnection={selectedSceneIdsForConnection}
                       onToggleSceneSelection={handleToggleSceneSelection}
                       scenes={scenes}
+                      availableModels={availableModels}
+                      ollamaModels={ollamaModels}
+                      audioNarrationUrl={audioNarrationUrl}
+                      fps={24}
                     />
                   </div>
                 ))}
@@ -4791,6 +5683,20 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                     <Plus size={13} className="text-[#D4AF37]" />
                     <span>Inserir Quadro Manual de Transição</span>
                   </button>
+                </div>
+              </div>
+            ) : isGenerating ? (
+              /* Active audio transcription / script generation loading screen */
+              <div className="border border-[#D4AF37]/35 rounded-lg p-12 text-center my-auto flex flex-col items-center justify-center max-w-xl mx-auto py-20 bg-[#121212]/80 mt-12 animate-fadeIn shadow-2xl">
+                <div className="w-16 h-16 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] mb-6 animate-pulse">
+                  <Loader2 size={32} className="animate-spin text-[#D4AF37]" />
+                </div>
+                <h3 className="text-lg font-serif italic text-white mb-2">Processando Narração e Roteiro...</h3>
+                <p className="text-xs text-[#D4AF37] font-mono leading-relaxed mb-4">
+                  {notification || "Transcrevendo voz via IA e estruturando cenas cinematográficas 16:9..."}
+                </p>
+                <div className="text-[10px] text-zinc-500 font-mono tracking-widest uppercase animate-pulse">
+                  Aguarde enquanto os timecodes e cartelas são alocados...
                 </div>
               </div>
             ) : (
@@ -4927,8 +5833,16 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
               setShowNewProjectModal(false);
 
-              if (newProjectScript.trim()) {
-                handleGenerateStoryboard(newProjectScript, newProjectStyle, newProjectStyleRefImage, newProjectEngine);
+              if (newProjectAudioFile || newProjectScript.trim()) {
+                handleGenerateStoryboardWithAudio({
+                  text: newProjectScript.trim(),
+                  style: newProjectStyle,
+                  referenceImage: newProjectStyleRefImage,
+                  selectedEngine: newProjectEngine,
+                  audioFile: newProjectAudioFile,
+                  audioFileName: newProjectAudioFileName,
+                  explicitProjectName: initialProjectName
+                });
                 setActiveView("storyboard");
               } else {
                 setNotification(`✓ Novo projeto "${initialProjectName}" criado com sucesso!`);
@@ -4959,16 +5873,76 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 </p>
               </div>
 
+              {/* Audio Upload Dropzone */}
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase tracking-wider text-[#D4AF37] font-mono font-bold block flex items-center gap-1.5">
+                  <Mic size={12} className="text-[#D4AF37]" />
+                  <span>Narração em Áudio (MP3 / WAV) - Opcional</span>
+                </label>
+                <div className="p-3 bg-[#0a0a0a] border border-[#333] hover:border-[#D4AF37]/40 rounded flex items-center justify-between gap-3 transition-colors">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
+                      <Mic size={16} />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-bold text-stone-200 block font-mono">
+                        {newProjectAudioFileName ? `🎙️ ${newProjectAudioFileName}` : "Anexar Arquivo de Narração em Áudio"}
+                      </span>
+                      <span className="text-[9px] text-zinc-400 block">
+                        {newProjectAudioFileName ? "Áudio carregado. O DiarioMaker vai transcrever a voz e alinhar os timecodes." : "Transcreve a voz automaticamente e gera as cenas com timecodes exatos."}
+                      </span>
+                    </div>
+                  </div>
+
+                  <input
+                    ref={newProjectAudioInputRef}
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        const file = e.target.files[0];
+                        setNewProjectAudioFile(file);
+                        setNewProjectAudioFileName(file.name);
+                      }
+                    }}
+                  />
+
+                  {newProjectAudioFileName ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewProjectAudioFile(null);
+                        setNewProjectAudioFileName(undefined);
+                        if (newProjectAudioInputRef.current) newProjectAudioInputRef.current.value = "";
+                      }}
+                      className="px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-[9px] font-mono font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                    >
+                      Remover
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => newProjectAudioInputRef.current?.click()}
+                      className="px-3 py-1.5 rounded bg-[#222] hover:bg-[#333] border border-[#444] text-[#D4AF37] hover:border-[#D4AF37] text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
+                    >
+                      <Upload size={11} />
+                      <span>Escolher Áudio</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Script Input */}
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 font-mono block">
-                  Roteiro / Instruções iniciais
+                  Roteiro / Instruções iniciais {newProjectAudioFileName ? "(Opcional se houver áudio)" : ""}
                 </label>
                 <textarea
                   value={newProjectScript}
                   onChange={(e) => setNewProjectScript(e.target.value)}
-                  placeholder="Cole aqui o roteiro de meditação ou instruções cotidianas do diário..."
-                  rows={5}
+                  placeholder={newProjectAudioFileName ? "Deixe em branco para transcrição 100% automática do áudio..." : "Cole aqui o roteiro de meditação ou instruções cotidianas do diário..."}
+                  rows={4}
                   className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-xs text-white placeholder-zinc-700 focus:border-[#D4AF37] focus:outline-none transition-all leading-relaxed resize-y font-sans"
                 />
               </div>
@@ -5104,6 +6078,10 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                   handleGenerateStoryboard(text, style, referenceImage, selectedEngine);
                   setShowScriptModal(false);
                 }} 
+                onGenerateWithAudio={(params) => {
+                  handleGenerateStoryboardWithAudio(params);
+                  setShowScriptModal(false);
+                }}
                 isGenerating={isGenerating} 
                 scriptText={scriptText}
                 setScriptText={setScriptText}
@@ -5175,6 +6153,53 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 className="flex-1 py-2 bg-rose-900 hover:bg-rose-800 text-rose-100 text-[10px] uppercase tracking-wider font-mono font-bold rounded transition-all cursor-pointer"
               >
                 Confirmar e Limpar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Server Logs Viewer Modal */}
+      {showLogsModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 sm:p-6 overflow-y-auto animate-fadeIn">
+          <div className="bg-[#121212] border border-[#D4AF37]/50 rounded-xl max-w-4xl w-full max-h-[85vh] overflow-y-auto shadow-2xl relative flex flex-col animate-scaleUp font-mono">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <FileText className="text-[#D4AF37]" size={18} />
+                <h3 className="text-sm font-mono tracking-widest uppercase text-[#D4AF37] font-bold">
+                  Logs de Erro do Servidor
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLogsModal(false)}
+                className="text-slate-400 hover:text-white text-xl font-bold cursor-pointer transition-colors p-1"
+                title="Fechar Logs"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="p-6 bg-black/90 text-zinc-300 text-xs overflow-x-auto whitespace-pre-wrap font-mono font-normal leading-relaxed border-b border-zinc-800 max-h-[60vh]">
+              {logsText || "Nenhum erro registrado até o momento."}
+            </div>
+            <div className="px-6 py-4 flex items-center justify-between shrink-0 bg-neutral-900/50">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(logsText);
+                  setNotification("✓ Logs copiados para a área de transferência!");
+                }}
+                className="px-4 py-2 border border-[#D4AF37]/40 bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] text-[10px] uppercase tracking-wider font-mono font-bold rounded transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Copy size={11} />
+                <span>Copiar Logs</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLogsModal(false)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-[10px] uppercase tracking-wider font-mono font-bold rounded transition-all cursor-pointer"
+              >
+                Fechar
               </button>
             </div>
           </div>
@@ -5568,6 +6593,24 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           ))}
         </AnimatePresence>
       </div>
+
+      {/* Global isGenerating Modal Overlay */}
+      {isGenerating && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[99999] flex flex-col items-center justify-center animate-fadeIn">
+          <div className="bg-[#121212] border border-[#D4AF37]/50 rounded-xl p-8 max-w-md text-center shadow-2xl space-y-4">
+            <div className="w-14 h-14 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] mx-auto animate-pulse">
+              <Loader2 size={28} className="animate-spin text-[#D4AF37]" />
+            </div>
+            <h3 className="text-base font-serif italic text-white font-bold">Processando Narração & Re-sincronizando...</h3>
+            <p className="text-xs text-[#D4AF37] font-mono leading-relaxed">
+              {notification || "Calculando alinhamento de áudio N-Gram de 8 palavras..."}
+            </p>
+            <div className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest animate-pulse">
+              Aguarde enquanto os timecodes são corrigidos no disco...
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+projects/DEMB_260809_V01/narration.wav
+projects/DEMB_260809_V03/narration.wav
+projects/DEMB_270809_V01/narration.wav
+projects/DEMB_TEST_PROJECT/narration.wav
+projects/DEMB_TEST_REAL_AUDIO/narration.wav

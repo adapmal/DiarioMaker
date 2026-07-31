@@ -3,8 +3,11 @@ import { StylePreference, ArtisticStyle } from "../types";
 import { Sparkles, FileText, Film, MessageSquareCode, Upload, X, Image as ImageIcon, AlertCircle, Settings } from "lucide-react";
 import { resizeAndCompressImage } from "../utils";
 
+import { Mic, Volume2 } from "lucide-react";
+
 interface ScriptInputAreaProps {
   onGenerate: (text: string, style: StylePreference, referenceImage?: string, selectedEngine?: "gemini" | "openai" | "ollama") => void;
+  onGenerateWithAudio?: (params: { text: string; style: StylePreference; referenceImage?: string; selectedEngine?: "gemini" | "openai" | "ollama"; audioBase64?: string; audioMimeType?: string; audioFileName?: string }) => void;
   isGenerating: boolean;
   scriptText: string;
   setScriptText: (text: string) => void;
@@ -21,6 +24,7 @@ interface ScriptInputAreaProps {
 
 export default function ScriptInputArea({
   onGenerate,
+  onGenerateWithAudio,
   isGenerating,
   scriptText,
   setScriptText,
@@ -38,6 +42,12 @@ export default function ScriptInputArea({
   const [localScriptText, setLocalScriptText] = React.useState(scriptText);
   const [showNewProjectForm, setShowNewProjectForm] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const audioInputRef = React.useRef<HTMLInputElement>(null);
+
+  const [audioBase64, setAudioBase64] = React.useState<string | undefined>();
+  const [audioMimeType, setAudioMimeType] = React.useState<string | undefined>();
+  const [audioFileName, setAudioFileName] = React.useState<string | undefined>();
+
   const [selectedEngine, setSelectedEngine] = React.useState<"gemini" | "openai" | "ollama">("gemini");
 
   React.useEffect(() => {
@@ -110,22 +120,67 @@ export default function ScriptInputArea({
 
   const [showConfirmReset, setShowConfirmReset] = React.useState(false);
 
+  const handleAudioFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setAudioFileName(file.name);
+      setAudioMimeType(file.type || "audio/mp3");
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setAudioBase64(event.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleClearAudio = () => {
+    setAudioBase64(undefined);
+    setAudioMimeType(undefined);
+    setAudioFileName(undefined);
+    if (audioInputRef.current) audioInputRef.current.value = "";
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (localScriptText.trim()) {
-      if (hasScenes) {
-        setShowConfirmReset(true);
-      } else {
-        setScriptText(localScriptText);
-        onGenerate(localScriptText, selectedStyle, scriptReferenceImage, selectedEngine);
-      }
+    if (hasScenes) {
+      setShowConfirmReset(true);
+      return;
+    }
+
+    if (onGenerateWithAudio && (audioBase64 || localScriptText.trim())) {
+      onGenerateWithAudio({
+        text: localScriptText.trim(),
+        style: selectedStyle,
+        referenceImage: scriptReferenceImage,
+        selectedEngine,
+        audioBase64,
+        audioMimeType,
+        audioFileName
+      });
+    } else {
+      onGenerate(localScriptText.trim(), selectedStyle, scriptReferenceImage, selectedEngine);
     }
   };
 
   const handleConfirmNewProject = () => {
     setShowConfirmReset(false);
-    setScriptText(localScriptText);
-    onGenerate(localScriptText, selectedStyle, scriptReferenceImage, selectedEngine);
+    setShowNewProjectForm(false);
+    if (onGenerateWithAudio && (audioBase64 || localScriptText.trim())) {
+      onGenerateWithAudio({
+        text: localScriptText.trim(),
+        style: selectedStyle,
+        referenceImage: scriptReferenceImage,
+        selectedEngine,
+        audioBase64,
+        audioMimeType,
+        audioFileName
+      });
+    } else {
+      onGenerate(localScriptText.trim(), selectedStyle, scriptReferenceImage, selectedEngine);
+    }
   };
 
   // 1. Read-only view for active projects (scenes present)
@@ -254,11 +309,58 @@ export default function ScriptInputArea({
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-          {/* Narrative script input (12 cols) */}
+          {/* Narrative script input & Audio dropzone (12 cols) */}
           <div className="md:col-span-12">
+            {/* Audio Upload Dropzone */}
+            <div className="mb-3 p-3 bg-[#0a0a0a] border border-[#333] hover:border-[#D4AF37]/40 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-3 transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
+                  <Mic size={18} />
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold text-stone-200 block uppercase font-mono tracking-wider">
+                    {audioFileName ? `🎙️ ${audioFileName}` : "Anexar Áudio da Narração (MP3 / WAV)"}
+                  </span>
+                  <span className="text-[9px] text-zinc-400 block font-sans">
+                    {audioFileName
+                      ? "Áudio carregado. O DiarioMaker vai transcrever e extrair os timecodes das cenas."
+                      : "Opcional. Transcreve automaticamente o áudio e gera as cenas com timecodes sincronizados."}
+                  </span>
+                </div>
+              </div>
+
+              <input
+                ref={audioInputRef}
+                type="file"
+                accept="audio/*"
+                className="hidden"
+                onChange={handleAudioFileChange}
+              />
+
+              {audioFileName ? (
+                <button
+                  type="button"
+                  onClick={handleClearAudio}
+                  className="px-3 py-1.5 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-[10px] font-mono font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <X size={12} />
+                  <span>Remover Áudio</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => audioInputRef.current?.click()}
+                  className="px-3.5 py-2 rounded bg-[#222] hover:bg-[#333] border border-[#444] text-[#D4AF37] hover:border-[#D4AF37] text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
+                >
+                  <Upload size={12} />
+                  <span>Subir Áudio</span>
+                </button>
+              )}
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <label htmlFor="raw-script-area" className="block text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.2em] font-mono">
-                Roteiro / Instruções de Roteiro
+                Roteiro / Instruções de Roteiro {audioFileName ? "(Preenchimento automático se deixado em branco)" : ""}
               </label>
             </div>
             <textarea
@@ -266,9 +368,8 @@ export default function ScriptInputArea({
               value={localScriptText}
               onChange={(e) => setLocalScriptText(e.target.value)}
               onBlur={() => setScriptText(localScriptText)}
-              placeholder="Digite ou cole aqui seu roteiro de meditação ou instruções de criação..."
-              className="w-full h-56 bg-[#0a0a0a] border border-[#333] rounded p-4 text-xs text-[#E0D8D0] placeholder-slate-600 focus:outline-none focus:border-[#D4AF37]/50 font-sans leading-relaxed resize-y"
-              required
+              placeholder={audioFileName ? "Deixe em branco para utilizar a transcrição automática do áudio, ou cole seu texto para guiar..." : "Digite ou cole aqui seu roteiro de meditação ou instruções de criação..."}
+              className="w-full h-44 bg-[#0a0a0a] border border-[#333] rounded p-4 text-xs text-[#E0D8D0] placeholder-slate-600 focus:outline-none focus:border-[#D4AF37]/50 font-sans leading-relaxed resize-y"
               disabled={isGenerating}
             />
           </div>
