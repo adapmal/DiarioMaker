@@ -1,8 +1,8 @@
 {
   "projectFolder": "260802",
   "customGeminiKey": "AQ.Ab8RN6LQNbtbWCNONsKWDhQ-DBa0AQG-FJ0eu79x_TRFwv0ZxA",
-  "customOpenAiKey": "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",
+  "customOpenAiKey": "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",
   "useOpenAiForPrompts": true,
-  "openAiModel": "gpt-4o-mini",
-  "openAiDalleModel": "gpt-image-2"
+  "openAiModel": "gpt-4o",
+  "openAiDalleModel": "gpt-image-2-2026-04-21"
 }

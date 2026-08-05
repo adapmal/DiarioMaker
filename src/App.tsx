@@ -5,7 +5,7 @@ import ScriptInputArea from "./components/ScriptInputArea";
 import StoryboardCard from "./components/StoryboardCard";
 import { SAMPLE_SCRIPTS } from "./data/samples";
 import { generateFCPXML, generateEDL, alignAudioToExistingScenes } from "./lib/timecodeUtils";
-import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, Plus, Info, Key, Eye, EyeOff, Lock, Check, Loader2, FileText, Save, Upload, Undo, Redo, Settings, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu, Mic, Edit3 } from "lucide-react";
+import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, Plus, Info, Key, Eye, EyeOff, Lock, Check, CheckCircle2, Loader2, FileText, Save, Upload, Undo, Redo, Settings, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu, Mic, Edit3 } from "lucide-react";
 import { getCachedImage, setCachedImage, getCacheSizeMB, clearCache } from "./lib/cacheStore";
 import { prepareImageBlobForDownload } from "./lib/imageUtils";
 import { motion, AnimatePresence } from "motion/react";
@@ -157,9 +157,21 @@ export default function App() {
   const [history, setHistory] = useState<StoryboardScene[][]>([]);
   const [redoStack, setRedoStack] = useState<StoryboardScene[][]>([]);
 
-  // Push current scenes to undo history stack right before modifications
+  // Lightweight snapshot sanitizer for undo/redo history to prevent RAM bloat
+  const sanitizeSnapshot = (sceneList: StoryboardScene[]): StoryboardScene[] => {
+    return sceneList.map((s) => {
+      const copy = { ...s };
+      if (Array.isArray(copy.imageVersions)) {
+        copy.imageVersions = copy.imageVersions.slice(0, 4);
+      }
+      return copy;
+    });
+  };
+
+  // Push current scenes to undo history stack right before modifications (capped at 12 steps)
   const pushToHistory = (customScenes?: StoryboardScene[]) => {
-    setHistory((prevHistory) => [...prevHistory, customScenes || [...scenes]]);
+    const snapshot = sanitizeSnapshot(customScenes || scenes);
+    setHistory((prevHistory) => [...prevHistory.slice(-11), snapshot]);
     setRedoStack([]); // Clear redo stack on new action
   };
 
@@ -167,7 +179,7 @@ export default function App() {
   const handleUndo = () => {
     if (history.length === 0) return;
     const previous = history[history.length - 1];
-    setRedoStack((prevRedo) => [...prevRedo, [...scenes]]);
+    setRedoStack((prevRedo) => [...prevRedo.slice(-11), sanitizeSnapshot(scenes)]);
     setScenes(previous);
     setHistory((prevHistory) => prevHistory.slice(0, -1));
     setNotification("✓ Última alteração desfeita com sucesso!");
@@ -177,11 +189,12 @@ export default function App() {
   const handleRedo = () => {
     if (redoStack.length === 0) return;
     const nextState = redoStack[redoStack.length - 1];
-    setHistory((prevHistory) => [...prevHistory, [...scenes]]);
+    setHistory((prevHistory) => [...prevHistory.slice(-11), sanitizeSnapshot(scenes)]);
     setScenes(nextState);
     setRedoStack((prevRedo) => prevRedo.slice(0, -1));
     setNotification("✓ Última alteração refeita com sucesso!");
   };
+  const [activeView, setActiveView] = useState<"storyboard" | "config">("storyboard");
   const [isGenerating, setIsGenerating] = useState(false);
   const [regeneratingCardIndex, setRegeneratingCardIndex] = useState<number | null>(null);
   
@@ -201,30 +214,44 @@ export default function App() {
   const superScrollPadRef = useRef<HTMLDivElement | null>(null);
   const [visibleSceneIndex, setVisibleSceneIndex] = useState<number>(0);
 
-  // Set up mouse wheel super-scrolling on the special pad
+  // Mouse wheel 7x accelerated scroll for the storyboard scenes grid (excluding config, studio, inputs & modals)
   useEffect(() => {
-    const pad = superScrollPadRef.current;
-    if (!pad) return;
+    const handleGlobalWheel = (e: WheelEvent) => {
+      // Do not accelerate scroll if not in storyboard mode
+      if (activeView !== "storyboard") return;
 
-    const handleWheel = (e: WheelEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // Ignore 7x acceleration if scrolling inside inputs, textareas, config drawers, Studio AI modal, or dropdowns
+      if (
+        target.closest("textarea") ||
+        target.closest("input") ||
+        target.closest("select") ||
+        target.closest("[role='dialog']") ||
+        target.closest(".no-super-scroll") ||
+        target.closest("#config-panel") ||
+        target.closest("#studio-modal")
+      ) {
+        return;
+      }
+
       e.preventDefault();
       const scrollAmount = e.deltaY * 7;
       const container = mainScrollRef.current;
       
-      // Scroll container internally if it's scrollable and not visible-overflow
       if (container && container.scrollHeight > container.clientHeight && window.getComputedStyle(container).overflowY !== 'visible') {
         container.scrollTop += scrollAmount;
       } else {
-        // Fallback: Scroll the main window/document
         window.scrollBy({ top: scrollAmount, behavior: 'auto' });
       }
     };
 
-    pad.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('wheel', handleGlobalWheel, { passive: false });
     return () => {
-      pad.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('wheel', handleGlobalWheel);
     };
-  }, []);
+  }, [activeView]);
 
   // Track the currently visible scene index dynamically based on scroll position
   useEffect(() => {
@@ -324,8 +351,7 @@ export default function App() {
       return "auto";
     }
   });
-   const [activeView, setActiveView] = useState<"storyboard" | "config">("storyboard");
-  const [activeApiTab, setActiveApiTab] = useState<"gemini" | "chatgpt" | "ollama">("gemini");
+   const [activeApiTab, setActiveApiTab] = useState<"gemini" | "chatgpt" | "ollama">("gemini");
   const [showScriptModal, setShowScriptModal] = useState(false);
   const [showQueuePanel, setShowQueuePanel] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -611,41 +637,47 @@ export default function App() {
     }
   };
 
-  // Trigger Lightweight Safety Backup to server
-  const triggerAutosave = async (customScenes?: StoryboardScene[]) => {
-    const scenesToSave = customScenes || scenes;
-    if (scenesToSave.length === 0) return;
-    try {
-      setIsAutosaving(true);
-      const response = await fetch("/api/storyboard/autosave", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          scenes: scenesToSave, 
-          stylePreference,
-          projectName,
-          scriptText,
-          scriptReferenceImage,
-          connectionGroups,
-          selectedStyle,
-          consecutiveNumbering
-        }),
-      });
-      if (response.ok) {
-        const now = new Date();
-        const timeString = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-        setLastAutosaveTime(timeString);
-        try {
-          localStorage.setItem("ethos_last_autosave_time", timeString);
-        } catch {}
-        console.log(`[Auto-Save Event] Backup leve efetuado com sucesso às ${timeString}`);
-        fetchAvailableBackups();
-      }
-    } catch (err) {
-      console.warn("[Auto-Save Event] Falha ao realizar auto-salvamento no servidor:", err);
-    } finally {
-      setIsAutosaving(false);
+  // Debounced Lightweight Safety Backup to server (waits 1.2s after last modification)
+  const autosaveTimeoutRef = useRef<any>(null);
+  const triggerAutosave = (customScenes?: StoryboardScene[]) => {
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
     }
+    autosaveTimeoutRef.current = setTimeout(async () => {
+      const scenesToSave = customScenes || scenes;
+      if (scenesToSave.length === 0) return;
+      try {
+        setIsAutosaving(true);
+        const response = await fetch("/api/storyboard/autosave", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            scenes: scenesToSave, 
+            stylePreference,
+            projectName,
+            scriptText,
+            scriptReferenceImage,
+            connectionGroups,
+            selectedStyle,
+            consecutiveNumbering
+          }),
+        });
+        if (response.ok) {
+          const now = new Date();
+          const timeString = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          setLastAutosaveTime(timeString);
+          try {
+            localStorage.setItem("ethos_last_autosave_time", timeString);
+          } catch {}
+          console.log(`[Auto-Save Event] Backup leve efetuado com sucesso às ${timeString}`);
+          fetchAvailableBackups();
+        }
+      } catch (err) {
+        console.warn("[Auto-Save Event] Falha ao realizar auto-salvamento no servidor:", err);
+      } finally {
+        setIsAutosaving(false);
+      }
+    }, 1200);
   };
 
   // Fetch backups on config view entrance
@@ -686,7 +718,8 @@ export default function App() {
   const [selectedConnectionGroupId, setSelectedConnectionGroupId] = useState("group-1");
   const [selectedStyleTab, setSelectedStyleTab] = useState<string>("caravaggio");
   const [showEmptyScenesSubMenu, setShowEmptyScenesSubMenu] = useState(false);
-  const [showImageModelSubMenu, setShowImageModelSubMenu] = useState(false);
+  const [batchSelectedPromptModel, setBatchSelectedPromptModel] = useState<string>("gemini-3.5-flash");
+  const [batchSelectedImageModel, setBatchSelectedImageModel] = useState<string>("gemini-2.5-flash-image");
 
   const handleConfirmConnection = () => {
     if (selectedSceneIdsForConnection.length < 2) return;
@@ -855,24 +888,34 @@ export default function App() {
     }
   }, [projectName]);
 
-  // Hydrate & persist audio narration URL on project reload / F5 refresh
+  // Hydrate & persist audio narration URL on project reload / F5 refresh (probing mp3, wav, m4a, ogg)
   useEffect(() => {
-    if (projectName) {
-      const savedUrl = localStorage.getItem(`ethos_storyboard_audio_url_${projectName}`) || localStorage.getItem("ethos_storyboard_audio_url");
-      if (savedUrl) {
-        setAudioNarrationUrl(savedUrl);
-      } else {
-        const url = `/api/projects/${projectName}/narration.wav`;
-        fetch(url, { method: "HEAD" })
-          .then((res) => {
-            if (res.ok) {
-              setAudioNarrationUrl(url);
-              localStorage.setItem(`ethos_storyboard_audio_url_${projectName}`, url);
-            }
-          })
-          .catch(() => {});
-      }
+    if (!projectName) return;
+    const savedUrl = localStorage.getItem(`ethos_storyboard_audio_url_${projectName}`) || localStorage.getItem("ethos_storyboard_audio_url");
+    if (savedUrl) {
+      setAudioNarrationUrl(savedUrl);
     }
+
+    const exts = ["mp3", "wav", "m4a", "ogg"];
+    let found = false;
+    const probeNext = async (idx: number) => {
+      if (idx >= exts.length || found) return;
+      const testUrl = `/api/projects/${projectName}/narration.${exts[idx]}`;
+      try {
+        const res = await fetch(testUrl, { method: "HEAD" });
+        if (res.ok) {
+          found = true;
+          setAudioNarrationUrl(testUrl);
+          localStorage.setItem(`ethos_storyboard_audio_url_${projectName}`, testUrl);
+          localStorage.setItem("ethos_storyboard_audio_url", testUrl);
+        } else {
+          probeNext(idx + 1);
+        }
+      } catch {
+        probeNext(idx + 1);
+      }
+    };
+    probeNext(0);
   }, [projectName]);
 
   // Sync audioNarrationUrl to localStorage whenever it changes
@@ -946,18 +989,12 @@ export default function App() {
   });
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
 
-  // Update cached size tracker whenever scenes or archive changes
+  // Update cached size tracker only when opening config view to avoid reading all IndexedDB images into RAM on every scene tick
   useEffect(() => {
-    const updateCacheSize = async () => {
-      try {
-        const size = await getCacheSizeMB();
-        setCacheSizeMB(size);
-      } catch (err) {
-        console.warn("Failed to estimate cache size:", err);
-      }
-    };
-    updateCacheSize();
-  }, [scenes, sessionImageArchive]);
+    if (activeView === "config") {
+      getCacheSizeMB().then(setCacheSizeMB).catch(() => {});
+    }
+  }, [activeView]);
 
   // Scroll locking mechanism when the Gallery or Script modal is open + ESC key close listener
   useEffect(() => {
@@ -1005,6 +1042,44 @@ export default function App() {
     persistArchive();
   }, [sessionImageArchive, localCacheEnabled]);
 
+  // Converts Base64 or idb:// images into physical disk URLs (/projects/<folder>/imagens/...) so V8 RAM stays at near 0 MB
+  const ensureDiskImageUrl = async (url: string, folder: string, sceneId: string, sceneNum: string): Promise<string> => {
+    if (!url) return "";
+    if (url.startsWith("/projects/") || url.startsWith("/api/") || url.startsWith("http://") || url.startsWith("https://")) {
+      return url;
+    }
+    let rawData = url;
+    if (url.startsWith("idb://")) {
+      const key = url.replace("idb://", "");
+      const cached = await getCachedImage(key);
+      if (cached) rawData = cached;
+      else return "";
+    }
+    if (rawData.startsWith("data:") || rawData.length > 500) {
+      try {
+        const res = await fetch("/api/storyboard/projects/save-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            folder: folder || projectFolder || "default",
+            sceneId: sceneId || "scene",
+            sceneNumber: sceneNum || "01",
+            imageUrl: rawData
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.url) {
+            return data.url;
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to convert image to server disk file:", err);
+      }
+    }
+    return rawData;
+  };
+
   const hydrateScenes = async (dehydrated: StoryboardScene[]): Promise<StoryboardScene[]> => {
     try {
       return await Promise.all(dehydrated.map(async (s) => {
@@ -1023,27 +1098,15 @@ export default function App() {
           cloned.promptTargetTool = "Nano Banana";
         }
 
-        if (cloned.generatedImageUrl && cloned.generatedImageUrl.startsWith("idb://")) {
-          const key = cloned.generatedImageUrl.replace("idb://", "");
-          const realData = await getCachedImage(key);
-          if (realData) {
-            cloned.generatedImageUrl = realData;
-          } else {
-            cloned.generatedImageUrl = undefined;
-          }
+        if (cloned.generatedImageUrl) {
+          cloned.generatedImageUrl = await ensureDiskImageUrl(cloned.generatedImageUrl, projectFolder, cloned.id, cloned.sceneNumber || "");
         }
         
         if (cloned.imageVersions && cloned.imageVersions.length > 0) {
           cloned.imageVersions = await Promise.all(cloned.imageVersions.map(async (v) => {
             const clonedV = { ...v };
-            if (clonedV.url && clonedV.url.startsWith("idb://")) {
-              const key = clonedV.url.replace("idb://", "");
-              const realData = await getCachedImage(key);
-              if (realData) {
-                clonedV.url = realData;
-              } else {
-                clonedV.url = undefined;
-              }
+            if (clonedV.url) {
+              clonedV.url = await ensureDiskImageUrl(clonedV.url, projectFolder, cloned.id, cloned.sceneNumber || "");
             }
             return clonedV;
           }));
@@ -1058,19 +1121,29 @@ export default function App() {
 
   const hydrateArchive = async (dehydrated: ArchivedImage[]): Promise<ArchivedImage[]> => {
     try {
-      return await Promise.all(dehydrated.map(async (item) => {
+      const processed = await Promise.all(dehydrated.map(async (item) => {
         const cloned = { ...item };
-        if (cloned.url && cloned.url.startsWith("idb://")) {
-          const key = cloned.url.replace("idb://", "");
-          const realData = await getCachedImage(key);
-          if (realData) {
-            cloned.url = realData;
-          } else {
-            cloned.url = undefined;
-          }
+        if (cloned.url) {
+          cloned.url = await ensureDiskImageUrl(cloned.url, projectFolder, cloned.sceneId || "scene", cloned.originalSceneNumber || "01");
         }
         return cloned;
       }));
+
+      // Deduplicate pass: collapse duplicate entries matching same sceneId & letter OR same URL
+      const uniqueMap = new Map<string, ArchivedImage>();
+      processed.forEach((item) => {
+        if (!item.url) return;
+        const key = item.sceneId && item.letter ? `${item.sceneId}_${item.letter}` : item.url;
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, item);
+        } else {
+          const existing = uniqueMap.get(key)!;
+          if (item.url.startsWith("/projects/") && !existing.url.startsWith("/projects/")) {
+            uniqueMap.set(key, item);
+          }
+        }
+      });
+      return Array.from(uniqueMap.values());
     } catch (e) {
       console.warn("Hydration failed for archive:", e);
       return dehydrated;
@@ -1456,15 +1529,26 @@ export default function App() {
     if (scenes.length === 0) return;
     
     setSessionImageArchive((prevArchive) => {
-      let updatedArchive = [...prevArchive];
+      const archiveMap = new Map<string, ArchivedImage>();
+      
+      // Preserve existing archive items using unique key
+      prevArchive.forEach((item) => {
+        if (!item.url) return;
+        const key = item.sceneId && item.letter ? `${item.sceneId}_${item.letter}` : item.url;
+        archiveMap.set(key, item);
+      });
+
       let changed = false;
       
       scenes.forEach((scene) => {
-        // 1. Sync active image
+        // Sync active image
         if (scene.generatedImageUrl) {
-          if (!updatedArchive.some(item => item.url === scene.generatedImageUrl)) {
-            updatedArchive.push({
-              id: `sync-act-${scene.id}-${Math.random().toString(36).substring(2, 6)}`,
+          const activeVersion = (scene.imageVersions || []).find(v => v.url === scene.generatedImageUrl);
+          const activeLetter = activeVersion?.letter || "A";
+          const key = `${scene.id}_${activeLetter}`;
+          if (!archiveMap.has(key) || archiveMap.get(key)?.url !== scene.generatedImageUrl) {
+            archiveMap.set(key, {
+              id: `sync-act-${scene.id}-${activeLetter}`,
               url: scene.generatedImageUrl,
               timestamp: new Date().toLocaleTimeString(),
               sceneId: scene.id,
@@ -1473,18 +1557,22 @@ export default function App() {
               text: scene.text || "",
               model: scene.selectedModel,
               engineName: scene.engineName,
-              renderTimeSeconds: scene.renderTimeSeconds
+              renderTimeSeconds: scene.renderTimeSeconds,
+              letter: activeLetter
             });
             changed = true;
           }
         }
         
-        // 2. Sync versioned images
+        // Sync versioned images
         if (scene.imageVersions && scene.imageVersions.length > 0) {
           scene.imageVersions.forEach((v) => {
-            if (v.url && !updatedArchive.some(item => item.url === v.url)) {
-              updatedArchive.push({
-                id: v.id || `sync-v-${scene.id}-${Math.random().toString(36).substring(2, 6)}`,
+            if (!v.url) return;
+            const letter = v.letter || "A";
+            const key = `${scene.id}_${letter}`;
+            if (!archiveMap.has(key) || archiveMap.get(key)?.url !== v.url) {
+              archiveMap.set(key, {
+                id: v.id || `sync-v-${scene.id}-${letter}`,
                 url: v.url,
                 timestamp: v.timestamp || new Date().toLocaleTimeString(),
                 sceneId: scene.id,
@@ -1493,7 +1581,8 @@ export default function App() {
                 text: v.description || scene.text || "",
                 model: v.model,
                 engineName: v.engineName,
-                renderTimeSeconds: v.renderTimeSeconds
+                renderTimeSeconds: v.renderTimeSeconds,
+                letter: letter
               });
               changed = true;
             }
@@ -1501,7 +1590,8 @@ export default function App() {
         }
       });
       
-      return changed ? updatedArchive : prevArchive;
+      const newArchiveList = Array.from(archiveMap.values());
+      return changed || newArchiveList.length !== prevArchive.length ? newArchiveList : prevArchive;
     });
   }, [scenes]);
 
@@ -1963,8 +2053,9 @@ Output MUST be valid JSON only, matching this schema exactly:
         description: fields.description || scene.description,
         letter: letter
       };
-      updatedVersions = [newVersion, ...updatedVersions];
+      updatedVersions = [newVersion, ...updatedVersions].slice(0, 6);
     } else if (fields.generatedImageUrl) {
+      updatedVersions = updatedVersions.slice(0, 6);
       const matchedNew = updatedVersions.find(v => v.url === fields.generatedImageUrl);
       if (matchedNew?.letter) {
         newLetter = matchedNew.letter;
@@ -2209,10 +2300,10 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             headers: {
               "Content-Type": "application/json",
               ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
-              ...((useOpenAiForPrompts || requestedModel === "chatgpt") && openAiKey ? {
+              ...((useOpenAiForPrompts || requestedModel === "chatgpt" || requestedModel === "gpt-4o-mini" || requestedModel === "gpt-4o" || requestedModel?.startsWith("gpt-") || requestedModel?.includes("openai")) && openAiKey ? {
                 "x-use-openai": "true",
                 "x-openai-key": openAiKey,
-                "x-openai-model": openAiModel
+                "x-openai-model": (requestedModel?.startsWith("gpt-") ? requestedModel : openAiModel) || "gpt-4o-mini"
               } : {})
             },
             body: JSON.stringify({
@@ -2315,7 +2406,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
             ...(openAiKey ? {
               "x-openai-key": openAiKey,
-              "x-openai-dalle-model": openAiDalleModel
+              "x-openai-dalle-model": (nextToRender.selectedModel === "gpt-image-2" || nextToRender.selectedModel === "dall-e-3") ? nextToRender.selectedModel : (openAiDalleModel || "gpt-image-2")
             } : {})
           },
           body: JSON.stringify({
@@ -2370,9 +2461,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           console.warn("Erro ao salvar imagem fisicamente:", imgErr);
         }
 
-        // Apply completed image instantly using base64 URL for 0ms rendering and zero black frames
         handleUpdateScene(nextToRender.id, {
-          generatedImageUrl: base64ImageUrl || serverDiskUrl,
+          generatedImageUrl: serverDiskUrl || base64ImageUrl,
           selectedModel: nextToRender.selectedModel || "nano_banana",
           engineName: data.metadata?.engineName || "Nano Banana",
           renderTimeSeconds: data.metadata?.renderTimeSeconds,
@@ -2467,11 +2557,15 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
   };
 
   // Generate prompts for empty scenes AND auto-queue images once prompts complete
-  const handleGenerateAllEmptyPromptsAndImages = () => {
+  const handleGenerateAllEmptyPromptsAndImages = (promptModel?: string, imageModel?: string) => {
     pushToHistory();
     setScenes((prev) =>
       prev.map((s) => {
-        const needsPrompt = !s.prompt || s.prompt.trim() === "" || s.prompt.includes("Aguardando") || s.description.includes("Aguardando");
+        const needsPrompt = !s.prompt || 
+          s.prompt.trim() === "" || 
+          s.prompt.includes("Aguardando") || 
+          s.description.includes("Aguardando") ||
+          s.isPromptModified === false;
         const needsImage = !s.generatedImageUrl;
 
         if (needsPrompt) {
@@ -2479,24 +2573,27 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             ...s,
             promptQueueStatus: "queued",
             generateImageAfterPrompt: true,
-            renderStatus: needsImage ? "queued" : s.renderStatus
+            renderStatus: needsImage ? "queued" : s.renderStatus,
+            ...(promptModel ? { promptAiModel: promptModel } : {}),
+            ...(imageModel ? { selectedModel: imageModel, promptTargetTool: imageModel } : {})
           };
         } else if (needsImage) {
           return {
             ...s,
             renderStatus: "queued",
-            renderError: undefined
+            renderError: undefined,
+            ...(imageModel ? { selectedModel: imageModel, promptTargetTool: imageModel } : {})
           };
         }
         return s;
       })
     );
-    setNotification("✓ Prompts + Imagens enfileirados para todas as cenas vazias!");
+    setNotification("✓ Prompts + Imagens enfileirados para todas as cenas vazias e modificadas!");
     setShowQueuePanel(true);
   };
 
   // Generate prompts ONLY for empty/placeholder scenes (without generating images)
-  const handleGenerateAllEmptyPromptsOnly = () => {
+  const handleGenerateAllEmptyPromptsOnly = (promptModel?: string) => {
     pushToHistory();
     let count = 0;
     setScenes((prev) =>
@@ -2506,14 +2603,16 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           s.prompt.includes("Aguardando") || 
           s.prompt.includes("Cinematic landscape or scenery:") ||
           s.description.includes("Aguardando") ||
-          s.description.includes("Cena extraída da narração em áudio");
+          s.description.includes("Cena extraída da narração em áudio") ||
+          s.isPromptModified === false;
 
         if (isPlaceholderPrompt) {
           count++;
           return {
             ...s,
             promptQueueStatus: "queued",
-            generateImageAfterPrompt: false
+            generateImageAfterPrompt: false,
+            ...(promptModel ? { promptAiModel: promptModel } : {})
           };
         }
         return s;
@@ -2521,6 +2620,29 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     );
     setNotification(`✓ Direção de Arte (Prompts) enfileirada para ${count} cenas!`);
     setShowQueuePanel(true);
+  };
+
+  // Apply selected prompt and image models as defaults to ALL scenes in the project
+  const handleApplyBatchModelsToAllScenes = () => {
+    if (!scenes || scenes.length === 0) return;
+    const promptName = batchSelectedPromptModel.includes("gpt") || batchSelectedPromptModel.includes("openai") ? "OpenAI (ChatGPT)" : "Google Gemini";
+    const imageName = batchSelectedImageModel === "gpt-image-2" ? "OpenAI GPT-Image 2" : batchSelectedImageModel === "imagen-3.0-generate-002" ? "Google Imagen 3" : batchSelectedImageModel === "imagen-3.0-fast-generate-001" ? "Google Fast Imagen 3" : "Google Nano Banana";
+
+    const confirmApply = window.confirm(
+      `Tem certeza que deseja aplicar estes modelos como padrão para TODAS as ${scenes.length} cartelas do projeto?\n\n• Modelo de Prompt: ${promptName}\n• Modelo de Imagem: ${imageName}`
+    );
+    if (!confirmApply) return;
+
+    pushToHistory();
+    setScenes((prev) =>
+      prev.map((s) => ({
+        ...s,
+        promptAiModel: batchSelectedPromptModel,
+        selectedModel: batchSelectedImageModel,
+        promptTargetTool: batchSelectedImageModel
+      }))
+    );
+    setNotification(`✓ Modelos (${promptName} / ${imageName}) aplicados a todas as ${scenes.length} cartelas do projeto!`);
   };
 
   // Add all modified scenes or scenes needing rerun to the render queue
@@ -2647,14 +2769,14 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       sceneStylePreference: originalScene.sceneStylePreference || "auto",
       promptAiModel: originalScene.promptAiModel || "gemini-3.5-flash",
       promptTargetTool: originalScene.promptTargetTool || "Nano Banana",
-      generatedImageUrl: originalScene.generatedImageUrl,
+      generatedImageUrl: undefined,
       imageVersions: originalScene.imageVersions || [],
-      renderStatus: originalScene.renderStatus || "idle",
-      renderError: originalScene.renderError,
+      renderStatus: "idle",
+      renderError: undefined,
       selectedModel: originalScene.selectedModel,
       engineName: originalScene.engineName,
       renderTimeSeconds: originalScene.renderTimeSeconds,
-      isPromptModified: originalScene.isPromptModified,
+      isPromptModified: false,
       chatHistory: originalScene.chatHistory || [],
       startTime: originalScene.startTime,
       endTime: splitTime,
@@ -2669,13 +2791,15 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     const newScene2: StoryboardScene = {
       id: `scene-split-${Date.now()}-2`,
       text: part2,
-      description: "Aguardando nova composição da segunda parte. Use 'Regerar' para acionar o diretor AI.",
-      prompt: "Aguardando novo prompt de imagem para a cena dividida...",
+      description: originalScene.description ? `(Parte 2) ${originalScene.description}` : "Diretrizes visuais para a segunda parte do split.",
+      prompt: originalScene.prompt || "Aguardando novo prompt de imagem para a cena dividida...",
       sceneNumber: scene2Num,
       generationGuidelines: originalScene.generationGuidelines || "",
       sceneStylePreference: originalScene.sceneStylePreference || "auto",
       promptAiModel: originalScene.promptAiModel || "gemini-3.5-flash",
       promptTargetTool: originalScene.promptTargetTool || "Nano Banana",
+      generatedImageUrl: undefined,
+      isPromptModified: false,
       startTime: splitTime,
       endTime: originalScene.endTime,
       duration: (splitTime !== undefined && originalScene.endTime !== undefined)
@@ -2718,6 +2842,12 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       description: mergedDescription,
       prompt: mergedPrompt,
       sceneNumber: num1,
+      generationGuidelines: current.generationGuidelines || next.generationGuidelines || "",
+      sceneStylePreference: current.sceneStylePreference || next.sceneStylePreference || "auto",
+      promptAiModel: current.promptAiModel || next.promptAiModel || "gemini-3.5-flash",
+      promptTargetTool: current.promptTargetTool || next.promptTargetTool || "Nano Banana",
+      generatedImageUrl: undefined,
+      isPromptModified: false,
       startTime: start,
       endTime: end,
       duration: duration,
@@ -3574,15 +3704,22 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     if (!scene) return [];
     
     const archiveImages = sessionImageArchive.filter(item => item.sceneId === sceneId);
-    
-    // De-duplicate URLs
-    const allUrls = new Set(archiveImages.map(item => item.url));
-    const combined = [...archiveImages];
-    
-    if (scene.generatedImageUrl && !allUrls.has(scene.generatedImageUrl)) {
+    const sceneMap = new Map<string, ArchivedImage>();
+
+    // 1. Add archive images
+    archiveImages.forEach(item => {
+      if (!item.url) return;
+      const letter = item.letter || "A";
+      const key = `${sceneId}_${letter}`;
+      sceneMap.set(key, item);
+    });
+
+    // 2. Overlay scene active image
+    if (scene.generatedImageUrl) {
       const activeVersion = (scene.imageVersions || []).find(v => v.url === scene.generatedImageUrl);
       const activeLetter = activeVersion?.letter || "A";
-      combined.unshift({
+      const key = `${sceneId}_${activeLetter}`;
+      sceneMap.set(key, {
         id: `active-${sceneId}`,
         url: scene.generatedImageUrl,
         timestamp: new Date().toLocaleTimeString(),
@@ -3595,14 +3732,17 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         renderTimeSeconds: scene.renderTimeSeconds,
         letter: activeLetter
       });
-      allUrls.add(scene.generatedImageUrl);
     }
-    
+
+    // 3. Overlay scene versions
     if (scene.imageVersions) {
       scene.imageVersions.forEach((v) => {
-        if (v.url && !allUrls.has(v.url)) {
-          combined.push({
-            id: v.id,
+        if (!v.url) return;
+        const letter = v.letter || "A";
+        const key = `${sceneId}_${letter}`;
+        if (!sceneMap.has(key)) {
+          sceneMap.set(key, {
+            id: v.id || `v-${sceneId}-${letter}`,
             url: v.url,
             timestamp: v.timestamp || new Date().toLocaleTimeString(),
             sceneId: sceneId,
@@ -3612,14 +3752,13 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             model: v.model,
             engineName: v.engineName,
             renderTimeSeconds: v.renderTimeSeconds,
-            letter: v.letter || "A"
+            letter: letter
           });
-          allUrls.add(v.url);
         }
       });
     }
-    
-    return combined;
+
+    return Array.from(sceneMap.values());
   };
 
   // Helper to query all discarded/orphan images that belong to deleted or merged scene IDs
@@ -4048,183 +4187,222 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
             <div className="h-7 w-px bg-zinc-800 hidden lg:block" />
 
-            {/* Scroll 7x Panel */}
-            <div className="flex items-center gap-2.5">
-              <div className="flex flex-col">
-                <span className="text-[7px] uppercase tracking-wider text-zinc-500 font-mono font-bold block mb-0.5">Scroll 7x</span>
-                <div
-                  ref={superScrollPadRef}
-                  className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#121212] to-[#181818] border border-[#D4AF37]/35 hover:border-[#D4AF37] hover:bg-[#D4AF37]/10 transition-all duration-300 cursor-ns-resize flex flex-col items-center justify-center select-none relative overflow-hidden group"
-                  title="Rolagem 7 VEZES MAIS RÁPIDA pelo storyboard"
-                >
-                  <div className="flex flex-col items-center justify-center text-[#D4AF37]/70 group-hover:text-[#D4AF37] transition-colors pointer-events-none z-10">
-                    <span className="text-[6px] animate-pulse font-mono font-bold">▲</span>
-                    <Cpu size={11} className="text-[#D4AF37] my-0.5 group-hover:scale-110 transition-transform duration-300" />
-                    <span className="text-[6px] animate-pulse font-mono font-bold">▼</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col h-full justify-between">
-                <span className="text-[7px] uppercase tracking-wider text-zinc-500 font-mono font-bold block mb-0.5">Cena Ativa</span>
-                <div className="h-12 px-2.5 rounded-lg bg-zinc-950/60 border border-zinc-900 flex items-center justify-center min-w-[70px]">
-                  <span className="text-lg font-mono font-black text-[#D4AF37] tracking-tight">
-                    {scenes.length > 0 
-                      ? (scenes[visibleSceneIndex]?.sceneNumber || String(visibleSceneIndex + 1)).padStart(2, "0") 
-                      : "00"}
-                  </span>
-                  <span className="text-[9px] font-mono font-bold text-zinc-650 ml-1 select-none">
-                    / {String(scenes.length).padStart(2, "0")}
-                  </span>
-                </div>
+            {/* Cena Ativa Counter */}
+            <div className="flex flex-col h-full justify-between">
+              <span className="text-[7px] uppercase tracking-wider text-zinc-500 font-mono font-bold block mb-0.5">Cena Ativa</span>
+              <div className="h-11 px-2.5 rounded-lg bg-zinc-950/60 border border-zinc-900 flex items-center justify-center min-w-[70px]">
+                <span className="text-lg font-mono font-black text-[#D4AF37] tracking-tight">
+                  {scenes.length > 0 
+                    ? (scenes[visibleSceneIndex]?.sceneNumber || String(visibleSceneIndex + 1)).padStart(2, "0") 
+                    : "00"}
+                </span>
+                <span className="text-[9px] font-mono font-bold text-zinc-650 ml-1 select-none">
+                  / {String(scenes.length).padStart(2, "0")}
+                </span>
               </div>
             </div>
 
             <div className="h-7 w-px bg-zinc-800 hidden lg:block" />
 
-            {/* TOP RIGHT CORNER: Config Button (Icon only with text outside) & Gerar cenas vazias */}
-            <div className="flex flex-col items-end gap-1.5 ml-auto lg:ml-0">
+            {/* TOP RIGHT NAVIGATION COLUMNS: Gerar Cenas Vazias & Configurações/Storyboard */}
+            <div className="flex items-center gap-2 ml-auto lg:ml-0">
               
-              {/* Config / Storyboard Button */}
-              <div className="flex flex-col items-center">
-                <button
-                  type="button"
-                  onClick={() => setActiveView(activeView === "storyboard" ? "config" : "storyboard")}
-                  className="p-2 border border-[#D4AF37] bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] rounded-md transition-all cursor-pointer shadow-[0_0_10px_rgba(212,175,55,0.1)]"
-                  title={activeView === "config" ? "Voltar ao Storyboard" : "Abrir Configurações do Projeto"}
-                >
-                  {activeView === "config" ? (
-                    <Film size={15} />
-                  ) : (
-                    <Settings size={15} />
-                  )}
-                </button>
-                <span className="text-[8px] uppercase tracking-wider font-mono font-bold text-zinc-400 mt-0.5 select-none">
-                  {activeView === "config" ? "Storyboard" : "Configurações"}
-                </span>
-              </div>
-
-              {/* Gerar Cenas Vazias collapsible menu */}
+              {/* Standalone Column 1: Gerar Cenas Vazias Dropdown Menu */}
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => setShowEmptyScenesSubMenu(!showEmptyScenesSubMenu)}
-                  className="px-2.5 py-1 border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center gap-1 transition-all cursor-pointer"
-                  title="Gerenciar geração de cenas vazias do projeto"
+                  className="h-11 px-3 border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-[10px] uppercase tracking-wider font-mono font-bold rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  title="Gerenciar geração em lote e modelos para cenas vazias do projeto"
                 >
-                  <Sparkles size={10} />
+                  <Sparkles size={13} />
                   <span>Gerar cenas vazias</span>
                   <span className="text-[8px] ml-0.5">{showEmptyScenesSubMenu ? "▲" : "▼"}</span>
                 </button>
 
-                {/* Sub-buttons when expanded */}
+                {/* Clean Radio Selection Dropdown Panel */}
                 {showEmptyScenesSubMenu && (
-                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-[#161616] border border-[#333] rounded p-1.5 shadow-xl flex flex-col gap-1 min-w-[130px] animate-fadeIn">
-                    
-                    {/* Button 1: Gerar Apenas Prompts (Icon + "Prompts") */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleGenerateAllEmptyPromptsOnly();
-                        setShowEmptyScenesSubMenu(false);
-                      }}
-                      className="w-full px-2 py-1 bg-amber-500/10 hover:bg-amber-500 hover:text-black text-amber-400 border border-amber-500/30 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
-                      title="Gera apenas as descrições visuais e prompts das cenas sem gerar imagens"
-                    >
-                      <Edit3 size={11} />
-                      <span>Prompts</span>
-                    </button>
-
-                    {/* Button 2: Gera Imagens Vazias (with Submenu Model Selection) */}
-                    <div className="relative">
+                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-[#161616] border border-[#D4AF37]/50 rounded-lg p-3.5 shadow-2xl flex flex-col gap-3 min-w-[290px] sm:min-w-[330px] animate-fadeIn text-left">
+                    <div className="flex items-center justify-between border-b border-zinc-800 pb-1.5">
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-[#D4AF37] font-bold flex items-center gap-1.5">
+                        <Sparkles size={12} />
+                        <span>Configurar Geração em Lote</span>
+                      </span>
                       <button
                         type="button"
-                        onClick={() => setShowImageModelSubMenu(!showImageModelSubMenu)}
-                        className="w-full px-2 py-1 bg-amber-950/40 hover:bg-amber-500 hover:text-black text-amber-300 border border-amber-800/50 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center justify-between gap-1.5 transition-all cursor-pointer"
-                        title="Gera imagens apenas para as cenas que não têm foto — selecione o modelo de IA desejado"
+                        onClick={() => setShowEmptyScenesSubMenu(false)}
+                        className="text-zinc-500 hover:text-white text-xs font-bold px-1 cursor-pointer"
                       >
-                        <div className="flex items-center gap-1.5">
-                          <Image size={11} />
-                          <span>Imagens</span>
-                        </div>
-                        <span className="text-[8px] ml-1">{showImageModelSubMenu ? "◄" : "►"}</span>
+                        ✕
                       </button>
-
-                      {/* Image Model Selection Flyout Submenu */}
-                      {showImageModelSubMenu && (
-                        <div className="absolute right-full top-0 mr-1.5 z-50 bg-[#141414] border border-[#D4AF37]/50 rounded p-1.5 shadow-2xl flex flex-col gap-1 min-w-[170px] animate-fadeIn">
-                          <div className="px-2 py-0.5 text-[8px] font-mono uppercase tracking-widest text-[#D4AF37] border-b border-[#333] font-bold mb-1">
-                            Modelo de Imagem:
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleQueueAllPendingImages("gemini-2.5-flash-image");
-                              setShowImageModelSubMenu(false);
-                              setShowEmptyScenesSubMenu(false);
-                            }}
-                            className="w-full px-2 py-1 text-left bg-[#1f1f1f] hover:bg-[#D4AF37] hover:text-black text-amber-300 text-[9px] font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
-                          >
-                            <span>🍌 Nano Banana (Flash)</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleQueueAllPendingImages("imagen-3.0-generate-002");
-                              setShowImageModelSubMenu(false);
-                              setShowEmptyScenesSubMenu(false);
-                            }}
-                            className="w-full px-2 py-1 text-left bg-[#1f1f1f] hover:bg-[#D4AF37] hover:text-black text-amber-300 text-[9px] font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
-                          >
-                            <span>🎨 Google Imagen 3</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleQueueAllPendingImages("imagen-3.0-fast-generate-001");
-                              setShowImageModelSubMenu(false);
-                              setShowEmptyScenesSubMenu(false);
-                            }}
-                            className="w-full px-2 py-1 text-left bg-[#1f1f1f] hover:bg-[#D4AF37] hover:text-black text-amber-300 text-[9px] font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
-                          >
-                            <span>⚡ Fast Imagen 3</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleQueueAllPendingImages("gpt-image-2");
-                              setShowImageModelSubMenu(false);
-                              setShowEmptyScenesSubMenu(false);
-                            }}
-                            className="w-full px-2 py-1 text-left bg-[#1f1f1f] hover:bg-[#D4AF37] hover:text-black text-amber-300 text-[9px] font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
-                          >
-                            <span>🤖 OpenAI GPT-Image 2</span>
-                          </button>
-                        </div>
-                      )}
                     </div>
 
-                    {/* Button 3: Gerar Todos (Icon + "Prpt+Img") */}
+                    {/* Radio Group 1: Modelo de Prompt (Texto) */}
+                    <div className="space-y-1.5 bg-[#111] p-2 rounded border border-zinc-800">
+                      <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 font-bold block">
+                        1. Modelo de IA para Prompts (Texto):
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <label className={`flex items-center gap-1.5 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedPromptModel === "gemini-3.5-flash" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
+                          <input
+                            type="radio"
+                            name="batchPromptModel"
+                            value="gemini-3.5-flash"
+                            checked={batchSelectedPromptModel === "gemini-3.5-flash"}
+                            onChange={() => setBatchSelectedPromptModel("gemini-3.5-flash")}
+                            className="accent-[#D4AF37]"
+                          />
+                          <span>Google Gemini</span>
+                        </label>
+
+                        <label className={`flex items-center gap-1.5 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedPromptModel === "gpt-4o-mini" || batchSelectedPromptModel === "chatgpt" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
+                          <input
+                            type="radio"
+                            name="batchPromptModel"
+                            value="gpt-4o-mini"
+                            checked={batchSelectedPromptModel === "gpt-4o-mini" || batchSelectedPromptModel === "chatgpt"}
+                            onChange={() => setBatchSelectedPromptModel("gpt-4o-mini")}
+                            className="accent-[#D4AF37]"
+                          />
+                          <span>OpenAI (ChatGPT)</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Radio Group 2: Modelo de Imagem (Render) */}
+                    <div className="space-y-1.5 bg-[#111] p-2 rounded border border-zinc-800">
+                      <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 font-bold block">
+                        2. Modelo de IA para Imagens (Render):
+                      </span>
+                      <div className="grid grid-cols-1 gap-1">
+                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "gemini-2.5-flash-image" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
+                          <input
+                            type="radio"
+                            name="batchImageModel"
+                            value="gemini-2.5-flash-image"
+                            checked={batchSelectedImageModel === "gemini-2.5-flash-image"}
+                            onChange={() => setBatchSelectedImageModel("gemini-2.5-flash-image")}
+                            className="accent-[#D4AF37]"
+                          />
+                          <span>🍌 Nano Banana (Google Flash Image)</span>
+                        </label>
+
+                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "imagen-3.0-generate-002" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
+                          <input
+                            type="radio"
+                            name="batchImageModel"
+                            value="imagen-3.0-generate-002"
+                            checked={batchSelectedImageModel === "imagen-3.0-generate-002"}
+                            onChange={() => setBatchSelectedImageModel("imagen-3.0-generate-002")}
+                            className="accent-[#D4AF37]"
+                          />
+                          <span>🎨 Google Imagen 3 (Alta Qualidade)</span>
+                        </label>
+
+                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "imagen-3.0-fast-generate-001" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
+                          <input
+                            type="radio"
+                            name="batchImageModel"
+                            value="imagen-3.0-fast-generate-001"
+                            checked={batchSelectedImageModel === "imagen-3.0-fast-generate-001"}
+                            onChange={() => setBatchSelectedImageModel("imagen-3.0-fast-generate-001")}
+                            className="accent-[#D4AF37]"
+                          />
+                          <span>⚡ Google Fast Imagen 3 (Rápido)</span>
+                        </label>
+
+                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "gpt-image-2" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
+                          <input
+                            type="radio"
+                            name="batchImageModel"
+                            value="gpt-image-2"
+                            checked={batchSelectedImageModel === "gpt-image-2"}
+                            onChange={() => setBatchSelectedImageModel("gpt-image-2")}
+                            className="accent-[#D4AF37]"
+                          />
+                          <span>🤖 OpenAI GPT-Image 2 (Oficial)</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Middle Action Button: Aplicar Padrão a Todas Cartelas */}
                     <button
                       type="button"
                       onClick={() => {
-                        handleGenerateAllEmptyPromptsAndImages();
-                        setShowEmptyScenesSubMenu(false);
+                        handleApplyBatchModelsToAllScenes();
                       }}
-                      className="w-full px-2 py-1 bg-[#D4AF37]/15 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] border border-[#D4AF37]/40 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer"
-                      title="Gera todos os prompts e depois enfileira as imagens para serem geradas automaticamente"
+                      className="w-full py-2 px-2 bg-gradient-to-r from-amber-500/20 to-[#D4AF37]/20 hover:from-amber-500 hover:to-[#D4AF37] hover:text-black text-[#D4AF37] border border-[#D4AF37]/60 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md"
+                      title="Aplica os modelos de Prompt e Imagem selecionados acima a TODAS as cartelas do projeto (com confirmação)"
                     >
-                      <Sparkles size={11} />
-                      <span>Prpt+Img</span>
+                      <CheckCircle2 size={12} />
+                      <span>Aplicar Padrão a Todas Cartelas</span>
                     </button>
+
+                    {/* Lower Action Buttons: 3 Main Execution Buttons */}
+                    <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-zinc-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleGenerateAllEmptyPromptsOnly(batchSelectedPromptModel);
+                          setShowEmptyScenesSubMenu(false);
+                        }}
+                        className="py-2 px-1 bg-amber-500/10 hover:bg-amber-500 hover:text-black text-amber-400 border border-amber-500/30 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center justify-center gap-1 transition-all cursor-pointer"
+                        title="Gera os prompts das cenas vazias usando o modelo de prompt selecionado"
+                      >
+                        <Edit3 size={11} />
+                        <span>Prompts</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleQueueAllPendingImages(batchSelectedImageModel);
+                          setShowEmptyScenesSubMenu(false);
+                        }}
+                        className="py-2 px-1 bg-amber-950/40 hover:bg-amber-500 hover:text-black text-amber-300 border border-amber-800/50 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center justify-center gap-1 transition-all cursor-pointer"
+                        title="Gera as imagens das cenas vazias usando o modelo de imagem selecionado"
+                      >
+                        <Image size={11} />
+                        <span>Imagens</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleGenerateAllEmptyPromptsAndImages(batchSelectedPromptModel, batchSelectedImageModel);
+                          setShowEmptyScenesSubMenu(false);
+                        }}
+                        className="py-2 px-1 bg-[#D4AF37]/15 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] border border-[#D4AF37]/40 text-[9px] uppercase tracking-wider font-mono font-bold rounded flex items-center justify-center gap-1 transition-all cursor-pointer"
+                        title="Gera os prompts e depois enfileira as imagens com os dois modelos selecionados"
+                      >
+                        <Sparkles size={11} />
+                        <span>Prpt+Img</span>
+                      </button>
+                    </div>
 
                   </div>
                 )}
               </div>
+
+              {/* Standalone Column 2: Full Height Configurações / Storyboard Button */}
+              <button
+                type="button"
+                onClick={() => setActiveView(activeView === "storyboard" ? "config" : "storyboard")}
+                className="h-11 px-3.5 border border-[#D4AF37] bg-[#D4AF37]/15 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] rounded-lg transition-all cursor-pointer shadow-[0_0_12px_rgba(212,175,55,0.15)] flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider"
+                title={activeView === "config" ? "Voltar ao Storyboard" : "Abrir Configurações do Projeto"}
+              >
+                {activeView === "config" ? (
+                  <>
+                    <Film size={15} />
+                    <span>Storyboard</span>
+                  </>
+                ) : (
+                  <>
+                    <Settings size={15} />
+                    <span>Configurações</span>
+                  </>
+                )}
+              </button>
 
             </div>
 
@@ -5626,6 +5804,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                     data-scene-index={index}
                     onClickCapture={() => setFocusedSceneId(scene.id)}
                     onFocusCapture={() => setFocusedSceneId(scene.id)}
+                    style={{ contentVisibility: "auto", containIntrinsicSize: "0 450px" }}
                     className={`transition-all duration-300 rounded-lg ${
                       focusedSceneId === scene.id ? "ring-2 ring-[#D4AF37]/50 shadow-[0_0_15px_rgba(212,175,55,0.1)]" : ""
                     }`}
@@ -5653,6 +5832,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       customApiKey={customApiKey}
                       openAiKey={openAiKey}
                       openAiDalleModel={openAiDalleModel}
+                      useOpenAiForPrompts={useOpenAiForPrompts}
+                      openAiModel={openAiModel}
                       onCancelRender={handleCancelRender}
                       consecutiveNumbering={consecutiveNumbering}
                       onToggleConsecutiveNumbering={(val) => {
@@ -5664,7 +5845,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       isConnectionMode={isConnectionMode}
                       selectedSceneIdsForConnection={selectedSceneIdsForConnection}
                       onToggleSceneSelection={handleToggleSceneSelection}
-                      scenes={scenes}
+                      connectedScenes={scene.connectionGroupId ? scenes.filter(s => s.connectionGroupId === scene.connectionGroupId && s.id !== scene.id) : undefined}
                       availableModels={availableModels}
                       ollamaModels={ollamaModels}
                       audioNarrationUrl={audioNarrationUrl}

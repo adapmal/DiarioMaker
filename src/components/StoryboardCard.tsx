@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { StoryboardScene, StylePreference, ConnectionGroup } from "../types";
 import { getCachedImage } from "../lib/cacheStore";
 import { downloadSingleImageFile } from "../lib/imageUtils";
@@ -38,6 +39,8 @@ import {
 } from "lucide-react";
 import { resizeAndCompressImage } from "../utils";
 
+const getLetterFromIndex = (index: number): string => String.fromCharCode(65 + (index % 26));
+
 interface StoryboardCardProps {
   key?: string;
   scene: StoryboardScene;
@@ -59,6 +62,8 @@ interface StoryboardCardProps {
   customApiKey?: string;
   openAiKey?: string;
   openAiDalleModel?: string;
+  useOpenAiForPrompts?: boolean;
+  openAiModel?: string;
   onCancelRender?: (id: string) => void;
   consecutiveNumbering?: boolean;
   onToggleConsecutiveNumbering?: (value: boolean) => void;
@@ -66,14 +71,14 @@ interface StoryboardCardProps {
   isConnectionMode?: boolean;
   selectedSceneIdsForConnection?: string[];
   onToggleSceneSelection?: (sceneId: string) => void;
-  scenes?: StoryboardScene[];
-  availableModels?: { gemini: string[]; openai: string[] };
+  connectedScenes?: StoryboardScene[];
+  availableModels?: { gemini?: { text?: string[]; image?: string[] }; openai?: { text?: string[]; image?: string[] } };
   ollamaModels?: string[];
   audioNarrationUrl?: string;
   fps?: number;
 }
 
-export default function StoryboardCard({
+function StoryboardCardComponent({
   scene,
   index,
   totalScenes,
@@ -93,6 +98,8 @@ export default function StoryboardCard({
   customApiKey,
   openAiKey,
   openAiDalleModel,
+  useOpenAiForPrompts = false,
+  openAiModel,
   onCancelRender,
   consecutiveNumbering = true,
   onToggleConsecutiveNumbering,
@@ -100,8 +107,8 @@ export default function StoryboardCard({
   isConnectionMode = false,
   selectedSceneIdsForConnection = [],
   onToggleSceneSelection,
-  scenes = [],
-  availableModels = { gemini: [], openai: [] },
+  connectedScenes = [],
+  availableModels = { gemini: { text: [], image: [] }, openai: { text: [], image: [] } },
   ollamaModels = [],
   audioNarrationUrl,
   fps = 24
@@ -115,7 +122,7 @@ export default function StoryboardCard({
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   const handlePlayAudioSnippet = () => {
-    if (!audioNarrationUrl || scene.startTime === undefined) return;
+    if (!audioNarrationUrl) return;
 
     // 1. Stop any currently playing audio globally
     if ((window as any)._currentStoryboardAudio) {
@@ -612,22 +619,17 @@ You MUST strictly incorporate and prioritize this concept or correction constrai
     const toolGuidance = `OPTIMIZATION FOCUS: Format and tailor this prompt for the image generation engine "${scene.promptTargetTool || "Nano Banana"}". Emphasize compatible cues, weight tags, or structures ideal for ${scene.promptTargetTool || "Nano Banana"}.`;
 
     let connectedContext = "";
-    if (scene.connectionGroupId && Array.isArray(scenes) && scenes.length > 0) {
-      const otherConnected = scenes.filter(s => s.connectionGroupId === scene.connectionGroupId && s.id !== scene.id);
-      if (otherConnected.length > 0) {
-        connectedContext = `\n\nCRITICAL VISUAL CONTINUITY & NARRATIVE CONSISTENCY CONSTRAINTS (SAME GROUP CONTEXT):
+    if (Array.isArray(connectedScenes) && connectedScenes.length > 0) {
+      connectedContext = `\n\nCRITICAL VISUAL CONTINUITY & NARRATIVE CONSISTENCY CONSTRAINTS (SAME GROUP CONTEXT):
 This scene belongs to a group of connected scenes designed to share character designs, lighting setups, location assets, and visual styles to guarantee aesthetic continuity.
 Ensure the clothing style, hair, skin features, props, facial structures, color palette, and location details are aligned with these scenes:
-` + otherConnected.map((s, i) => {
-          const sIndex = scenes.findIndex(orig => orig.id === s.id);
-          const sceneNum = sIndex !== -1 ? sIndex + 1 : (i + 1);
-          const numPad = String(sceneNum).padStart(2, "0");
-          return `- Connected Scene #${numPad}:
+` + connectedScenes.map((s, i) => {
+        const numPad = s.sceneNumber || String(i + 1).padStart(2, "0");
+        return `- Connected Scene #${numPad}:
   Narration: "${s.text || ""}"
   Visual Description: "${s.description || ""}"
   Image Prompt: "${s.prompt || ""}"`;
-        }).join("\n");
-      }
+      }).join("\n");
     }
 
     const systemInstruction = `You are a professional Art Director specializing in religious, contemplative, and human-centric daily meditations.
@@ -718,18 +720,14 @@ ${userPromptText}`;
     });
 
     // Gather other scenes in the same connection group for aesthetic/visual continuity
-    const otherConnectedScenes = scene.connectionGroupId
-      ? scenes
-          .filter((s) => s.connectionGroupId === scene.connectionGroupId && s.id !== scene.id)
-          .map((s) => ({
-            sceneNumber: s.sceneNumber || String(scenes.indexOf(s) + 1).padStart(2, "0"),
-            text: s.text,
-            description: s.description,
-            prompt: s.prompt,
-            generatedImageUrl: s.generatedImageUrl,
-            visualInstructionImage: s.visualInstructionImage,
-          }))
-      : [];
+    const otherConnectedScenes = (connectedScenes || []).map((s, i) => ({
+      sceneNumber: s.sceneNumber || String(i + 1).padStart(2, "0"),
+      text: s.text,
+      description: s.description,
+      prompt: s.prompt,
+      generatedImageUrl: s.generatedImageUrl,
+      visualInstructionImage: s.visualInstructionImage,
+    }));
 
     // Find the latest visual state in the current conversation thread for perfect context and continuous editing
     let latestChatImageUrl = scene.generatedImageUrl;
@@ -752,11 +750,17 @@ ${userPromptText}`;
     }
 
     try {
+      const isUsingOpenAi = (useOpenAiForPrompts || selectedChatModel.includes("gpt") || selectedChatModel.includes("openai")) && !!openAiKey;
       const editResponse = await fetch("/api/storyboard/chat-edit", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(customApiKey ? { "x-gemini-key": customApiKey } : {})
+          ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
+          ...(openAiKey ? {
+            "x-use-openai": isUsingOpenAi ? "true" : "false",
+            "x-openai-key": openAiKey,
+            "x-openai-model": openAiModel || "gpt-4o-mini"
+          } : {})
         },
         body: JSON.stringify({
           sceneText: scene.text,
@@ -783,7 +787,11 @@ ${userPromptText}`;
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(customApiKey ? { "x-gemini-key": customApiKey } : {})
+          ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
+          ...(openAiKey ? {
+            "x-openai-key": openAiKey,
+            "x-openai-dalle-model": openAiDalleModel || "gpt-image-2"
+          } : {})
         },
         body: JSON.stringify({
           prompt: editResult.newPrompt,
@@ -951,14 +959,18 @@ ${userPromptText}`;
               <span className="text-xl font-light text-[#E0D8D0] block font-serif">{sceneNumText}</span>
             </div>
 
-            {scene.startTime !== undefined && (
+            {(scene.startTime !== undefined || audioNarrationUrl) && (
               <div className="flex flex-col items-center my-1 font-mono">
-                <span className="text-[8px] text-[#D4AF37] font-bold tracking-wider">
-                  {secondsToSMPTE(scene.startTime, fps || 24)}
-                </span>
-                <span className="text-[7px] text-zinc-500 font-sans">
-                  {formatDuration(scene.duration || (scene.endTime ? scene.endTime - scene.startTime : 3))}
-                </span>
+                {scene.startTime !== undefined && (
+                  <>
+                    <span className="text-[8px] text-[#D4AF37] font-bold tracking-wider">
+                      {secondsToSMPTE(scene.startTime, fps || 24)}
+                    </span>
+                    <span className="text-[7px] text-zinc-500 font-sans">
+                      {formatDuration(scene.duration || (scene.endTime ? scene.endTime - scene.startTime : 3))}
+                    </span>
+                  </>
+                )}
                 {audioNarrationUrl && (
                   <button
                     type="button"
@@ -1018,6 +1030,8 @@ ${userPromptText}`;
                 src={activeImageUrl} 
                 alt={`Widescreen render scene #${sceneNumText}`} 
                 className="w-full h-full object-cover relative z-0 animate-fadeIn"
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
                 onError={(e) => {
                   const target = e.currentTarget;
@@ -1058,8 +1072,17 @@ ${userPromptText}`;
                   <span className="text-[10px] font-mono tracking-widest text-[#D4AF37] uppercase font-bold animate-pulse">
                     {scene.renderStatus === "rendering" ? "Renderizando..." : "Na Fila..."}
                   </span>
-                  <span className="text-[8px] text-zinc-400 font-mono mt-1.5 uppercase">
-                    via {scene.selectedModel === "nano_banana_pro" ? "Nano Banana Pro" : scene.selectedModel === "nano_banana_2" ? "Nano Banana 2" : "Nano Banana 2 Lite"}
+                  <span className="text-[8px] text-[#D4AF37] font-mono mt-1.5 uppercase font-bold">
+                    via {(() => {
+                      const m = scene.selectedModel || scene.promptTargetTool || "";
+                      if (m === "gpt-image-2") return "OpenAI GPT-Image 2";
+                      if (m === "dall-e-3") return "OpenAI DALL-E 3";
+                      if (m === "dall-e-2") return "OpenAI DALL-E 2";
+                      if (m === "imagen-3.0-generate-002") return "Google Imagen 3";
+                      if (m === "imagen-3.0-fast-generate-001") return "Google Fast Imagen 3";
+                      if (m === "gemini-2.5-flash-image" || m === "nano_banana") return "Google Nano Banana (Flash)";
+                      return m || "Google Nano Banana";
+                    })()}
                   </span>
                   {onCancelRender && (
                     <button
@@ -1078,15 +1101,15 @@ ${userPromptText}`;
               </div>
             )}
 
-            {/* Image Versions Thumbnails Container (Docked at top-right of image) */}
+            {/* Image Versions Visual Thumbnails Container (Docked at top-right of image) */}
             {scene.imageVersions && scene.imageVersions.length > 0 && (
               <div 
-                className="absolute top-3 right-3 flex flex-wrap items-center gap-1.5 bg-black/85 border border-zinc-800 p-1.5 rounded backdrop-blur-md shadow-xl max-w-[200px] sm:max-w-[320px] z-25 max-h-[110px] overflow-y-auto scrollbar-thin"
+                className="absolute top-3 right-3 flex flex-wrap items-center gap-1.5 bg-black/85 border border-zinc-800 p-1.5 rounded backdrop-blur-md shadow-xl max-w-[220px] sm:max-w-[360px] z-25 max-h-[110px] overflow-y-auto scrollbar-thin"
                 onClick={(e) => e.stopPropagation()}
               >
                 {scene.imageVersions.map((v, vIdx) => {
                   const isActive = v.url === scene.generatedImageUrl;
-                  const isVersionIdb = v.url?.startsWith("idb://");
+                  const letter = v.letter || getLetterFromIndex(vIdx);
                   return (
                     <button
                       key={`${v.id || "version"}-${vIdx}`}
@@ -1101,25 +1124,32 @@ ${userPromptText}`;
                           description: v.description || scene.description
                         });
                       }}
-                      className={`w-12 h-7 bg-zinc-900 border rounded cursor-pointer transition-all ${
+                      className={`relative w-12 h-7 bg-zinc-900 border rounded cursor-pointer transition-all overflow-hidden group ${
                         isActive 
-                          ? "border-[#D4AF37] scale-105 shadow-[0_0_8px_rgba(212,175,55,0.5)] z-10" 
-                          : "border-zinc-850 hover:border-zinc-500 opacity-60 hover:opacity-100"
+                          ? "border-[#D4AF37] scale-105 shadow-[0_0_10px_rgba(212,175,55,0.6)] z-10" 
+                          : "border-zinc-800 hover:border-zinc-400 opacity-70 hover:opacity-100"
                       }`}
-                      title={`Versão gerada em ${v.timestamp}${v.model ? ` via ${v.model}` : ""}`}
+                      title={`Versão ${letter} (${v.timestamp || ""})${v.model ? ` - ${v.model}` : ""}`}
                     >
-                      {isVersionIdb ? (
-                        <div className="w-full h-full flex items-center justify-center bg-zinc-950">
-                          <Loader2 size={10} className="animate-spin text-[#D4AF37]" />
-                        </div>
-                      ) : (
+                      {v.url ? (
                         <img 
                           src={v.url} 
-                          alt="Versão" 
+                          alt={`Versão ${letter}`} 
                           className="w-full h-full object-cover" 
+                          loading="lazy"
+                          decoding="async"
                           referrerPolicy="no-referrer"
                         />
+                      ) : (
+                        <div className="w-full h-full bg-zinc-950 flex items-center justify-center text-[10px] text-zinc-500 font-mono">
+                          {letter}
+                        </div>
                       )}
+                      <div className={`absolute top-0.5 left-0.5 px-1 rounded text-[8px] font-mono font-bold leading-tight ${
+                        isActive ? "bg-[#D4AF37] text-black" : "bg-black/75 text-zinc-300"
+                      }`}>
+                        {letter}
+                      </div>
                     </button>
                   );
                 })}
@@ -1637,6 +1667,8 @@ ${userPromptText}`;
                           src={scene.visualInstructionImage} 
                           alt="Instrução Visual" 
                           className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
                           referrerPolicy="no-referrer"
                         />
                         <div className="absolute inset-0 bg-black/85 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -1824,13 +1856,12 @@ ${userPromptText}`;
             </div>
           )}
 
-
         </div>
       </div>
 
       {/* NANO BANANA ART STUDIO INTERACTIVE CHAT MODAL */}
-      {isStudioOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 bg-black/95 backdrop-blur-md animate-fadeIn">
+      {isStudioOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-black/95 backdrop-blur-md animate-fadeIn">
           <div 
             className="bg-[#101010] border border-[#2b2b2b] rounded-lg shadow-2xl max-w-6xl w-full flex flex-col h-[85vh] max-h-[85vh] overflow-hidden text-[#E4DCD3]"
             onClick={(e) => e.stopPropagation()}
@@ -2236,8 +2267,11 @@ ${userPromptText}`;
 
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
 }
+
+export default React.memo(StoryboardCardComponent);

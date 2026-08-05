@@ -55,9 +55,9 @@ function sanitizeScenes(scenes: any[]): any[] {
   });
 }
 
-// Enable JSON body parser with generous limit for larger scripts
-app.use(express.json({ limit: "150mb" }));
-app.use(express.urlencoded({ limit: "150mb", extended: true }));
+// Enable JSON body parser with generous 500mb limit for projects with heavy Base64 image caches
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
 // Server-side robust session API
 app.get("/api/storyboard/session", (req, res) => {
@@ -218,7 +218,18 @@ app.post("/api/storyboard/session", (req, res) => {
       saveVersion: saveVersion !== undefined ? saveVersion : 1,
       updatedAt: new Date().toISOString()
     };
-    fs.writeFileSync(SESSION_FILE_PATH, JSON.stringify(sessionData, null, 2), "utf-8");
+    const jsonStr = JSON.stringify(sessionData, null, 2);
+    try {
+      fs.writeFileSync(SESSION_FILE_PATH, jsonStr, "utf-8");
+    } catch (wErr) {
+      try {
+        const tmpPath = `${SESSION_FILE_PATH}.tmp_${Date.now()}`;
+        fs.writeFileSync(tmpPath, jsonStr, "utf-8");
+        fs.renameSync(tmpPath, SESSION_FILE_PATH);
+      } catch (rErr) {
+        console.warn("Retried atomic write for session_store.json:", rErr);
+      }
+    }
     return res.json({ success: true });
   } catch (error: any) {
     console.error("Error writing session file:", error);
@@ -425,7 +436,13 @@ app.post("/api/storyboard/projects/save", (req, res) => {
     try {
       fs.writeFileSync(SESSION_FILE_PATH, jsonStr, "utf-8");
     } catch (sErr) {
-      console.warn("Failed to write global session file:", sErr);
+      try {
+        const tmpPath = `${SESSION_FILE_PATH}.tmp_${Date.now()}`;
+        fs.writeFileSync(tmpPath, jsonStr, "utf-8");
+        fs.renameSync(tmpPath, SESSION_FILE_PATH);
+      } catch (rErr) {
+        console.warn("Failed to write global session file:", rErr);
+      }
     }
 
     return res.json({ success: true, path: projectJsonPath, updatedAt: sessionData.updatedAt });
@@ -1624,12 +1641,17 @@ Styling Directive: ${styleGuidance}
 ${directionPrompt}
 ${toolGuidance}${connectedContext}`;
 
-  // Dynamically select model based on parameter, fallback to standard gemini-3.6-flash
   const modelToUse = promptAiModel || "gemini-3.6-flash";
-
   const openAiKey = req.headers["x-openai-key"] as string;
   const openAiModel = req.headers["x-openai-model"] as string || "gpt-4o-mini";
-  const useOpenAi = (promptAiModel === "chatgpt" || (req.headers["x-use-openai"] === "true" && promptAiModel !== "gemini-3.6-flash" && promptAiModel !== "gemini-3.1-pro-preview")) && !!openAiKey;
+  const useOpenAi = (
+    promptAiModel === "chatgpt" ||
+    promptAiModel === "gpt-4o-mini" ||
+    promptAiModel === "gpt-4o" ||
+    promptAiModel?.startsWith("gpt-") ||
+    promptAiModel?.includes("openai") ||
+    req.headers["x-use-openai"] === "true"
+  ) && !!openAiKey;
 
   if (useOpenAi) {
     console.log(`[OpenAI API] Scene Regeneration using model: ${openAiModel}`);
@@ -1699,6 +1721,30 @@ ${toolGuidance}${connectedContext}`;
     });
   } catch (error: any) {
     console.error(`[Gemini API] Scene regeneration failed on requested model ${modelToUse}:`, error);
+    if (openAiKey) {
+      console.log("[Gemini API] Scene regeneration Gemini failed. Auto-falling back to OpenAI...");
+      try {
+        const systemInstructionWithJsonPrompt = `${SYSTEM_INSTRUCTION}\nYou MUST return a JSON object containing exactly:
+- "description": cinematic visual description in PT-BR (string)
+- "prompt": high-quality English image prompt ending with "16:9 aspect ratio" (string)`;
+
+        const gptOutput = await callOpenAiChat(
+          openAiKey,
+          openAiModel,
+          systemInstructionWithJsonPrompt,
+          userPromptText,
+          true
+        );
+        const result = JSON.parse(gptOutput || "{}");
+        return res.json({
+          ...result,
+          promptAiModelUsed: `openai:${openAiModel}`,
+          isCustomKeyUsed: true
+        });
+      } catch (gptFallbackErr: any) {
+        console.error("[OpenAI API] Fallback after Gemini error failed:", gptFallbackErr);
+      }
+    }
     res.status(500).json({
       error: `Falha ao gerar prompt no modelo Gemini (${modelToUse}): ${formatGeminiError(error)}`
     });
@@ -1891,6 +1937,26 @@ Make sure your response matches the JSON structure perfectly.`;
     });
   } catch (error: any) {
     console.error("[Gemini API] Chat-edit backend failed:", error);
+    if (openAiKey) {
+      console.log("[Gemini API] Chat-edit Gemini failed. Auto-falling back to OpenAI...");
+      try {
+        const gptOutput = await callOpenAiChat(
+          openAiKey,
+          openAiModel || "gpt-4o-mini",
+          systemPrompt,
+          `Processe a solicitação do usuário: "${userMessage}"`,
+          true
+        );
+        const result = JSON.parse(gptOutput || "{}");
+        return res.json({
+          ...result,
+          promptAiModelUsed: `openai:${openAiModel || "gpt-4o-mini"}`,
+          isCustomKeyUsed: true
+        });
+      } catch (gptFallbackErr: any) {
+        console.error("[OpenAI API] Fallback after Gemini error failed:", gptFallbackErr);
+      }
+    }
     res.status(500).json({
       error: formatGeminiError(error)
     });
@@ -2011,24 +2077,32 @@ app.post("/api/storyboard/generate-image", async (req, res) => {
     const isUsingCustomKey = !!(activeKey && activeKey.trim());
 
     const openAiKey = req.headers["x-openai-key"] as string;
-    const openAiDalleModel = req.headers["x-openai-dalle-model"] as string || "dall-e-3";
-    const useOpenAi = model === "chatgpt_dalle3" && !!openAiKey;
+    const requestedDalleModel = (model === "gpt-image-2" || model === "dall-e-3" || model === "dall-e-2") ? model : (req.headers["x-openai-dalle-model"] as string || "gpt-image-2");
+    const useOpenAi = (
+      model === "chatgpt_dalle3" ||
+      model === "gpt-image-2" ||
+      model === "dall-e-3" ||
+      model === "dall-e-2" ||
+      model?.startsWith("gpt-") ||
+      model?.startsWith("dall") ||
+      model?.includes("openai")
+    ) && !!openAiKey;
 
     let searchQuery = "atmospheric,scenery";
     const promptLower = prompt.toLowerCase();
 
     if (useOpenAi) {
-      console.log(`[OpenAI API] Image Generation using model: ${openAiDalleModel}`);
+      console.log(`[OpenAI API] Image Generation using model: ${requestedDalleModel}`);
       try {
-        const dalleUrl = await callOpenAiImage(openAiKey, openAiDalleModel, prompt);
+        const dalleUrl = await callOpenAiImage(openAiKey, requestedDalleModel, prompt);
         return res.json({
           imageUrl: dalleUrl,
           keywords: searchQuery,
           metadata: {
-            engineName: `DALL-E 3 (${openAiDalleModel})`,
-            resolution: openAiDalleModel === "dall-e-3" ? "1792x1024 (Widescreen)" : "1024x1024 (Quadrado)",
+            engineName: `OpenAI (${requestedDalleModel})`,
+            resolution: requestedDalleModel === "dall-e-3" ? "1792x1024 (Widescreen)" : "1024x1024 (Quadrado)",
             renderTimeSeconds: 4.5,
-            creativeShader: "Geração de imagem fotorrealista premium via rede neural artificial do OpenAI DALL-E."
+            creativeShader: "Geração de imagem fotorrealista premium via rede neural artificial do OpenAI."
           },
           isAiGenerated: true,
           generationError: "",
