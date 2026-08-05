@@ -15,6 +15,7 @@ const upload = multer({ storage, limits: { fileSize: 250 * 1024 * 1024 } });
 
 const SESSION_FILE_PATH = path.join(process.cwd(), "session_store.json");
 const USER_CONFIG_PATH = path.join(process.cwd(), "user_config.json");
+const API_SECRETS_PATH = path.join(process.cwd(), "api_secrets.json");
 const PROJECTS_DIR = path.join(process.cwd(), "projects");
 const SERVER_LOG_FILE = path.join(process.cwd(), "server_error.log");
 
@@ -28,17 +29,32 @@ function logErrorToFile(context: string, err: any) {
   } catch (_) {}
 }
 
-// Helper to load settings from user_config.json with robust defaults
+// Helper to load sensitive API keys from git-ignored api_secrets.json
+function loadApiSecrets() {
+  try {
+    if (fs.existsSync(API_SECRETS_PATH)) {
+      const data = fs.readFileSync(API_SECRETS_PATH, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.warn("Failed to load api_secrets.json:", err);
+  }
+  return {};
+}
+
+// Helper to load settings from user_config.json merged with api_secrets.json
 function loadUserConfig() {
+  let config: any = {};
   try {
     if (fs.existsSync(USER_CONFIG_PATH)) {
       const data = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
-      return JSON.parse(data);
+      config = JSON.parse(data);
     }
   } catch (err) {
     console.warn("Failed to load user_config.json:", err);
   }
-  return {};
+  const secrets = loadApiSecrets();
+  return { ...config, ...secrets };
 }
 
 // Helper to sanitize scenes and ensure "Midjourney" is replaced with "Nano Banana"
@@ -687,22 +703,8 @@ async function callGeminiWithRetry<T>(
   let lastError: any = null;
   let delay = initialDelayMs;
   
-  // Adaptive model list promotion based on stability map
-  const now = Date.now();
-  let modelsToTry = [preferredModel, ...fallbackModels];
-  const stats = modelStabilityMap[preferredModel];
-  if (stats && stats.failureCount >= 1 && (now - stats.lastFailureTime < 600000)) { // 10 minutes cache
-    const stableFallbacks = fallbackModels.filter(f => {
-      const fStats = modelStabilityMap[f];
-      return !fStats || fStats.failureCount === 0 || (now - fStats.lastFailureTime >= 600000);
-    });
-    if (stableFallbacks.length > 0) {
-      const promoted = stableFallbacks[0];
-      const otherFallbacks = fallbackModels.filter(f => f !== promoted);
-      modelsToTry = [promoted, preferredModel, ...otherFallbacks];
-      console.log(`[Gemini API Stability Circuit Breaker] O modelo ${preferredModel} foi considerado instável temporariamente. Promovendo o modelo estável ${promoted} para primeira tentativa.`);
-    }
-  }
+  // Strict single-model execution (no auto-fallback to unwanted models)
+  let modelsToTry = [preferredModel];
   
   for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
     const currentModel = modelsToTry[attempt];
@@ -1059,15 +1061,34 @@ app.get("/api/storyboard/config", (req, res) => {
 
 app.post("/api/storyboard/config", (req, res) => {
   try {
+    const { customGeminiKey, customOpenAiKey, ...generalConfig } = req.body;
+    
+    // Save API secrets separately to api_secrets.json (git-ignored)
+    if (customGeminiKey !== undefined || customOpenAiKey !== undefined) {
+      const currentSecrets = loadApiSecrets();
+      const updatedSecrets = {
+        ...currentSecrets,
+        ...(customGeminiKey !== undefined && { customGeminiKey }),
+        ...(customOpenAiKey !== undefined && { customOpenAiKey })
+      };
+      fs.writeFileSync(API_SECRETS_PATH, JSON.stringify(updatedSecrets, null, 2), "utf-8");
+    }
+
+    // Save general non-sensitive preferences to user_config.json
     const currentConfig = loadUserConfig();
-    const newConfig = {
+    delete currentConfig.customGeminiKey;
+    delete currentConfig.customOpenAiKey;
+    
+    const newGeneralConfig = {
       ...currentConfig,
-      ...req.body
+      ...generalConfig
     };
-    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(newConfig, null, 2), "utf-8");
-    return res.json({ success: true, config: newConfig });
+    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(newGeneralConfig, null, 2), "utf-8");
+    
+    const fullMergedConfig = loadUserConfig();
+    return res.json({ success: true, config: fullMergedConfig });
   } catch (err: any) {
-    console.error("Error writing user_config.json:", err);
+    console.error("Error saving server configurations:", err);
     return res.status(500).json({ error: "Failed to save server configurations." });
   }
 });

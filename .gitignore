@@ -11,3 +11,7 @@ projects/DEMB_260809_V03/narration.wav
 projects/DEMB_270809_V01/narration.wav
 projects/DEMB_TEST_PROJECT/narration.wav
 projects/DEMB_TEST_REAL_AUDIO/narration.wav
+api_secrets.json
+api_config.json
+user_config.json
+session_store.json

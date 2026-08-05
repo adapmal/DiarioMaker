@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="100%" height="100%">
+    <defs>
+      <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#241812" />
+        <stop offset="100%" stop-color="#0f0a07" />
+      </linearGradient>
+      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(212,175,55,0.05)" stroke-width="1"/>
+      </pattern>
+    </defs>
+
+    <!-- Background -->
+    <rect width="1200" height="675" fill="url(#bgGrad)" />
+    <rect width="1200" height="675" fill="url(#grid)" />
+    
+    <!-- Cinematic frame borders -->
+    <rect x="25" y="25" width="1150" height="625" fill="none" stroke="rgba(225, 29, 72, 0.4)" stroke-width="2" rx="4" />
+    <rect x="35" y="35" width="1130" height="605" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1" rx="2" />
+
+    <!-- Top Badge -->
+    <rect x="60" y="60" width="450" height="32" rx="4" fill="rgba(225, 29, 72, 0.15)" stroke="rgba(225, 29, 72, 0.4)" stroke-width="1"/>
+    <text x="75" y="81" fill="#FCA5A5" font-family="monospace, sans-serif" font-size="13" font-weight="bold" letter-spacing="2">MODELO REQUISITADO: NANO BANANA 2 LITE</text>
+
+    <!-- Center Error Box & Large Highlighted Error Message -->
+    <g transform="translate(60, 140)">
+      <!-- Error Warning Icon & Large Title -->
+      <text x="0" y="60" fill="#F87171" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-weight="900" font-size="32" letter-spacing="1">⚠️ FALHA NA RENDERIZAÇÃO REAL VIA IA</text>
+      
+      <!-- Highlighted Detailed Reason in Large Readable Font -->
+      <rect x="0" y="95" width="1080" height="130" rx="8" fill="rgba(0, 0, 0, 0.5)" stroke="rgba(248, 113, 113, 0.4)" stroke-width="1.5"/>
+      <text x="30" y="145" fill="#F1F5F9" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="20" font-weight="600">Cota de API do Gemini atingida ou modelo não suportou resposta de bytes inline.</text>
+    </g>
+
+    <!-- Context Info at Bottom -->
+    <g transform="translate(60, 470)">
+      <text x="0" y="30" fill="rgba(212,175,55,0.8)" font-family="monospace, sans-serif" font-size="12" font-weight="bold" letter-spacing="2">CONTEXTO DA CENA:</text>
+      <text x="0" y="60" fill="rgba(255,255,255,0.6)" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16" font-style="italic">"A desolate, shadowy alley symbolizing godlessness, with aggressive graffiti and scatt..."</text>
+    </g>
+
+    <!-- Footer Status -->
+    <line x1="60" y1="590" x2="1140" y2="590" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+    <text x="60" y="612" fill="rgba(255,255,255,0.4)" font-family="monospace, sans-serif" font-size="11">VERIFIQUE AS CONFIGURAÇÕES DA CHAVE DE API PARA LIBERAR A GERAÇÃO REAL DE IMAGEM.</text>
+    <text x="950" y="612" fill="#D4AF37" font-family="monospace, sans-serif" font-size="11" font-weight="bold">PROPORÇÃO 16:9</text>
+  </svg>

@@ -30,7 +30,7 @@ export interface StoryboardScene {
   isEditing?: boolean;
   isLoading?: boolean;
   generatedImageUrl?: string;
-  selectedModel?: "nano_banana" | "nano_banana_pro" | "nano_banana_2" | "chatgpt_dalle3";
+  selectedModel?: string;
   engineName?: string;
   renderTimeSeconds?: number;
   generationGuidelines?: string;

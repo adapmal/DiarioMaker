@@ -74,6 +74,8 @@ interface StoryboardCardProps {
   connectedScenes?: StoryboardScene[];
   availableModels?: { gemini?: { text?: string[]; image?: string[] }; openai?: { text?: string[]; image?: string[] } };
   ollamaModels?: string[];
+  enabledPromptModels?: string[];
+  enabledImageModels?: string[];
   audioNarrationUrl?: string;
   fps?: number;
 }
@@ -110,6 +112,8 @@ function StoryboardCardComponent({
   connectedScenes = [],
   availableModels = { gemini: { text: [], image: [] }, openai: { text: [], image: [] } },
   ollamaModels = [],
+  enabledPromptModels = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro", "gpt-4o-mini", "gpt-4o"],
+  enabledImageModels = ["nano_banana", "nano_banana_pro", "nano_banana_2", "chatgpt_dalle3"],
   audioNarrationUrl,
   fps = 24
 }: StoryboardCardProps) {
@@ -531,7 +535,7 @@ function StoryboardCardComponent({
   };
 
   // Direct render handler triggered directly from the image workspace buttons
-  const handleDirectRender = (model: "nano_banana" | "nano_banana_pro" | "nano_banana_2" | "chatgpt_dalle3") => {
+  const handleDirectRender = (model: string) => {
     onUpdate(scene.id, { 
       renderStatus: "queued", 
       selectedModel: model, 
@@ -716,7 +720,8 @@ ${userPromptText}`;
     const currentHistory = [...initialHistory, userMsg];
     
     onUpdate(scene.id, {
-      chatHistory: currentHistory
+      chatHistory: currentHistory,
+      visualInstructionImage: undefined
     });
 
     // Gather other scenes in the same connection group for aesthetic/visual continuity
@@ -1101,8 +1106,8 @@ ${userPromptText}`;
               </div>
             )}
 
-            {/* Image Versions Visual Thumbnails Container (Docked at top-right of image) */}
-            {scene.imageVersions && scene.imageVersions.length > 0 && (
+            {/* Image Versions Visual Thumbnails Container (Appears only when there are 2 or more versions) */}
+            {scene.imageVersions && scene.imageVersions.length >= 2 && (
               <div 
                 className="absolute top-3 right-3 flex flex-wrap items-center gap-1.5 bg-black/85 border border-zinc-800 p-1.5 rounded backdrop-blur-md shadow-xl max-w-[220px] sm:max-w-[360px] z-25 max-h-[110px] overflow-y-auto scrollbar-thin"
                 onClick={(e) => e.stopPropagation()}
@@ -1145,11 +1150,6 @@ ${userPromptText}`;
                           {letter}
                         </div>
                       )}
-                      <div className={`absolute top-0.5 left-0.5 px-1 rounded text-[8px] font-mono font-bold leading-tight ${
-                        isActive ? "bg-[#D4AF37] text-black" : "bg-black/75 text-zinc-300"
-                      }`}>
-                        {letter}
-                      </div>
                     </button>
                   );
                 })}
@@ -1159,50 +1159,79 @@ ${userPromptText}`;
 
           {/* Clean Dedicated AI Control Panel Docked Below Image (No Overlays or Dark Gradients over the Image) */}
           <div className="w-full bg-[#141414] border-t border-zinc-800/80 p-2.5 sm:p-3 text-left space-y-2 mt-auto">
-            {/* Line 1: Gerar label + NB2 Lite, NB Pro, NB2 */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[10px] uppercase tracking-wider font-mono text-[#D4AF37] font-bold mr-1 shrink-0">
-                Gerar:
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => handleDirectRender("nano_banana")}
-                  className="px-2 py-1 bg-[#161616] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer"
-                  title="Renderizar com Nano Banana 2 Lite (gemini-3.1-flash-lite-image)"
-                >
-                  NB2 Lite
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDirectRender("nano_banana_pro")}
-                  className="px-2 py-1 bg-[#161616] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer"
-                  title="Renderizar com Nano Banana Pro (gemini-3-pro-image)"
-                >
-                  NB Pro
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDirectRender("nano_banana_2")}
-                  className="px-2 py-1 bg-[#161616] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer"
-                  title="Renderizar com Nano Banana 2 (gemini-3.1-flash-image)"
-                >
-                  NB2
-                </button>
-                {openAiKey && (
-                  <button
-                    type="button"
-                    onClick={() => handleDirectRender("chatgpt_dalle3")}
-                    className="px-2 py-1 bg-[#2a2a2a] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1.5 cursor-pointer"
-                    title={`Renderizar instantaneamente com OpenAI (${openAiDalleModel || "dall-e-3"})`}
-                  >
-                    <span>OpenAI</span>
-                    <span className="text-[7.5px] text-slate-400 lowercase font-normal italic">
-                      ({openAiDalleModel || "dall-e-3"})
-                    </span>
-                  </button>
-                )}
+            {/* Line 1: Radio buttons selection for Image Generation Model + Right Aligned Renderizar Button */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] uppercase tracking-wider font-mono text-[#D4AF37] font-bold mr-0.5 shrink-0">
+                  Modelo:
+                </span>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {enabledImageModels.includes("nano_banana") && (
+                    <label className="flex items-center gap-1 cursor-pointer text-[9px] font-mono text-zinc-300 hover:text-white select-none">
+                      <input
+                        type="radio"
+                        name={`card-model-${scene.id}`}
+                        value="nano_banana"
+                        checked={(scene.selectedModel || "nano_banana") === "nano_banana"}
+                        onChange={() => onUpdate(scene.id, { selectedModel: "nano_banana" })}
+                        className="accent-[#D4AF37] cursor-pointer"
+                      />
+                      <span>NB2 Lite</span>
+                    </label>
+                  )}
+                  {enabledImageModels.includes("nano_banana_pro") && (
+                    <label className="flex items-center gap-1 cursor-pointer text-[9px] font-mono text-zinc-300 hover:text-white select-none">
+                      <input
+                        type="radio"
+                        name={`card-model-${scene.id}`}
+                        value="nano_banana_pro"
+                        checked={scene.selectedModel === "nano_banana_pro"}
+                        onChange={() => onUpdate(scene.id, { selectedModel: "nano_banana_pro" })}
+                        className="accent-[#D4AF37] cursor-pointer"
+                      />
+                      <span>NB Pro</span>
+                    </label>
+                  )}
+                  {enabledImageModels.includes("nano_banana_2") && (
+                    <label className="flex items-center gap-1 cursor-pointer text-[9px] font-mono text-zinc-300 hover:text-white select-none">
+                      <input
+                        type="radio"
+                        name={`card-model-${scene.id}`}
+                        value="nano_banana_2"
+                        checked={scene.selectedModel === "nano_banana_2"}
+                        onChange={() => onUpdate(scene.id, { selectedModel: "nano_banana_2" })}
+                        className="accent-[#D4AF37] cursor-pointer"
+                      />
+                      <span>NB2</span>
+                    </label>
+                  )}
+                  {openAiKey && enabledImageModels.includes("chatgpt_dalle3") && (
+                    <label className="flex items-center gap-1 cursor-pointer text-[9px] font-mono text-zinc-300 hover:text-white select-none">
+                      <input
+                        type="radio"
+                        name={`card-model-${scene.id}`}
+                        value="chatgpt_dalle3"
+                        checked={scene.selectedModel === "chatgpt_dalle3"}
+                        onChange={() => onUpdate(scene.id, { selectedModel: "chatgpt_dalle3" })}
+                        className="accent-[#D4AF37] cursor-pointer"
+                      />
+                      <span>OpenAI ({openAiDalleModel || "dall-e-3"})</span>
+                    </label>
+                  )}
+                </div>
               </div>
+
+              {/* Right-aligned Renderizar Button */}
+              <button
+                type="button"
+                onClick={() => handleDirectRender(scene.selectedModel || enabledImageModels[0] || "nano_banana")}
+                disabled={isRegenerating || isQueued}
+                className="px-2.5 py-1 bg-[#D4AF37] hover:bg-white text-black text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
+                title="Renderizar imagem com o modelo selecionado nesta cartela"
+              >
+                <Sparkles size={10} />
+                <span>Renderizar</span>
+              </button>
             </div>
 
             {/* Line 2: Estúdio AI, Subir do PC, and Limpar Imagem */}
@@ -1590,43 +1619,20 @@ ${userPromptText}`;
                     </span>
                   </button>
 
-                  {/* Button 2: Prompt + IMG with Model Select Dropdown */}
-                  <div className={`flex items-center rounded border border-[#D4AF37]/80 hover:border-[#D4AF37] h-[35px] overflow-hidden bg-[#D4AF37]/10 text-[#D4AF37] transition-all ${
-                    isRegenerating || isQueued ? "animate-pulse opacity-50 cursor-wait" : ""
-                  }`}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onUpdate(scene.id, { generationGuidelines: localGuidelines });
-                        onRegenerate(index, true);
-                      }}
-                      disabled={isRegenerating || isQueued}
-                      className="h-full bg-transparent hover:bg-[#D4AF37] hover:text-black text-[9px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer font-bold px-2 flex-1"
-                      title="Gerar prompt e em seguida iniciar a criação da imagem"
-                    >
-                      <Sparkles size={10} />
-                      <span>Prompt +IMG</span>
-                    </button>
-                    
-                    <div className="relative h-full flex items-center justify-center border-l border-[#D4AF37]/40 hover:bg-[#D4AF37] hover:text-black transition-colors cursor-pointer w-4">
-                      <select
-                        value={scene.selectedModel || "nano_banana"}
-                        disabled={isRegenerating || isQueued}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          onUpdate(scene.id, { selectedModel: val });
-                        }}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        title="Escolher modelo de imagem para renderizar"
-                      >
-                        <option value="nano_banana">Nano Banana 2 Lite</option>
-                        <option value="nano_banana_pro">Nano Banana Pro</option>
-                        <option value="nano_banana_2">Nano Banana 2</option>
-                        {openAiKey && <option value="chatgpt_dalle3">OpenAI (DALL-E 3)</option>}
-                      </select>
-                      <span className="text-[7.5px] pointer-events-none select-none">▼</span>
-                    </div>
-                  </div>
+                  {/* Button 2: Prompt + IMG */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdate(scene.id, { generationGuidelines: localGuidelines });
+                      onRegenerate(index, true);
+                    }}
+                    disabled={isRegenerating || isQueued}
+                    className="h-[35px] bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black border border-[#D4AF37]/80 hover:border-[#D4AF37] text-[#D4AF37] text-[9px] uppercase tracking-wider rounded transition-colors flex items-center justify-center gap-1 cursor-pointer font-bold px-2 flex-1 disabled:opacity-50 disabled:cursor-wait"
+                    title="Gerar prompt e em seguida iniciar a criação da imagem"
+                  >
+                    <Sparkles size={10} />
+                    <span>Prompt +IMG</span>
+                  </button>
 
                   {/* Compact Visual Instruction Droplet Zone */}
                   <div 
@@ -1793,46 +1799,25 @@ ${userPromptText}`;
                 </div>
               </div>
 
-              {/* Destination Tool dropdown/input */}
+              {/* Destination Tool dropdown */}
               <div className="space-y-1">
                 <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
                   Ferramenta de Destino
                 </label>
-                <div className="flex gap-1.5">
-                  <select
-                    value={["Nano Banana", "Flux.1", "Flux.2", "ChatGPT"].includes(localTargetTool) ? localTargetTool : "Custom"}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val !== "Custom") {
-                        setLocalTargetTool(val);
-                        onUpdate(scene.id, { promptTargetTool: val });
-                      } else {
-                        setLocalTargetTool("Custom");
-                      }
-                    }}
-                    className="flex-1 bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer"
-                  >
-                    <option value="Nano Banana">Nano Banana</option>
-                    <option value="Flux.2">Flux.2</option>
-                    <option value="Flux.1">Flux.1</option>
-                    <option value="ChatGPT">ChatGPT (Dall-E 3)</option>
-                    <option value="Custom">Outra...</option>
-                  </select>
-                  
-                  {(localTargetTool === "Custom" || !["Nano Banana", "Flux.1", "Flux.2", "ChatGPT"].includes(localTargetTool)) && (
-                    <input
-                      type="text"
-                      value={localTargetTool === "Custom" ? "" : localTargetTool}
-                      placeholder="Ferramenta..."
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setLocalTargetTool(val);
-                        onUpdate(scene.id, { promptTargetTool: val });
-                      }}
-                      className="w-24 bg-[#050505] border border-[#333] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50"
-                    />
-                  )}
-                </div>
+                <select
+                  value={["Nano Banana", "Flux.1", "Flux.2", "ChatGPT"].includes(localTargetTool) ? localTargetTool : "Nano Banana"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setLocalTargetTool(val);
+                    onUpdate(scene.id, { promptTargetTool: val });
+                  }}
+                  className="w-full bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer"
+                >
+                  <option value="Nano Banana">Nano Banana</option>
+                  <option value="Flux.2">Flux.2</option>
+                  <option value="Flux.1">Flux.1</option>
+                  <option value="ChatGPT">ChatGPT (Dall-E 3)</option>
+                </select>
               </div>
             </div>
           </div>

@@ -223,17 +223,25 @@ export default function App() {
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
-      // Ignore 7x acceleration if scrolling inside inputs, textareas, config drawers, Studio AI modal, or dropdowns
+      // Ignore 7x acceleration if scrolling inside dialogs, modals, or config drawer
       if (
-        target.closest("textarea") ||
-        target.closest("input") ||
-        target.closest("select") ||
         target.closest("[role='dialog']") ||
         target.closest(".no-super-scroll") ||
         target.closest("#config-panel") ||
         target.closest("#studio-modal")
       ) {
         return;
+      }
+
+      // Check if mouse cursor is over a storyboard card
+      const cardEl = target.closest('[data-scene-card="true"]') as HTMLElement | null;
+      if (cardEl) {
+        const rect = cardEl.getBoundingClientRect();
+        const midX = rect.left + rect.width / 2;
+        // If mouse is on the right side of the card (text/inputs area), use 1x normal scroll
+        if (e.clientX >= midX) {
+          return;
+        }
       }
 
       e.preventDefault();
@@ -718,8 +726,86 @@ export default function App() {
   const [selectedConnectionGroupId, setSelectedConnectionGroupId] = useState("group-1");
   const [selectedStyleTab, setSelectedStyleTab] = useState<string>("caravaggio");
   const [showEmptyScenesSubMenu, setShowEmptyScenesSubMenu] = useState(false);
-  const [batchSelectedPromptModel, setBatchSelectedPromptModel] = useState<string>("gemini-3.5-flash");
-  const [batchSelectedImageModel, setBatchSelectedImageModel] = useState<string>("gemini-2.5-flash-image");
+  const [batchSelectedPromptModel, setBatchSelectedPromptModel] = useState<string>(() => {
+    return localStorage.getItem("ethos_batch_prompt_model") || "gemini-3.5-flash";
+  });
+  const [batchSelectedImageModel, setBatchSelectedImageModel] = useState<string>(() => {
+    return localStorage.getItem("ethos_batch_image_model") || "gemini-2.5-flash-image";
+  });
+
+  const updateBatchPromptModel = (model: string) => {
+    setBatchSelectedPromptModel(model);
+    setLocalStorageItemSafely("ethos_batch_prompt_model", model);
+    fetch("/api/storyboard/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ batchSelectedPromptModel: model })
+    }).catch((e) => console.warn("Failed to persist batch prompt model:", e));
+  };
+
+  const updateBatchImageModel = (model: string) => {
+    setBatchSelectedImageModel(model);
+    setLocalStorageItemSafely("ethos_batch_image_model", model);
+    fetch("/api/storyboard/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ batchSelectedImageModel: model })
+    }).catch((e) => console.warn("Failed to persist batch image model:", e));
+  };
+
+  const [enabledPromptModels, setEnabledPromptModels] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("ethos_enabled_prompt_models");
+      if (saved) return JSON.parse(saved);
+    } catch (_) {}
+    return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro", "gpt-4o-mini", "gpt-4o"];
+  });
+
+  const [enabledImageModels, setEnabledImageModels] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("ethos_enabled_image_models");
+      if (saved) return JSON.parse(saved);
+    } catch (_) {}
+    return ["nano_banana", "nano_banana_pro", "nano_banana_2", "chatgpt_dalle3"];
+  });
+
+  const toggleEnabledPromptModel = (modelKey: string) => {
+    setEnabledPromptModels((prev) => {
+      let updated: string[];
+      if (prev.includes(modelKey)) {
+        if (prev.length <= 1) return prev;
+        updated = prev.filter((m) => m !== modelKey);
+      } else {
+        updated = [...prev, modelKey];
+      }
+      setLocalStorageItemSafely("ethos_enabled_prompt_models", JSON.stringify(updated));
+      fetch("/api/storyboard/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabledPromptModels: updated })
+      }).catch(() => {});
+      return updated;
+    });
+  };
+
+  const toggleEnabledImageModel = (modelKey: string) => {
+    setEnabledImageModels((prev) => {
+      let updated: string[];
+      if (prev.includes(modelKey)) {
+        if (prev.length <= 1) return prev;
+        updated = prev.filter((m) => m !== modelKey);
+      } else {
+        updated = [...prev, modelKey];
+      }
+      setLocalStorageItemSafely("ethos_enabled_image_models", JSON.stringify(updated));
+      fetch("/api/storyboard/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabledImageModels: updated })
+      }).catch(() => {});
+      return updated;
+    });
+  };
 
   const handleConfirmConnection = () => {
     if (selectedSceneIdsForConnection.length < 2) return;
@@ -4249,7 +4335,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                             name="batchPromptModel"
                             value="gemini-3.5-flash"
                             checked={batchSelectedPromptModel === "gemini-3.5-flash"}
-                            onChange={() => setBatchSelectedPromptModel("gemini-3.5-flash")}
+                            onChange={() => updateBatchPromptModel("gemini-3.5-flash")}
                             className="accent-[#D4AF37]"
                           />
                           <span>Google Gemini</span>
@@ -4261,7 +4347,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                             name="batchPromptModel"
                             value="gpt-4o-mini"
                             checked={batchSelectedPromptModel === "gpt-4o-mini" || batchSelectedPromptModel === "chatgpt"}
-                            onChange={() => setBatchSelectedPromptModel("gpt-4o-mini")}
+                            onChange={() => updateBatchPromptModel("gpt-4o-mini")}
                             className="accent-[#D4AF37]"
                           />
                           <span>OpenAI (ChatGPT)</span>
@@ -4281,43 +4367,43 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                             name="batchImageModel"
                             value="gemini-2.5-flash-image"
                             checked={batchSelectedImageModel === "gemini-2.5-flash-image"}
-                            onChange={() => setBatchSelectedImageModel("gemini-2.5-flash-image")}
+                            onChange={() => updateBatchImageModel("gemini-2.5-flash-image")}
                             className="accent-[#D4AF37]"
                           />
                           <span>🍌 Nano Banana (Google Flash Image)</span>
                         </label>
 
-                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "imagen-3.0-generate-002" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
+                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "imagen-3.0-generate-002" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-[#D4AF37] font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
                           <input
                             type="radio"
                             name="batchImageModel"
                             value="imagen-3.0-generate-002"
                             checked={batchSelectedImageModel === "imagen-3.0-generate-002"}
-                            onChange={() => setBatchSelectedImageModel("imagen-3.0-generate-002")}
+                            onChange={() => updateBatchImageModel("imagen-3.0-generate-002")}
                             className="accent-[#D4AF37]"
                           />
                           <span>🎨 Google Imagen 3 (Alta Qualidade)</span>
                         </label>
 
-                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "imagen-3.0-fast-generate-001" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
+                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "imagen-3.0-fast-generate-001" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-[#D4AF37] font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
                           <input
                             type="radio"
                             name="batchImageModel"
                             value="imagen-3.0-fast-generate-001"
                             checked={batchSelectedImageModel === "imagen-3.0-fast-generate-001"}
-                            onChange={() => setBatchSelectedImageModel("imagen-3.0-fast-generate-001")}
+                            onChange={() => updateBatchImageModel("imagen-3.0-fast-generate-001")}
                             className="accent-[#D4AF37]"
                           />
                           <span>⚡ Google Fast Imagen 3 (Rápido)</span>
                         </label>
 
-                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "gpt-image-2" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
+                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "gpt-image-2" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-[#D4AF37] font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
                           <input
                             type="radio"
                             name="batchImageModel"
                             value="gpt-image-2"
                             checked={batchSelectedImageModel === "gpt-image-2"}
-                            onChange={() => setBatchSelectedImageModel("gpt-image-2")}
+                            onChange={() => updateBatchImageModel("gpt-image-2")}
                             className="accent-[#D4AF37]"
                           />
                           <span>🤖 OpenAI GPT-Image 2 (Oficial)</span>
@@ -4384,23 +4470,17 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 )}
               </div>
 
-              {/* Standalone Column 2: Full Height Configurações / Storyboard Button */}
+              {/* Standalone Column 2: Square Icon-Only Configurações / Storyboard Button */}
               <button
                 type="button"
                 onClick={() => setActiveView(activeView === "storyboard" ? "config" : "storyboard")}
-                className="h-11 px-3.5 border border-[#D4AF37] bg-[#D4AF37]/15 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] rounded-lg transition-all cursor-pointer shadow-[0_0_12px_rgba(212,175,55,0.15)] flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider"
-                title={activeView === "config" ? "Voltar ao Storyboard" : "Abrir Configurações do Projeto"}
+                className="w-11 h-11 border border-[#D4AF37] bg-[#D4AF37]/15 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] rounded-lg transition-all cursor-pointer shadow-[0_0_12px_rgba(212,175,55,0.15)] flex items-center justify-center font-mono font-bold"
+                title={activeView === "config" ? "Storyboard" : "Configurações"}
               >
                 {activeView === "config" ? (
-                  <>
-                    <Film size={15} />
-                    <span>Storyboard</span>
-                  </>
+                  <Film size={18} />
                 ) : (
-                  <>
-                    <Settings size={15} />
-                    <span>Configurações</span>
-                  </>
+                  <Settings size={18} />
                 )}
               </button>
 
@@ -4774,25 +4854,56 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                             </button>
                           </div>
                           
-                          <div className="space-y-2 max-h-36 overflow-y-auto bg-black/20 p-2.5 rounded border border-[#222]">
+                          <div className="space-y-2 max-h-48 overflow-y-auto bg-black/20 p-2.5 rounded border border-[#222]">
                             <div className="space-y-1">
-                              <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Prompt (Texto):</span>
+                              <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Prompt (Clique para Habilitar/Desabilitar na Interface):</span>
                               <div className="flex flex-wrap gap-1">
-                                {(availableModels.gemini?.text || []).map((m) => (
-                                  <span key={m} className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 text-[9px] rounded text-slate-350 font-mono">
-                                    {m}
-                                  </span>
-                                ))}
+                                {(availableModels.gemini?.text || ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"]).map((m) => {
+                                  const isEnabled = enabledPromptModels.includes(m);
+                                  return (
+                                    <button
+                                      key={m}
+                                      type="button"
+                                      onClick={() => toggleEnabledPromptModel(m)}
+                                      className={`px-2 py-0.5 text-[9px] rounded font-mono border transition-all cursor-pointer select-none ${
+                                        isEnabled
+                                          ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
+                                          : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
+                                      }`}
+                                      title={isEnabled ? "Clique para desabilitar este modelo nas cartelas" : "Clique para habilitar este modelo nas cartelas"}
+                                    >
+                                      {isEnabled ? "✓ " : ""}{m}
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </div>
-                            <div className="space-y-1 pt-1.5 border-t border-[#222]">
-                              <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Imagem (Imagen):</span>
+                            <div className="space-y-1 pt-2 border-t border-[#222]">
+                              <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Imagem (Clique para Habilitar/Desabilitar na Interface):</span>
                               <div className="flex flex-wrap gap-1">
-                                {(availableModels.gemini?.image || []).map((m) => (
-                                  <span key={m} className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 text-[9px] rounded text-emerald-450 font-mono">
-                                    {m}
-                                  </span>
-                                ))}
+                                {[
+                                  { id: "nano_banana", name: "NB2 Lite" },
+                                  { id: "nano_banana_pro", name: "NB Pro" },
+                                  { id: "nano_banana_2", name: "NB2" },
+                                  ...(availableModels.gemini?.image || []).filter(m => !["nano_banana", "nano_banana_pro", "nano_banana_2"].includes(m)).map(m => ({ id: m, name: m }))
+                                ].map((item) => {
+                                  const isEnabled = enabledImageModels.includes(item.id);
+                                  return (
+                                    <button
+                                      key={item.id}
+                                      type="button"
+                                      onClick={() => toggleEnabledImageModel(item.id)}
+                                      className={`px-2 py-0.5 text-[9px] rounded font-mono border transition-all cursor-pointer select-none ${
+                                        isEnabled
+                                          ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
+                                          : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
+                                      }`}
+                                      title={isEnabled ? "Clique para desabilitar este modelo de imagem nas cartelas" : "Clique para habilitar este modelo de imagem nas cartelas"}
+                                    >
+                                      {isEnabled ? "✓ " : ""}{item.name}
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </div>
                           </div>
@@ -4950,25 +5061,53 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                 </button>
                               </div>
                               
-                              <div className="space-y-2 max-h-36 overflow-y-auto bg-black/20 p-2.5 rounded border border-[#222]">
+                              <div className="space-y-2 max-h-48 overflow-y-auto bg-black/20 p-2.5 rounded border border-[#222]">
                                 <div className="space-y-1">
-                                  <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Prompt (Texto):</span>
+                                  <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Prompt (Clique para Habilitar/Desabilitar na Interface):</span>
                                   <div className="flex flex-wrap gap-1">
-                                    {(availableModels.openai?.text || []).map((m) => (
-                                      <span key={m} className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 text-[9px] rounded text-slate-350 font-mono">
-                                        {m}
-                                      </span>
-                                    ))}
+                                    {(availableModels.openai?.text || ["gpt-4o-mini", "gpt-4o"]).map((m) => {
+                                      const isEnabled = enabledPromptModels.includes(m);
+                                      return (
+                                        <button
+                                          key={m}
+                                          type="button"
+                                          onClick={() => toggleEnabledPromptModel(m)}
+                                          className={`px-2 py-0.5 text-[9px] rounded font-mono border transition-all cursor-pointer select-none ${
+                                            isEnabled
+                                              ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
+                                              : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
+                                          }`}
+                                          title={isEnabled ? "Clique para desabilitar este modelo de prompt nas cartelas" : "Clique para habilitar este modelo de prompt nas cartelas"}
+                                        >
+                                          {isEnabled ? "✓ " : ""}{m}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 </div>
-                                <div className="space-y-1 pt-1.5 border-t border-[#222]">
-                                  <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Imagem (DALL-E):</span>
+                                <div className="space-y-1 pt-2 border-t border-[#222]">
+                                  <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Imagem (Clique para Habilitar/Desabilitar na Interface):</span>
                                   <div className="flex flex-wrap gap-1">
-                                    {(availableModels.openai?.image || []).map((m) => (
-                                      <span key={m} className="px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 text-[9px] rounded text-emerald-450 font-mono">
-                                        {m}
-                                      </span>
-                                    ))}
+                                    {[
+                                      { id: "chatgpt_dalle3", name: `OpenAI (${openAiDalleModel || "dall-e-3"})` }
+                                    ].map((item) => {
+                                      const isEnabled = enabledImageModels.includes(item.id);
+                                      return (
+                                        <button
+                                          key={item.id}
+                                          type="button"
+                                          onClick={() => toggleEnabledImageModel(item.id)}
+                                          className={`px-2 py-0.5 text-[9px] rounded font-mono border transition-all cursor-pointer select-none ${
+                                            isEnabled
+                                              ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
+                                              : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
+                                          }`}
+                                          title={isEnabled ? "Clique para desabilitar este modelo de imagem nas cartelas" : "Clique para habilitar este modelo de imagem nas cartelas"}
+                                        >
+                                          {isEnabled ? "✓ " : ""}{item.name}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               </div>
@@ -5848,6 +5987,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       connectedScenes={scene.connectionGroupId ? scenes.filter(s => s.connectionGroupId === scene.connectionGroupId && s.id !== scene.id) : undefined}
                       availableModels={availableModels}
                       ollamaModels={ollamaModels}
+                      enabledPromptModels={enabledPromptModels}
+                      enabledImageModels={enabledImageModels}
                       audioNarrationUrl={audioNarrationUrl}
                       fps={24}
                     />
@@ -6389,7 +6530,11 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
       {/* Immersive Session Image Gallery Modal */}
       {isGalleryOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 sm:p-6 md:p-8 animate-fadeIn">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 sm:p-6 md:p-8 animate-fadeIn"
+          role="dialog"
+          onWheel={(e) => e.stopPropagation()}
+        >
           <div className="bg-[#121212] border border-[#D4AF37]/25 rounded-xl max-w-6xl w-full h-[85vh] flex flex-col shadow-[0_0_50px_rgba(212,175,55,0.15)] animate-scaleUp overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#333]/60 bg-black/40 shrink-0">
