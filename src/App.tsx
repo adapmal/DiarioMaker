@@ -929,7 +929,7 @@ export default function App() {
       const saved = localStorage.getItem("ethos_enabled_prompt_models");
       if (saved) return JSON.parse(saved);
     } catch (_) {}
-    return ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro", "gpt-4o-mini", "gpt-4o"];
+    return ["gemini-3.6-flash", "gemini-3.5-flash", "gpt-4o-mini", "gpt-4o", "gpt-5.6-terra", "gpt-5.6-sol"];
   });
 
   const [enabledImageModels, setEnabledImageModels] = useState<string[]>(() => {
@@ -1602,6 +1602,12 @@ export default function App() {
       consecutiveNumbering,
       diaryDate,
       saveVersion,
+      enabledPromptModels,
+      enabledImageModels,
+      openAiModel,
+      openAiDalleModel,
+      batchSelectedPromptModel,
+      batchSelectedImageModel,
       updatedAt: nowStr
     };
 
@@ -1624,7 +1630,7 @@ export default function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).catch((err) => console.info("Failed to sync session to legacy server storage:", err));
-  }, [scenes, stylePreference, localCacheEnabled, projectName, scriptText, scriptReferenceImage, connectionGroups, selectedStyle, consecutiveNumbering, projectFolder, diaryDate, saveVersion, isHydrating]);
+  }, [scenes, stylePreference, localCacheEnabled, projectName, scriptText, scriptReferenceImage, connectionGroups, selectedStyle, consecutiveNumbering, projectFolder, diaryDate, saveVersion, enabledPromptModels, enabledImageModels, openAiModel, openAiDalleModel, batchSelectedPromptModel, batchSelectedImageModel, isHydrating]);
 
   // Robust Session Retrieval on mount from both server and local storage with IndexedDB hydration support
   useEffect(() => {
@@ -1644,6 +1650,16 @@ export default function App() {
           if (configData.openAiDalleModel !== undefined) setOpenAiDalleModel(configData.openAiDalleModel);
           if (configData.ollamaUrl !== undefined) setOllamaUrl(configData.ollamaUrl);
           if (configData.ollamaModel !== undefined) setOllamaModel(configData.ollamaModel);
+          if (Array.isArray(configData.enabledPromptModels) && configData.enabledPromptModels.length > 0) {
+            setEnabledPromptModels(configData.enabledPromptModels);
+            setLocalStorageItemSafely("ethos_enabled_prompt_models", JSON.stringify(configData.enabledPromptModels));
+          }
+          if (Array.isArray(configData.enabledImageModels) && configData.enabledImageModels.length > 0) {
+            setEnabledImageModels(configData.enabledImageModels);
+            setLocalStorageItemSafely("ethos_enabled_image_models", JSON.stringify(configData.enabledImageModels));
+          }
+          if (configData.batchSelectedPromptModel !== undefined) setBatchSelectedPromptModel(configData.batchSelectedPromptModel);
+          if (configData.batchSelectedImageModel !== undefined) setBatchSelectedImageModel(configData.batchSelectedImageModel);
           if (configData.projectFolder !== undefined) {
             setProjectFolder(configData.projectFolder);
             currentFolder = configData.projectFolder;
@@ -1742,6 +1758,18 @@ export default function App() {
           if (finalData.connectionGroups) setConnectionGroups(finalData.connectionGroups);
           if (finalData.selectedStyle) setSelectedStyle(finalData.selectedStyle);
           if (finalData.consecutiveNumbering !== undefined) setConsecutiveNumbering(finalData.consecutiveNumbering);
+          if (Array.isArray(finalData.enabledPromptModels) && finalData.enabledPromptModels.length > 0) {
+            setEnabledPromptModels(finalData.enabledPromptModels);
+            setLocalStorageItemSafely("ethos_enabled_prompt_models", JSON.stringify(finalData.enabledPromptModels));
+          }
+          if (Array.isArray(finalData.enabledImageModels) && finalData.enabledImageModels.length > 0) {
+            setEnabledImageModels(finalData.enabledImageModels);
+            setLocalStorageItemSafely("ethos_enabled_image_models", JSON.stringify(finalData.enabledImageModels));
+          }
+          if (finalData.openAiModel) setOpenAiModel(finalData.openAiModel);
+          if (finalData.openAiDalleModel) setOpenAiDalleModel(finalData.openAiDalleModel);
+          if (finalData.batchSelectedPromptModel) setBatchSelectedPromptModel(finalData.batchSelectedPromptModel);
+          if (finalData.batchSelectedImageModel) setBatchSelectedImageModel(finalData.batchSelectedImageModel);
           
           if (finalData.diaryDate) {
             setDiaryDate(finalData.diaryDate);
@@ -4543,7 +4571,20 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                 onChange={() => updateBatchPromptModel(m)}
                                 className="accent-[#D4AF37]"
                               />
-                              <span>{m.startsWith("gpt-") || m.startsWith("o1") || m.startsWith("o3") ? `OpenAI (${m})` : `Google (${m})`}</span>
+                              <span>
+                                {(() => {
+                                  const lower = m.toLowerCase();
+                                  if (lower.startsWith("ollama:") || lower.includes("ollama")) {
+                                    const raw = m.replace(/^ollama:/i, "").split(":")[0];
+                                    const short = raw.split("/").pop() || raw;
+                                    return `🦙 Ollama (${short})`;
+                                  }
+                                  if (lower.startsWith("gpt-") || lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("openai:")) {
+                                    return `🎨 OpenAI (${m.replace(/^openai:/i, "")})`;
+                                  }
+                                  return `♊ Google (${m})`;
+                                })()}
+                              </span>
                             </label>
                           );
                         })}
@@ -4558,14 +4599,19 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       <div className="flex flex-col gap-1 max-h-36 overflow-y-auto pr-1">
                         {enabledImageModels.map((m) => {
                           let label = "NB2 Lite";
-                          if (m === "nano_banana") label = "🍌 Nano Banana (NB2 Lite)";
+                          const lower = m.toLowerCase();
+                          if (lower.startsWith("ollama:") || lower.includes("ollama")) {
+                            const raw = m.replace(/^ollama:/i, "").split(":")[0];
+                            const short = raw.split("/").pop() || raw;
+                            label = `🦙 Ollama (${short})`;
+                          } else if (m === "nano_banana") label = "🍌 Nano Banana (NB2 Lite)";
                           else if (m === "nano_banana_pro") label = "🍌 Nano Banana Pro (High Contrast)";
                           else if (m === "nano_banana_2") label = "🍌 Nano Banana 2 (Fine Art)";
                           else if (m === "chatgpt_dalle3") label = `🎨 OpenAI (${openAiDalleModel || "gpt-image-2"})`;
                           else if (m.startsWith("openai:") || m.startsWith("gpt-image") || m.startsWith("dall-e")) {
                             label = `🎨 OpenAI (${m.replace("openai:", "")})`;
                           } else {
-                            label = m;
+                            label = `♊ Google (${m})`;
                           }
 
                           const isChecked = batchSelectedImageModel === m;
@@ -5056,7 +5102,10 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                             <div className="space-y-1">
                               <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Prompt (Clique para Habilitar/Desabilitar na Interface):</span>
                               <div className="flex flex-wrap gap-1">
-                                {sortByPrice(availableModels.gemini?.text || ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"]).map((m) => {
+                                {sortByPrice(availableModels.gemini?.text && availableModels.gemini.text.length > 0 
+                                  ? availableModels.gemini.text 
+                                  : ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-pro", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"]
+                                ).map((m) => {
                                   const isEnabled = enabledPromptModels.includes(m);
                                   const priceInfo = getModelPriceInfo(m);
                                   return (
@@ -5286,7 +5335,10 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                             <div className="space-y-1">
                               <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Prompt (Clique para Habilitar/Desabilitar. Hover p/ consultar preço):</span>
                               <div className="flex flex-wrap gap-1">
-                                {sortByPrice(availableModels.openai?.text || ["gpt-4o-mini", "gpt-4o"]).map((m) => {
+                                {sortByPrice(availableModels.openai?.text && availableModels.openai.text.length > 0 
+                                  ? availableModels.openai.text 
+                                  : ["gpt-4o-mini", "gpt-4o", "gpt-5", "gpt-5-pro", "gpt-5-mini", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "o1", "o1-mini", "o3-mini"]
+                                ).map((m) => {
                                   const isEnabled = enabledPromptModels.includes(m);
                                   const priceInfo = getModelPriceInfo(m);
                                   return (

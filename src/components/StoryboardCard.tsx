@@ -92,6 +92,41 @@ interface StoryboardCardProps {
   fps?: number;
 }
 
+function formatModelDisplayLabel(m: string, defaultOpenAiModel?: string): { badge: string; display: string } {
+  if (!m) return { badge: "IA", display: "padrão" };
+  const lower = m.toLowerCase();
+
+  // Ollama models
+  if (lower.startsWith("ollama:") || lower.includes("ollama")) {
+    const rawName = m.replace(/^ollama:/i, "").split(":")[0];
+    const parts = rawName.split("/");
+    const shortName = parts.pop() || rawName;
+    const truncated = shortName.length > 16 ? shortName.slice(0, 14) + "..." : shortName;
+    return { badge: "🦙 Ollama", display: truncated };
+  }
+
+  // OpenAI models
+  if (lower.startsWith("openai:") || lower.startsWith("gpt") || lower.startsWith("o1") || lower.startsWith("o3") || lower === "chatgpt_dalle3") {
+    let clean = m.replace(/^openai:/i, "");
+    if (clean === "chatgpt_dalle3") clean = defaultOpenAiModel || "gpt-image-2";
+    const truncated = clean.length > 18 ? clean.slice(0, 15) + "..." : clean;
+    return { badge: "🎨 OpenAI", display: truncated };
+  }
+
+  // Google models
+  if (lower.startsWith("gemini") || lower.startsWith("imagen") || lower.startsWith("nano_banana")) {
+    let clean = m;
+    if (m === "nano_banana") clean = "NB2 Lite";
+    else if (m === "nano_banana_pro") clean = "NB Pro";
+    else if (m === "nano_banana_2") clean = "NB2";
+    const truncated = clean.length > 18 ? clean.slice(0, 15) + "..." : clean;
+    return { badge: "♊ Google", display: truncated };
+  }
+
+  const truncated = m.length > 18 ? m.slice(0, 15) + "..." : m;
+  return { badge: "⚡ IA", display: truncated };
+}
+
 function StoryboardCardComponent({
   scene,
   index,
@@ -378,6 +413,12 @@ function StoryboardCardComponent({
       : (enabledImageModels[0] || "nano_banana");
   });
 
+  const [selectedPromptModel, setSelectedPromptModel] = useState<string>(() => {
+    return enabledPromptModels.includes(openAiModel || "") 
+      ? (openAiModel || "gpt-4o-mini") 
+      : (enabledPromptModels[0] || "gpt-4o-mini");
+  });
+
   const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -386,6 +427,12 @@ function StoryboardCardComponent({
       setSelectedChatModel(enabledImageModels[0]);
     }
   }, [enabledImageModels]);
+
+  useEffect(() => {
+    if (!enabledPromptModels.includes(selectedPromptModel) && enabledPromptModels.length > 0) {
+      setSelectedPromptModel(enabledPromptModels[0]);
+    }
+  }, [enabledPromptModels]);
 
   useEffect(() => {
     if (isStudioOpen) {
@@ -798,7 +845,7 @@ ${userPromptText}`;
     }
 
     try {
-      const isUsingOpenAi = (useOpenAiForPrompts || selectedChatModel.includes("gpt") || selectedChatModel.includes("openai")) && !!openAiKey;
+      const isUsingOpenAi = (useOpenAiForPrompts || selectedPromptModel.includes("gpt") || selectedPromptModel.includes("openai") || selectedPromptModel.startsWith("o1") || selectedPromptModel.startsWith("o3")) && !!openAiKey;
       const editResponse = await fetch("/api/storyboard/chat-edit", {
         method: "POST",
         headers: {
@@ -807,7 +854,7 @@ ${userPromptText}`;
           ...(openAiKey ? {
             "x-use-openai": isUsingOpenAi ? "true" : "false",
             "x-openai-key": openAiKey,
-            "x-openai-model": openAiModel || "gpt-4o-mini"
+            "x-openai-model": selectedPromptModel.startsWith("gpt-") || selectedPromptModel.startsWith("o") ? selectedPromptModel : (openAiModel || "gpt-4o-mini")
           } : {})
         },
         body: JSON.stringify({
@@ -820,7 +867,8 @@ ${userPromptText}`;
           visualInstructionImage: scene.visualInstructionImage,
           currentImageUrl: latestChatImageUrl,
           customApiKey,
-          connectedScenes: otherConnectedScenes
+          connectedScenes: otherConnectedScenes,
+          model: selectedPromptModel
         })
       });
 
@@ -1904,7 +1952,7 @@ ${userPromptText}`;
           onWheel={(e) => e.stopPropagation()}
         >
           <div 
-            className="bg-[#101010] border border-[#2b2b2b] rounded-lg shadow-2xl max-w-6xl w-full flex flex-col h-[85vh] max-h-[85vh] overflow-hidden text-[#E4DCD3]"
+            className="bg-[#101010] border border-[#2b2b2b] rounded-lg shadow-2xl max-w-[1400px] w-full flex flex-col h-[88vh] max-h-[88vh] overflow-hidden text-[#E4DCD3]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -2071,47 +2119,69 @@ ${userPromptText}`;
                   onSubmit={handleSendChatMessage}
                   className="p-4 border-t border-[#222] bg-[#121212] space-y-3 shrink-0"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    {/* Model selector tabs */}
-                    <div className="flex items-center gap-1 bg-black p-1 rounded border border-zinc-800 flex-wrap">
-                      <span className="text-[8px] font-mono text-zinc-500 uppercase px-1.5 font-bold">Modelo:</span>
-                      {enabledImageModels.map((m) => {
-                        let label = "NB2 Lite";
-                        if (m === "nano_banana") label = "NB2 Lite";
-                        else if (m === "nano_banana_pro") label = "NB Pro";
-                        else if (m === "nano_banana_2") label = "NB2";
-                        else if (m === "chatgpt_dalle3") label = `OpenAI (${openAiDalleModel || "gpt-image-2"})`;
-                        else if (m.startsWith("openai:") || m.startsWith("gpt-image") || m.startsWith("dall-e")) {
-                          label = `OpenAI (${m.replace("openai:", "")})`;
-                        } else {
-                          label = m;
-                        }
+                  <div className="flex flex-col gap-2 border-b border-zinc-800/60 pb-2">
+                    {/* Selector 1: Prompt / Chat Text Models */}
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                      <span className="text-[8px] font-mono text-[#D4AF37] uppercase font-bold shrink-0">1. IA de Conversa (Prompt):</span>
+                      <div className="flex items-center gap-1 bg-black p-1 rounded border border-zinc-800 flex-wrap max-w-full overflow-hidden">
+                        {enabledPromptModels.map((m) => {
+                          const { badge, display } = formatModelDisplayLabel(m, openAiModel);
+                          const lower = m.toLowerCase();
+                          const isOpenAi = lower.startsWith("gpt-") || lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("openai:");
+                          if (isOpenAi && !openAiKey) return null;
 
-                        const isOpenAiModel = m.startsWith("openai:") || m.startsWith("gpt-image") || m.startsWith("dall-e") || m === "chatgpt_dalle3";
-                        if (isOpenAiModel && !openAiKey) return null;
-
-                        const isSelected = selectedChatModel === m;
-
-                        return (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => setSelectedChatModel(m)}
-                            className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer ${
-                              isSelected
-                                ? "bg-[#D4AF37] text-black font-bold"
-                                : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
+                          const isSelected = selectedPromptModel === m;
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setSelectedPromptModel(m)}
+                              className={`px-2 py-0.5 text-[9px] font-mono rounded transition-all cursor-pointer flex items-center gap-1 border select-none ${
+                                isSelected
+                                  ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37] shadow-sm"
+                                  : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                              }`}
+                              title={m}
+                            >
+                              <span className="opacity-90 shrink-0">{badge}</span>
+                              <span className="truncate max-w-[140px]">({display})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    <span className="text-[8px] text-zinc-500 font-mono hidden sm:inline">
-                      O assistente se recorda de toda a conversa anterior
-                    </span>
+                    {/* Selector 2: Image Models */}
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                      <span className="text-[8px] font-mono text-emerald-400 uppercase font-bold shrink-0">2. IA de Renderização (Imagem):</span>
+                      <div className="flex items-center gap-1 bg-black p-1 rounded border border-zinc-800 flex-wrap max-w-full overflow-hidden">
+                        {enabledImageModels.map((m) => {
+                          const { badge, display } = formatModelDisplayLabel(m, openAiDalleModel);
+                          const lower = m.toLowerCase();
+                          const isOpenAiModel = lower.startsWith("openai:") || lower.startsWith("gpt-image") || lower.startsWith("dall-e") || lower === "chatgpt_dalle3";
+                          if (isOpenAiModel && !openAiKey) return null;
+
+                          const isSelected = selectedChatModel === m;
+
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setSelectedChatModel(m)}
+                              className={`px-2 py-0.5 text-[9px] font-mono rounded transition-all cursor-pointer flex items-center gap-1 border select-none ${
+                                isSelected
+                                  ? "bg-emerald-500 text-black font-bold border-emerald-400 shadow-sm"
+                                  : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                              }`}
+                              title={m}
+                            >
+                              <span className="opacity-90 shrink-0">{badge}</span>
+                              <span className="truncate max-w-[140px]">({display})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex items-start gap-2">
@@ -2213,9 +2283,9 @@ ${userPromptText}`;
               </div>
 
               {/* Right Column: Active Scene Preview */}
-              <div className="w-full lg:w-[35%] bg-[#121212] p-5 flex flex-col justify-between overflow-y-auto space-y-4">
-                <div className="space-y-4">
-                  <span className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 block font-bold border-b border-zinc-800 pb-1.5">
+              <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-800/80 bg-[#121212] p-5 flex flex-col justify-between overflow-y-auto space-y-4 min-w-0">
+                <div className="space-y-4 w-full">
+                  <span className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 block font-bold border-b border-zinc-800 pb-1.5 text-left">
                     Ilustração Ativa da Cena
                   </span>
 
@@ -2249,7 +2319,7 @@ ${userPromptText}`;
                           <div className="absolute top-2 left-2 right-2 bg-amber-950/95 border border-amber-500/25 p-2 text-[8px] text-amber-200 flex items-start gap-1.5 rounded-md backdrop-blur-sm z-10 text-left animate-fadeIn shadow-lg">
                             <AlertTriangle size={12} className="text-[#D4AF37] shrink-0 mt-0.5" />
                             <div className="flex-1 leading-snug">
-                              <strong>Esboço de Standby Ativo:</strong> Motor de IA offline ou limite de faturamento excedido. Veja o motivo exato desenhado no próprio card.
+                              <strong>Esboço de Standby Ativo:</strong> Motor de IA offline ou limite de faturamento excedido.
                             </div>
                           </div>
                         )}
@@ -2262,29 +2332,27 @@ ${userPromptText}`;
                     )}
                   </div>
 
-
-
                   {/* Active Scene Meta */}
-                  <div className="space-y-3 font-mono text-[10px] bg-black/45 p-3.5 rounded border border-zinc-850">
+                  <div className="space-y-3 font-mono text-[10px] bg-black/45 p-3.5 rounded border border-zinc-850 w-full text-left">
                     <div>
-                      <span className="text-zinc-500 uppercase block">Texto/Narração original:</span>
-                      <p className="text-[#E0D8D0] font-sans italic mt-0.5 text-xs leading-relaxed select-text">
+                      <span className="text-zinc-500 uppercase block font-bold text-[8.5px]">Texto/Narração original:</span>
+                      <p className="text-[#E0D8D0] font-sans italic mt-1 text-xs leading-relaxed select-text whitespace-pre-wrap break-words">
                         "{scene.text}"
                       </p>
                     </div>
 
-                    <div className="border-t border-zinc-900 pt-2">
-                      <span className="text-[#D4AF37] uppercase block">Diretriz Visual (PT-BR):</span>
-                      <p className="text-zinc-300 font-sans mt-0.5 text-[10px] leading-relaxed max-h-24 overflow-y-auto select-text font-light">
+                    <div className="border-t border-zinc-900 pt-2.5">
+                      <span className="text-[#D4AF37] uppercase block font-bold text-[8.5px]">Diretriz Visual (PT-BR):</span>
+                      <div className="text-zinc-300 font-sans mt-1 text-[11px] leading-relaxed max-h-36 overflow-y-auto select-text font-light pr-1 text-left whitespace-pre-wrap break-words border border-zinc-900/60 bg-black/30 p-2 rounded w-full">
                         {scene.description || "Nenhuma diretriz"}
-                      </p>
+                      </div>
                     </div>
 
-                    <div className="border-t border-zinc-900 pt-2">
-                      <span className="text-[#D4AF37] uppercase block">Prompt de Imagem Ativo (EN):</span>
-                      <p className="text-zinc-400 mt-0.5 text-[9px] leading-relaxed font-mono max-h-24 overflow-y-auto select-all">
+                    <div className="border-t border-zinc-900 pt-2.5">
+                      <span className="text-[#D4AF37] uppercase block font-bold text-[8.5px]">Prompt de Imagem Ativo (EN):</span>
+                      <div className="text-zinc-400 mt-1 text-[10px] leading-relaxed font-mono max-h-36 overflow-y-auto select-all pr-1 text-left whitespace-pre-wrap break-words border border-zinc-900/60 bg-black/30 p-2 rounded w-full">
                         {scene.prompt || "Nenhum prompt"}
-                      </p>
+                      </div>
                     </div>
                   </div>
                 </div>

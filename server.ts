@@ -29,6 +29,43 @@ function logErrorToFile(context: string, err: any) {
   } catch (_) {}
 }
 
+function sanitizeErrorMessage(msg: any): string {
+  if (!msg) return "";
+  let str = typeof msg === "string" ? msg : (msg?.message || String(msg));
+  str = str.replace(/sk-proj-[a-zA-Z0-9_-]{10,}/gi, "sk-proj-***");
+  str = str.replace(/sk-[a-zA-Z0-9_-]{10,}/gi, "sk-***");
+  str = str.replace(/AIzaSy[a-zA-Z0-9_-]{10,}/gi, "AIzaSy***");
+  str = str.replace(/AQ\.[a-zA-Z0-9_-]{10,}/gi, "AQ.***");
+  return str;
+}
+
+// Helper to strip all API key properties from objects before saving to disk
+function stripApiKeys(obj: any): any {
+  if (!obj || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(item => stripApiKeys(item));
+  }
+  const cleaned: any = {};
+  for (const key of Object.keys(obj)) {
+    if (
+      key === "customGeminiKey" ||
+      key === "customOpenAiKey" ||
+      key === "openAiKey" ||
+      key === "customApiKey" ||
+      key === "apiKey" ||
+      key === "geminiApiKey" ||
+      key === "openaiApiKey" ||
+      key === "elevenLabsKey" ||
+      key === "secret" ||
+      key === "secrets"
+    ) {
+      continue;
+    }
+    cleaned[key] = stripApiKeys(obj[key]);
+  }
+  return cleaned;
+}
+
 // Helper to load sensitive API keys from git-ignored api_secrets.json
 function loadApiSecrets() {
   try {
@@ -48,7 +85,7 @@ function loadUserConfig() {
   try {
     if (fs.existsSync(USER_CONFIG_PATH)) {
       const data = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
-      config = JSON.parse(data);
+      config = stripApiKeys(JSON.parse(data));
     }
   } catch (err) {
     console.warn("Failed to load user_config.json:", err);
@@ -107,6 +144,20 @@ function sanitizeScenes(scenes: any[]): any[] {
         scene.promptTargetTool = "Nano Banana";
       }
     }
+    if (scene.renderError) {
+      scene.renderError = sanitizeErrorMessage(scene.renderError);
+    }
+    if (scene.text) {
+      scene.text = sanitizeErrorMessage(scene.text);
+    }
+    if (Array.isArray(scene.chatHistory)) {
+      scene.chatHistory = scene.chatHistory.map((msg: any) => {
+        if (!msg) return msg;
+        if (msg.text) msg.text = sanitizeErrorMessage(msg.text);
+        if (msg.reasoning) msg.reasoning = sanitizeErrorMessage(msg.reasoning);
+        return msg;
+      });
+    }
     if (Array.isArray(scene.imageVersions) && scene.imageVersions.length > 0) {
       scene.imageVersions = sanitizeArchive(scene.imageVersions);
     }
@@ -159,10 +210,16 @@ app.post("/api/storyboard/autosave", (req, res) => {
       scriptReferenceImage,
       connectionGroups,
       selectedStyle,
-      consecutiveNumbering
+      consecutiveNumbering,
+      enabledPromptModels,
+      enabledImageModels,
+      openAiModel,
+      openAiDalleModel,
+      batchSelectedPromptModel,
+      batchSelectedImageModel
     } = req.body;
     
-    const sessionData = {
+    const sessionData = stripApiKeys({
       scenes: Array.isArray(scenes) ? sanitizeScenes(scenes) : [],
       stylePreference: stylePreference || "auto",
       projectName: projectName || "Meu Storyboard",
@@ -171,9 +228,15 @@ app.post("/api/storyboard/autosave", (req, res) => {
       connectionGroups: Array.isArray(connectionGroups) ? connectionGroups : [],
       selectedStyle: selectedStyle || "auto",
       consecutiveNumbering: consecutiveNumbering !== undefined ? consecutiveNumbering : true,
+      enabledPromptModels: Array.isArray(enabledPromptModels) ? enabledPromptModels : undefined,
+      enabledImageModels: Array.isArray(enabledImageModels) ? enabledImageModels : undefined,
+      openAiModel: openAiModel || undefined,
+      openAiDalleModel: openAiDalleModel || undefined,
+      batchSelectedPromptModel: batchSelectedPromptModel || undefined,
+      batchSelectedImageModel: batchSelectedImageModel || undefined,
       updatedAt: new Date().toISOString(),
       isAutosave: true
-    };
+    });
     const jsonStr = JSON.stringify(sessionData, null, 2);
     try {
       fs.writeFileSync(SESSION_AUTOSAVE_PATH, jsonStr, "utf-8");
@@ -264,10 +327,16 @@ app.post("/api/storyboard/session", (req, res) => {
       selectedStyle,
       consecutiveNumbering,
       diaryDate,
-      saveVersion
+      saveVersion,
+      enabledPromptModels,
+      enabledImageModels,
+      openAiModel,
+      openAiDalleModel,
+      batchSelectedPromptModel,
+      batchSelectedImageModel
     } = req.body;
     
-    const sessionData = {
+    const sessionData = stripApiKeys({
       scenes: Array.isArray(scenes) ? sanitizeScenes(scenes) : [],
       stylePreference: stylePreference || "auto",
       projectName: projectName || "Meu Storyboard",
@@ -278,8 +347,14 @@ app.post("/api/storyboard/session", (req, res) => {
       consecutiveNumbering: consecutiveNumbering !== undefined ? consecutiveNumbering : true,
       diaryDate: diaryDate || "",
       saveVersion: saveVersion !== undefined ? saveVersion : 1,
+      enabledPromptModels: Array.isArray(enabledPromptModels) ? enabledPromptModels : undefined,
+      enabledImageModels: Array.isArray(enabledImageModels) ? enabledImageModels : undefined,
+      openAiModel: openAiModel || undefined,
+      openAiDalleModel: openAiDalleModel || undefined,
+      batchSelectedPromptModel: batchSelectedPromptModel || undefined,
+      batchSelectedImageModel: batchSelectedImageModel || undefined,
       updatedAt: new Date().toISOString()
-    };
+    });
     const jsonStr = JSON.stringify(sessionData, null, 2);
     try {
       fs.writeFileSync(SESSION_FILE_PATH, jsonStr, "utf-8");
@@ -448,6 +523,12 @@ app.post("/api/storyboard/projects/save", (req, res) => {
       consecutiveNumbering,
       diaryDate,
       saveVersion,
+      enabledPromptModels,
+      enabledImageModels,
+      openAiModel,
+      openAiDalleModel,
+      batchSelectedPromptModel,
+      batchSelectedImageModel,
       updatedAt
     } = req.body;
 
@@ -466,7 +547,7 @@ app.post("/api/storyboard/projects/save", (req, res) => {
       fs.mkdirSync(imagesDir, { recursive: true });
     }
 
-    const sessionData = {
+    const sessionData = stripApiKeys({
       scenes: Array.isArray(scenes) ? sanitizeScenes(scenes) : [],
       stylePreference: stylePreference || "auto",
       projectName: projectName || safeFolder,
@@ -477,9 +558,15 @@ app.post("/api/storyboard/projects/save", (req, res) => {
       consecutiveNumbering: consecutiveNumbering !== undefined ? consecutiveNumbering : true,
       diaryDate: diaryDate || "",
       saveVersion: saveVersion !== undefined ? saveVersion : 1,
+      enabledPromptModels: Array.isArray(enabledPromptModels) ? enabledPromptModels : undefined,
+      enabledImageModels: Array.isArray(enabledImageModels) ? enabledImageModels : undefined,
+      openAiModel: openAiModel || undefined,
+      openAiDalleModel: openAiDalleModel || undefined,
+      batchSelectedPromptModel: batchSelectedPromptModel || undefined,
+      batchSelectedImageModel: batchSelectedImageModel || undefined,
       updatedAt: updatedAt || new Date().toISOString(),
       isAutosave: false
-    };
+    });
 
     const projectJsonPath = path.join(projectDir, "storyboard.json");
     const jsonStr = JSON.stringify(sessionData, null, 2);
@@ -827,15 +914,16 @@ async function callGeminiWithRetry<T>(
 
 // Helper to extract clean human-readable messages from OpenAI JSON error responses
 function parseOpenAiErrorText(status: number, errText: string, prefix = "OpenAI Error"): string {
+  let cleanMsg = errText;
   try {
     const parsed = JSON.parse(errText);
     if (parsed && parsed.error && typeof parsed.error.message === "string") {
-      return `${prefix} (Status ${status}): ${parsed.error.message}`;
+      cleanMsg = parsed.error.message;
     }
   } catch (e) {
     // Fallback if not valid JSON
   }
-  return `${prefix} (Status ${status}): ${errText}`;
+  return sanitizeErrorMessage(`${prefix} (Status ${status}): ${cleanMsg}`);
 }
 
 // OpenAI chat completions proxy helper
@@ -1497,7 +1585,13 @@ app.get("/api/storyboard/available-models", async (req, res) => {
     openAiTextModels.push(
       "gpt-4o-mini",
       "gpt-4o",
-      "gpt-4.5-preview",
+      "gpt-5",
+      "gpt-5-pro",
+      "gpt-5-mini",
+      "gpt-5.6-luna",
+      "gpt-5.6-terra",
+      "gpt-5.6-sol",
+      "o1",
       "o1-mini",
       "o3-mini"
     );
@@ -1974,8 +2068,15 @@ You must respond with a JSON object following this EXACT schema:
 Make sure your response matches the JSON structure perfectly.`;
 
   const openAiKey = req.headers["x-openai-key"] as string;
-  const openAiModel = req.headers["x-openai-model"] as string || "gpt-4o-mini";
-  const useOpenAi = req.headers["x-use-openai"] === "true" && !!openAiKey;
+  const requestedTextModel = (req.body?.model || req.headers["x-openai-model"] || "gpt-4o-mini") as string;
+  const openAiModel = requestedTextModel.replace(/^openai:/, "");
+  const useOpenAi = (
+    req.headers["x-use-openai"] === "true" ||
+    openAiModel.startsWith("gpt-") ||
+    openAiModel.startsWith("o1") ||
+    openAiModel.startsWith("o3") ||
+    openAiModel.includes("openai")
+  ) && !!openAiKey;
 
   if (useOpenAi) {
     console.log(`[OpenAI API] Chat Visual Editor using model: ${openAiModel}`);
