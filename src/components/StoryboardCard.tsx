@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { StoryboardScene, StylePreference, ConnectionGroup } from "../types";
 import { getCachedImage } from "../lib/cacheStore";
 import { downloadSingleImageFile } from "../lib/imageUtils";
@@ -38,6 +39,20 @@ import {
 } from "lucide-react";
 import { resizeAndCompressImage } from "../utils";
 
+const getLetterFromIndex = (index: number): string => String.fromCharCode(65 + (index % 26));
+
+const formatModelDisplayName = (name: string): string => {
+  if (!name) return "";
+  let clean = name.replace(/^ollama:/i, "");
+  if (clean.includes("/")) {
+    clean = clean.split("/").pop() || clean;
+  }
+  if (clean.length > 18) {
+    return clean.slice(0, 15) + "...";
+  }
+  return clean;
+};
+
 interface StoryboardCardProps {
   key?: string;
   scene: StoryboardScene;
@@ -59,6 +74,8 @@ interface StoryboardCardProps {
   customApiKey?: string;
   openAiKey?: string;
   openAiDalleModel?: string;
+  useOpenAiForPrompts?: boolean;
+  openAiModel?: string;
   onCancelRender?: (id: string) => void;
   consecutiveNumbering?: boolean;
   onToggleConsecutiveNumbering?: (value: boolean) => void;
@@ -66,14 +83,51 @@ interface StoryboardCardProps {
   isConnectionMode?: boolean;
   selectedSceneIdsForConnection?: string[];
   onToggleSceneSelection?: (sceneId: string) => void;
-  scenes?: StoryboardScene[];
-  availableModels?: { gemini: string[]; openai: string[] };
+  connectedScenes?: StoryboardScene[];
+  availableModels?: { gemini?: { text?: string[]; image?: string[] }; openai?: { text?: string[]; image?: string[] } };
   ollamaModels?: string[];
+  enabledPromptModels?: string[];
+  enabledImageModels?: string[];
   audioNarrationUrl?: string;
   fps?: number;
 }
 
-export default function StoryboardCard({
+function formatModelDisplayLabel(m: string, defaultOpenAiModel?: string): { badge: string; display: string } {
+  if (!m) return { badge: "IA", display: "padrão" };
+  const lower = m.toLowerCase();
+
+  // Ollama models
+  if (lower.startsWith("ollama:") || lower.includes("ollama")) {
+    const rawName = m.replace(/^ollama:/i, "").split(":")[0];
+    const parts = rawName.split("/");
+    const shortName = parts.pop() || rawName;
+    const truncated = shortName.length > 16 ? shortName.slice(0, 14) + "..." : shortName;
+    return { badge: "🦙 Ollama", display: truncated };
+  }
+
+  // OpenAI models
+  if (lower.startsWith("openai:") || lower.startsWith("gpt") || lower.startsWith("o1") || lower.startsWith("o3") || lower === "chatgpt_dalle3") {
+    let clean = m.replace(/^openai:/i, "");
+    if (clean === "chatgpt_dalle3") clean = defaultOpenAiModel || "gpt-image-2";
+    const truncated = clean.length > 18 ? clean.slice(0, 15) + "..." : clean;
+    return { badge: "🎨 OpenAI", display: truncated };
+  }
+
+  // Google models
+  if (lower.startsWith("gemini") || lower.startsWith("imagen") || lower.startsWith("nano_banana")) {
+    let clean = m;
+    if (m === "nano_banana") clean = "NB2 Lite";
+    else if (m === "nano_banana_pro") clean = "NB Pro";
+    else if (m === "nano_banana_2") clean = "NB2";
+    const truncated = clean.length > 18 ? clean.slice(0, 15) + "..." : clean;
+    return { badge: "♊ Google", display: truncated };
+  }
+
+  const truncated = m.length > 18 ? m.slice(0, 15) + "..." : m;
+  return { badge: "⚡ IA", display: truncated };
+}
+
+function StoryboardCardComponent({
   scene,
   index,
   totalScenes,
@@ -93,6 +147,8 @@ export default function StoryboardCard({
   customApiKey,
   openAiKey,
   openAiDalleModel,
+  useOpenAiForPrompts = false,
+  openAiModel,
   onCancelRender,
   consecutiveNumbering = true,
   onToggleConsecutiveNumbering,
@@ -100,9 +156,11 @@ export default function StoryboardCard({
   isConnectionMode = false,
   selectedSceneIdsForConnection = [],
   onToggleSceneSelection,
-  scenes = [],
-  availableModels = { gemini: [], openai: [] },
+  connectedScenes = [],
+  availableModels = { gemini: { text: [], image: [] }, openai: { text: [], image: [] } },
   ollamaModels = [],
+  enabledPromptModels = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro", "gpt-4o-mini", "gpt-4o"],
+  enabledImageModels = ["nano_banana", "nano_banana_pro", "nano_banana_2", "chatgpt_dalle3"],
   audioNarrationUrl,
   fps = 24
 }: StoryboardCardProps) {
@@ -115,7 +173,7 @@ export default function StoryboardCard({
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   const handlePlayAudioSnippet = () => {
-    if (!audioNarrationUrl || scene.startTime === undefined) return;
+    if (!audioNarrationUrl) return;
 
     // 1. Stop any currently playing audio globally
     if ((window as any)._currentStoryboardAudio) {
@@ -349,7 +407,50 @@ export default function StoryboardCard({
   // Conversational chat edit states
   const [chatInputText, setChatInputText] = useState("");
   const [isChatGenerating, setIsChatGenerating] = useState(false);
-  const [selectedChatModel, setSelectedChatModel] = useState<"nano_banana" | "nano_banana_pro" | "nano_banana_2" | "chatgpt_dalle3">("nano_banana");
+  const [selectedChatModel, setSelectedChatModel] = useState<string>(() => {
+    return enabledImageModels.includes("nano_banana") 
+      ? "nano_banana" 
+      : (enabledImageModels[0] || "nano_banana");
+  });
+
+  const [selectedPromptModel, setSelectedPromptModel] = useState<string>(() => {
+    return enabledPromptModels.includes(openAiModel || "") 
+      ? (openAiModel || "gpt-4o-mini") 
+      : (enabledPromptModels[0] || "gpt-4o-mini");
+  });
+
+  const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!enabledImageModels.includes(selectedChatModel) && enabledImageModels.length > 0) {
+      setSelectedChatModel(enabledImageModels[0]);
+    }
+  }, [enabledImageModels]);
+
+  useEffect(() => {
+    if (!enabledPromptModels.includes(selectedPromptModel) && enabledPromptModels.length > 0) {
+      setSelectedPromptModel(enabledPromptModels[0]);
+    }
+  }, [enabledPromptModels]);
+
+  useEffect(() => {
+    if (isStudioOpen) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [scene.chatHistory, isChatGenerating, isStudioOpen]);
+
+  useEffect(() => {
+    if (zoomedImageUrl) {
+      const handleZoomKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setZoomedImageUrl(null);
+        }
+      };
+      window.addEventListener("keydown", handleZoomKeyDown);
+      return () => window.removeEventListener("keydown", handleZoomKeyDown);
+    }
+  }, [zoomedImageUrl]);
 
   // Drag and Drop "droplet" + Manual PC File Upload features
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -524,7 +625,7 @@ export default function StoryboardCard({
   };
 
   // Direct render handler triggered directly from the image workspace buttons
-  const handleDirectRender = (model: "nano_banana" | "nano_banana_pro" | "nano_banana_2" | "chatgpt_dalle3") => {
+  const handleDirectRender = (model: string) => {
     onUpdate(scene.id, { 
       renderStatus: "queued", 
       selectedModel: model, 
@@ -612,22 +713,17 @@ You MUST strictly incorporate and prioritize this concept or correction constrai
     const toolGuidance = `OPTIMIZATION FOCUS: Format and tailor this prompt for the image generation engine "${scene.promptTargetTool || "Nano Banana"}". Emphasize compatible cues, weight tags, or structures ideal for ${scene.promptTargetTool || "Nano Banana"}.`;
 
     let connectedContext = "";
-    if (scene.connectionGroupId && Array.isArray(scenes) && scenes.length > 0) {
-      const otherConnected = scenes.filter(s => s.connectionGroupId === scene.connectionGroupId && s.id !== scene.id);
-      if (otherConnected.length > 0) {
-        connectedContext = `\n\nCRITICAL VISUAL CONTINUITY & NARRATIVE CONSISTENCY CONSTRAINTS (SAME GROUP CONTEXT):
+    if (Array.isArray(connectedScenes) && connectedScenes.length > 0) {
+      connectedContext = `\n\nCRITICAL VISUAL CONTINUITY & NARRATIVE CONSISTENCY CONSTRAINTS (SAME GROUP CONTEXT):
 This scene belongs to a group of connected scenes designed to share character designs, lighting setups, location assets, and visual styles to guarantee aesthetic continuity.
 Ensure the clothing style, hair, skin features, props, facial structures, color palette, and location details are aligned with these scenes:
-` + otherConnected.map((s, i) => {
-          const sIndex = scenes.findIndex(orig => orig.id === s.id);
-          const sceneNum = sIndex !== -1 ? sIndex + 1 : (i + 1);
-          const numPad = String(sceneNum).padStart(2, "0");
-          return `- Connected Scene #${numPad}:
+` + connectedScenes.map((s, i) => {
+        const numPad = s.sceneNumber || String(i + 1).padStart(2, "0");
+        return `- Connected Scene #${numPad}:
   Narration: "${s.text || ""}"
   Visual Description: "${s.description || ""}"
   Image Prompt: "${s.prompt || ""}"`;
-        }).join("\n");
-      }
+      }).join("\n");
     }
 
     const systemInstruction = `You are a professional Art Director specializing in religious, contemplative, and human-centric daily meditations.
@@ -714,22 +810,19 @@ ${userPromptText}`;
     const currentHistory = [...initialHistory, userMsg];
     
     onUpdate(scene.id, {
-      chatHistory: currentHistory
+      chatHistory: currentHistory,
+      visualInstructionImage: undefined
     });
 
     // Gather other scenes in the same connection group for aesthetic/visual continuity
-    const otherConnectedScenes = scene.connectionGroupId
-      ? scenes
-          .filter((s) => s.connectionGroupId === scene.connectionGroupId && s.id !== scene.id)
-          .map((s) => ({
-            sceneNumber: s.sceneNumber || String(scenes.indexOf(s) + 1).padStart(2, "0"),
-            text: s.text,
-            description: s.description,
-            prompt: s.prompt,
-            generatedImageUrl: s.generatedImageUrl,
-            visualInstructionImage: s.visualInstructionImage,
-          }))
-      : [];
+    const otherConnectedScenes = (connectedScenes || []).map((s, i) => ({
+      sceneNumber: s.sceneNumber || String(i + 1).padStart(2, "0"),
+      text: s.text,
+      description: s.description,
+      prompt: s.prompt,
+      generatedImageUrl: s.generatedImageUrl,
+      visualInstructionImage: s.visualInstructionImage,
+    }));
 
     // Find the latest visual state in the current conversation thread for perfect context and continuous editing
     let latestChatImageUrl = scene.generatedImageUrl;
@@ -752,11 +845,17 @@ ${userPromptText}`;
     }
 
     try {
+      const isUsingOpenAi = (useOpenAiForPrompts || selectedPromptModel.includes("gpt") || selectedPromptModel.includes("openai") || selectedPromptModel.startsWith("o1") || selectedPromptModel.startsWith("o3")) && !!openAiKey;
       const editResponse = await fetch("/api/storyboard/chat-edit", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(customApiKey ? { "x-gemini-key": customApiKey } : {})
+          ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
+          ...(openAiKey ? {
+            "x-use-openai": isUsingOpenAi ? "true" : "false",
+            "x-openai-key": openAiKey,
+            "x-openai-model": selectedPromptModel.startsWith("gpt-") || selectedPromptModel.startsWith("o") ? selectedPromptModel : (openAiModel || "gpt-4o-mini")
+          } : {})
         },
         body: JSON.stringify({
           sceneText: scene.text,
@@ -768,7 +867,8 @@ ${userPromptText}`;
           visualInstructionImage: scene.visualInstructionImage,
           currentImageUrl: latestChatImageUrl,
           customApiKey,
-          connectedScenes: otherConnectedScenes
+          connectedScenes: otherConnectedScenes,
+          model: selectedPromptModel
         })
       });
 
@@ -783,7 +883,11 @@ ${userPromptText}`;
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(customApiKey ? { "x-gemini-key": customApiKey } : {})
+          ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
+          ...(openAiKey ? {
+            "x-openai-key": openAiKey,
+            "x-openai-dalle-model": openAiDalleModel || "gpt-image-2"
+          } : {})
         },
         body: JSON.stringify({
           prompt: editResult.newPrompt,
@@ -812,8 +916,27 @@ ${userPromptText}`;
         timestamp: new Date().toLocaleTimeString()
       };
 
+      const newVersion = imgResult.imageUrl ? {
+        id: `version-${Date.now()}`,
+        url: imgResult.imageUrl,
+        model: selectedChatModel,
+        timestamp: new Date().toLocaleTimeString(),
+        prompt: editResult.newPrompt,
+        description: editResult.newDescription,
+        engineName: "Estúdio AI"
+      } : null;
+
+      const updatedVersions = newVersion 
+        ? [newVersion, ...(scene.imageVersions || [])] 
+        : (scene.imageVersions || []);
+
       onUpdate(scene.id, {
-        chatHistory: [...currentHistory, assistantMsg]
+        chatHistory: [...currentHistory, assistantMsg],
+        ...(imgResult.imageUrl ? { generatedImageUrl: imgResult.imageUrl } : {}),
+        ...(editResult.newPrompt ? { prompt: editResult.newPrompt } : {}),
+        ...(editResult.newDescription ? { description: editResult.newDescription } : {}),
+        imageVersions: updatedVersions,
+        renderStatus: "completed"
       });
 
     } catch (err: any) {
@@ -951,14 +1074,18 @@ ${userPromptText}`;
               <span className="text-xl font-light text-[#E0D8D0] block font-serif">{sceneNumText}</span>
             </div>
 
-            {scene.startTime !== undefined && (
+            {(scene.startTime !== undefined || audioNarrationUrl) && (
               <div className="flex flex-col items-center my-1 font-mono">
-                <span className="text-[8px] text-[#D4AF37] font-bold tracking-wider">
-                  {secondsToSMPTE(scene.startTime, fps || 24)}
-                </span>
-                <span className="text-[7px] text-zinc-500 font-sans">
-                  {formatDuration(scene.duration || (scene.endTime ? scene.endTime - scene.startTime : 3))}
-                </span>
+                {scene.startTime !== undefined && (
+                  <>
+                    <span className="text-[8px] text-[#D4AF37] font-bold tracking-wider">
+                      {secondsToSMPTE(scene.startTime, fps || 24)}
+                    </span>
+                    <span className="text-[7px] text-zinc-500 font-sans">
+                      {formatDuration(scene.duration || (scene.endTime ? scene.endTime - scene.startTime : 3))}
+                    </span>
+                  </>
+                )}
                 {audioNarrationUrl && (
                   <button
                     type="button"
@@ -1011,13 +1138,19 @@ ${userPromptText}`;
           }`}
         >
           {/* 16:9 Pure Unobstructed Image Viewport */}
-          <div className="relative w-full aspect-[16/9] bg-black flex items-center justify-center overflow-hidden group">
+          <div 
+            onClick={() => activeImageUrl && setZoomedImageUrl(activeImageUrl)}
+            className={`relative w-full aspect-[16/9] bg-black flex items-center justify-center overflow-hidden group ${activeImageUrl ? "cursor-pointer" : ""}`}
+            title={activeImageUrl ? "Clique para ampliar a ilustração em tela cheia" : undefined}
+          >
 
             {activeImageUrl ? (
               <img 
                 src={activeImageUrl} 
                 alt={`Widescreen render scene #${sceneNumText}`} 
                 className="w-full h-full object-cover relative z-0 animate-fadeIn"
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
                 onError={(e) => {
                   const target = e.currentTarget;
@@ -1058,8 +1191,17 @@ ${userPromptText}`;
                   <span className="text-[10px] font-mono tracking-widest text-[#D4AF37] uppercase font-bold animate-pulse">
                     {scene.renderStatus === "rendering" ? "Renderizando..." : "Na Fila..."}
                   </span>
-                  <span className="text-[8px] text-zinc-400 font-mono mt-1.5 uppercase">
-                    via {scene.selectedModel === "nano_banana_pro" ? "Nano Banana Pro" : scene.selectedModel === "nano_banana_2" ? "Nano Banana 2" : "Nano Banana 2 Lite"}
+                  <span className="text-[8px] text-[#D4AF37] font-mono mt-1.5 uppercase font-bold">
+                    via {(() => {
+                      const m = scene.selectedModel || scene.promptTargetTool || "";
+                      if (m === "gpt-image-2") return "OpenAI GPT-Image 2";
+                      if (m === "dall-e-3") return "OpenAI DALL-E 3";
+                      if (m === "dall-e-2") return "OpenAI DALL-E 2";
+                      if (m === "imagen-3.0-generate-002") return "Google Imagen 3";
+                      if (m === "imagen-3.0-fast-generate-001") return "Google Fast Imagen 3";
+                      if (m === "gemini-2.5-flash-image" || m === "nano_banana") return "Google Nano Banana (Flash)";
+                      return m || "Google Nano Banana";
+                    })()}
                   </span>
                   {onCancelRender && (
                     <button
@@ -1078,15 +1220,15 @@ ${userPromptText}`;
               </div>
             )}
 
-            {/* Image Versions Thumbnails Container (Docked at top-right of image) */}
-            {scene.imageVersions && scene.imageVersions.length > 0 && (
+            {/* Image Versions Visual Thumbnails Container (Appears only when there are 2 or more versions) */}
+            {scene.imageVersions && scene.imageVersions.length >= 2 && (
               <div 
-                className="absolute top-3 right-3 flex flex-wrap items-center gap-1.5 bg-black/85 border border-zinc-800 p-1.5 rounded backdrop-blur-md shadow-xl max-w-[200px] sm:max-w-[320px] z-25 max-h-[110px] overflow-y-auto scrollbar-thin"
+                className="absolute top-3 right-3 flex flex-wrap items-center gap-1.5 bg-black/85 border border-zinc-800 p-1.5 rounded backdrop-blur-md shadow-xl max-w-[220px] sm:max-w-[360px] z-25 max-h-[110px] overflow-y-auto scrollbar-thin"
                 onClick={(e) => e.stopPropagation()}
               >
                 {scene.imageVersions.map((v, vIdx) => {
                   const isActive = v.url === scene.generatedImageUrl;
-                  const isVersionIdb = v.url?.startsWith("idb://");
+                  const letter = v.letter || getLetterFromIndex(vIdx);
                   return (
                     <button
                       key={`${v.id || "version"}-${vIdx}`}
@@ -1101,24 +1243,26 @@ ${userPromptText}`;
                           description: v.description || scene.description
                         });
                       }}
-                      className={`w-12 h-7 bg-zinc-900 border rounded cursor-pointer transition-all ${
+                      className={`relative w-12 h-7 bg-zinc-900 border rounded cursor-pointer transition-all overflow-hidden group ${
                         isActive 
-                          ? "border-[#D4AF37] scale-105 shadow-[0_0_8px_rgba(212,175,55,0.5)] z-10" 
-                          : "border-zinc-850 hover:border-zinc-500 opacity-60 hover:opacity-100"
+                          ? "border-[#D4AF37] scale-105 shadow-[0_0_10px_rgba(212,175,55,0.6)] z-10" 
+                          : "border-zinc-800 hover:border-zinc-400 opacity-70 hover:opacity-100"
                       }`}
-                      title={`Versão gerada em ${v.timestamp}${v.model ? ` via ${v.model}` : ""}`}
+                      title={`Versão ${letter} (${v.timestamp || ""})${v.model ? ` - ${v.model}` : ""}`}
                     >
-                      {isVersionIdb ? (
-                        <div className="w-full h-full flex items-center justify-center bg-zinc-950">
-                          <Loader2 size={10} className="animate-spin text-[#D4AF37]" />
-                        </div>
-                      ) : (
+                      {v.url ? (
                         <img 
                           src={v.url} 
-                          alt="Versão" 
+                          alt={`Versão ${letter}`} 
                           className="w-full h-full object-cover" 
+                          loading="lazy"
+                          decoding="async"
                           referrerPolicy="no-referrer"
                         />
+                      ) : (
+                        <div className="w-full h-full bg-zinc-950 flex items-center justify-center text-[10px] text-zinc-500 font-mono">
+                          {letter}
+                        </div>
                       )}
                     </button>
                   );
@@ -1129,50 +1273,58 @@ ${userPromptText}`;
 
           {/* Clean Dedicated AI Control Panel Docked Below Image (No Overlays or Dark Gradients over the Image) */}
           <div className="w-full bg-[#141414] border-t border-zinc-800/80 p-2.5 sm:p-3 text-left space-y-2 mt-auto">
-            {/* Line 1: Gerar label + NB2 Lite, NB Pro, NB2 */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[10px] uppercase tracking-wider font-mono text-[#D4AF37] font-bold mr-1 shrink-0">
-                Gerar:
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => handleDirectRender("nano_banana")}
-                  className="px-2 py-1 bg-[#161616] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer"
-                  title="Renderizar com Nano Banana 2 Lite (gemini-3.1-flash-lite-image)"
-                >
-                  NB2 Lite
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDirectRender("nano_banana_pro")}
-                  className="px-2 py-1 bg-[#161616] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer"
-                  title="Renderizar com Nano Banana Pro (gemini-3-pro-image)"
-                >
-                  NB Pro
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDirectRender("nano_banana_2")}
-                  className="px-2 py-1 bg-[#161616] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer"
-                  title="Renderizar com Nano Banana 2 (gemini-3.1-flash-image)"
-                >
-                  NB2
-                </button>
-                {openAiKey && (
-                  <button
-                    type="button"
-                    onClick={() => handleDirectRender("chatgpt_dalle3")}
-                    className="px-2 py-1 bg-[#2a2a2a] hover:bg-[#D4AF37] hover:text-black border border-zinc-800 hover:border-transparent text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1.5 cursor-pointer"
-                    title={`Renderizar instantaneamente com OpenAI (${openAiDalleModel || "dall-e-3"})`}
-                  >
-                    <span>OpenAI</span>
-                    <span className="text-[7.5px] text-slate-400 lowercase font-normal italic">
-                      ({openAiDalleModel || "dall-e-3"})
-                    </span>
-                  </button>
-                )}
+            {/* Line 1: Radio buttons selection for Image Generation Model + Right Aligned Renderizar Button */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] uppercase tracking-wider font-mono text-[#D4AF37] font-bold mr-0.5 shrink-0">
+                  Modelo:
+                </span>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {enabledImageModels.map((m) => {
+                    let label = "NB2 Lite";
+                    if (m === "nano_banana") label = "NB2 Lite";
+                    else if (m === "nano_banana_pro") label = "NB Pro";
+                    else if (m === "nano_banana_2") label = "NB2";
+                    else if (m === "chatgpt_dalle3") label = `OpenAI (${openAiDalleModel || "gpt-image-2"})`;
+                    else if (m.startsWith("openai:") || m.startsWith("gpt-image") || m.startsWith("dall-e")) {
+                      label = `OpenAI (${m.replace("openai:", "")})`;
+                    } else {
+                      label = m;
+                    }
+
+                    const isOpenAiModel = m.startsWith("openai:") || m.startsWith("gpt-image") || m.startsWith("dall-e") || m === "chatgpt_dalle3";
+                    if (isOpenAiModel && !openAiKey) return null;
+
+                    const isChecked = (scene.selectedModel || "nano_banana") === m || (m === "chatgpt_dalle3" && scene.selectedModel === "chatgpt_dalle3");
+
+                    return (
+                      <label key={m} className="flex items-center gap-1 cursor-pointer text-[9px] font-mono text-zinc-300 hover:text-white select-none">
+                        <input
+                          type="radio"
+                          name={`card-model-${scene.id}`}
+                          value={m}
+                          checked={isChecked}
+                          onChange={() => onUpdate(scene.id, { selectedModel: m as any })}
+                          className="accent-[#D4AF37] cursor-pointer"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
+
+              {/* Right-aligned Renderizar Button */}
+              <button
+                type="button"
+                onClick={() => handleDirectRender(scene.selectedModel || enabledImageModels[0] || "nano_banana")}
+                disabled={isRegenerating || isQueued}
+                className="px-2.5 py-1 bg-[#D4AF37] hover:bg-white text-black text-[9px] uppercase font-mono font-bold rounded transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
+                title="Renderizar imagem com o modelo selecionado nesta cartela"
+              >
+                <Sparkles size={10} />
+                <span>Renderizar</span>
+              </button>
             </div>
 
             {/* Line 2: Estúdio AI, Subir do PC, and Limpar Imagem */}
@@ -1560,43 +1712,20 @@ ${userPromptText}`;
                     </span>
                   </button>
 
-                  {/* Button 2: Prompt + IMG with Model Select Dropdown */}
-                  <div className={`flex items-center rounded border border-[#D4AF37]/80 hover:border-[#D4AF37] h-[35px] overflow-hidden bg-[#D4AF37]/10 text-[#D4AF37] transition-all ${
-                    isRegenerating || isQueued ? "animate-pulse opacity-50 cursor-wait" : ""
-                  }`}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onUpdate(scene.id, { generationGuidelines: localGuidelines });
-                        onRegenerate(index, true);
-                      }}
-                      disabled={isRegenerating || isQueued}
-                      className="h-full bg-transparent hover:bg-[#D4AF37] hover:text-black text-[9px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer font-bold px-2 flex-1"
-                      title="Gerar prompt e em seguida iniciar a criação da imagem"
-                    >
-                      <Sparkles size={10} />
-                      <span>Prompt +IMG</span>
-                    </button>
-                    
-                    <div className="relative h-full flex items-center justify-center border-l border-[#D4AF37]/40 hover:bg-[#D4AF37] hover:text-black transition-colors cursor-pointer w-4">
-                      <select
-                        value={scene.selectedModel || "nano_banana"}
-                        disabled={isRegenerating || isQueued}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          onUpdate(scene.id, { selectedModel: val });
-                        }}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        title="Escolher modelo de imagem para renderizar"
-                      >
-                        <option value="nano_banana">Nano Banana 2 Lite</option>
-                        <option value="nano_banana_pro">Nano Banana Pro</option>
-                        <option value="nano_banana_2">Nano Banana 2</option>
-                        {openAiKey && <option value="chatgpt_dalle3">OpenAI (DALL-E 3)</option>}
-                      </select>
-                      <span className="text-[7.5px] pointer-events-none select-none">▼</span>
-                    </div>
-                  </div>
+                  {/* Button 2: Prompt + IMG */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdate(scene.id, { generationGuidelines: localGuidelines });
+                      onRegenerate(index, true);
+                    }}
+                    disabled={isRegenerating || isQueued}
+                    className="h-[35px] bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black border border-[#D4AF37]/80 hover:border-[#D4AF37] text-[#D4AF37] text-[9px] uppercase tracking-wider rounded transition-colors flex items-center justify-center gap-1 cursor-pointer font-bold px-2 flex-1 disabled:opacity-50 disabled:cursor-wait"
+                    title="Gerar prompt e em seguida iniciar a criação da imagem"
+                  >
+                    <Sparkles size={10} />
+                    <span>Prompt +IMG</span>
+                  </button>
 
                   {/* Compact Visual Instruction Droplet Zone */}
                   <div 
@@ -1637,6 +1766,8 @@ ${userPromptText}`;
                           src={scene.visualInstructionImage} 
                           alt="Instrução Visual" 
                           className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
                           referrerPolicy="no-referrer"
                         />
                         <div className="absolute inset-0 bg-black/85 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -1713,31 +1844,38 @@ ${userPromptText}`;
                         onUpdate(scene.id, { promptAiModel: "" });
                       }
                     }}
-                    className="flex-1 bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer"
+                    className="w-full min-w-0 bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer truncate"
+                    title={localAiModel ? `Modelo selecionado: ${localAiModel}` : "Selecione o modelo de IA"}
                   >
                     <optgroup label="Google Gemini">
-                      {(availableModels?.gemini?.text || []).map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
+                      {(availableModels?.gemini?.text || ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"])
+                        .filter((m) => enabledPromptModels.includes(m))
+                        .map((m) => (
+                          <option key={m} value={m} title={m}>
+                            {formatModelDisplayName(m)}
+                          </option>
+                        ))}
                     </optgroup>
                     <optgroup label="OpenAI GPT">
-                      {(availableModels?.openai?.text || []).map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
+                      {(availableModels?.openai?.text || ["gpt-4o-mini", "gpt-4o"])
+                        .filter((m) => enabledPromptModels.includes(m))
+                        .map((m) => (
+                          <option key={m} value={m} title={m}>
+                            {formatModelDisplayName(m)}
+                          </option>
+                        ))}
                     </optgroup>
                     {ollamaModels && ollamaModels.length > 0 && (
                       <optgroup label="Ollama Local">
-                        {ollamaModels.map((m) => (
-                          <option key={`ollama-${m}`} value={`ollama:${m}`}>
-                            Ollama: {m}
-                          </option>
-                        ))}
+                        {ollamaModels
+                          .filter((m) => enabledPromptModels.includes(`ollama:${m}`) || enabledPromptModels.includes(m))
+                          .map((m) => (
+                            <option key={`ollama-${m}`} value={`ollama:${m}`} title={m}>
+                              Ollama: {formatModelDisplayName(m)}
+                            </option>
+                          ))}
                       </optgroup>
                     )}
-                    <optgroup label="Outros">
-                      <option value="ollama">Ollama (Padrão Global)</option>
-                      <option value="custom">✍ Personalizado...</option>
-                    </optgroup>
                   </select>
 
                   {(!(availableModels?.gemini?.text || []).includes(localAiModel) && 
@@ -1761,46 +1899,25 @@ ${userPromptText}`;
                 </div>
               </div>
 
-              {/* Destination Tool dropdown/input */}
+              {/* Destination Tool dropdown */}
               <div className="space-y-1">
                 <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
                   Ferramenta de Destino
                 </label>
-                <div className="flex gap-1.5">
-                  <select
-                    value={["Nano Banana", "Flux.1", "Flux.2", "ChatGPT"].includes(localTargetTool) ? localTargetTool : "Custom"}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val !== "Custom") {
-                        setLocalTargetTool(val);
-                        onUpdate(scene.id, { promptTargetTool: val });
-                      } else {
-                        setLocalTargetTool("Custom");
-                      }
-                    }}
-                    className="flex-1 bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer"
-                  >
-                    <option value="Nano Banana">Nano Banana</option>
-                    <option value="Flux.2">Flux.2</option>
-                    <option value="Flux.1">Flux.1</option>
-                    <option value="ChatGPT">ChatGPT (Dall-E 3)</option>
-                    <option value="Custom">Outra...</option>
-                  </select>
-                  
-                  {(localTargetTool === "Custom" || !["Nano Banana", "Flux.1", "Flux.2", "ChatGPT"].includes(localTargetTool)) && (
-                    <input
-                      type="text"
-                      value={localTargetTool === "Custom" ? "" : localTargetTool}
-                      placeholder="Ferramenta..."
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setLocalTargetTool(val);
-                        onUpdate(scene.id, { promptTargetTool: val });
-                      }}
-                      className="w-24 bg-[#050505] border border-[#333] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50"
-                    />
-                  )}
-                </div>
+                <select
+                  value={["Nano Banana", "Flux.1", "Flux.2", "ChatGPT"].includes(localTargetTool) ? localTargetTool : "Nano Banana"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setLocalTargetTool(val);
+                    onUpdate(scene.id, { promptTargetTool: val });
+                  }}
+                  className="w-full bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer"
+                >
+                  <option value="Nano Banana">Nano Banana</option>
+                  <option value="Flux.2">Flux.2</option>
+                  <option value="Flux.1">Flux.1</option>
+                  <option value="ChatGPT">ChatGPT (Dall-E 3)</option>
+                </select>
               </div>
             </div>
           </div>
@@ -1824,15 +1941,18 @@ ${userPromptText}`;
             </div>
           )}
 
-
         </div>
       </div>
 
       {/* NANO BANANA ART STUDIO INTERACTIVE CHAT MODAL */}
-      {isStudioOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 bg-black/95 backdrop-blur-md animate-fadeIn">
+      {isStudioOpen && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-black/95 backdrop-blur-md animate-fadeIn"
+          role="dialog"
+          onWheel={(e) => e.stopPropagation()}
+        >
           <div 
-            className="bg-[#101010] border border-[#2b2b2b] rounded-lg shadow-2xl max-w-6xl w-full flex flex-col h-[85vh] max-h-[85vh] overflow-hidden text-[#E4DCD3]"
+            className="bg-[#101010] border border-[#2b2b2b] rounded-lg shadow-2xl max-w-[1400px] w-full flex flex-col h-[88vh] max-h-[88vh] overflow-hidden text-[#E4DCD3]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -1863,7 +1983,7 @@ ${userPromptText}`;
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
               
               {/* Left Column: Chat Conversation Thread */}
-              <div className="flex-1 flex flex-col h-full border-r border-[#222] bg-[#0c0c0c] min-w-0">
+              <div className="flex-1 flex flex-col h-full border-r border-[#222] bg-[#0c0c0c] min-h-0">
                 
                 {/* Scrollable Chat Feed */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 min-h-0">
@@ -1914,7 +2034,11 @@ ${userPromptText}`;
                         {/* candidate image render inside chat bubble */}
                         {msg.imageUrl && (
                           <div className="mt-3.5 space-y-2">
-                            <div className="relative aspect-[16/9] w-full max-w-md rounded overflow-hidden border border-zinc-800 group/chatimg bg-black shadow-inner">
+                            <div 
+                              onClick={() => setZoomedImageUrl(msg.imageUrl)}
+                              className="relative aspect-[16/9] w-full max-w-md rounded overflow-hidden border border-zinc-800 group/chatimg bg-black shadow-inner cursor-pointer"
+                              title="Clique para ampliar a imagem"
+                            >
                               <img 
                                 src={msg.imageUrl} 
                                 alt="Candidato a imagem da cena" 
@@ -1934,6 +2058,7 @@ ${userPromptText}`;
                                   href={msg.imageUrl} 
                                   target="_blank" 
                                   rel="noreferrer" 
+                                  onClick={(e) => e.stopPropagation()}
                                   className="p-1 bg-black/85 text-white rounded hover:bg-black transition text-[9px]"
                                   title="Abrir em nova aba"
                                 >
@@ -1984,6 +2109,9 @@ ${userPromptText}`;
                       </div>
                     </div>
                   )}
+
+                  {/* Auto scroll anchor */}
+                  <div ref={chatEndRef} />
                 </div>
 
                 {/* Chat Input Dock Area */}
@@ -1991,68 +2119,72 @@ ${userPromptText}`;
                   onSubmit={handleSendChatMessage}
                   className="p-4 border-t border-[#222] bg-[#121212] space-y-3 shrink-0"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    {/* Model selector tabs */}
-                    <div className="flex items-center gap-1 bg-black p-1 rounded border border-zinc-800">
-                      <span className="text-[8px] font-mono text-zinc-500 uppercase px-1.5 font-bold">Modelo:</span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedChatModel("nano_banana")}
-                        className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer ${
-                          selectedChatModel === "nano_banana"
-                            ? "bg-[#D4AF37] text-black font-bold"
-                            : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-                        }`}
-                      >
-                        Img3 Fast
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedChatModel("nano_banana_pro")}
-                        className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer ${
-                          selectedChatModel === "nano_banana_pro"
-                            ? "bg-[#D4AF37] text-black font-bold"
-                            : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-                        }`}
-                      >
-                        Img3 Pro
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedChatModel("nano_banana_2")}
-                        className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer ${
-                          selectedChatModel === "nano_banana_2"
-                            ? "bg-[#D4AF37] text-black font-bold"
-                            : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-                        }`}
-                      >
-                        Img3 Art
-                      </button>
-                      {openAiKey && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedChatModel("chatgpt_dalle3")}
-                          className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer flex items-center gap-1 ${
-                            selectedChatModel === "chatgpt_dalle3"
-                              ? "bg-[#D4AF37] text-black font-bold"
-                              : "text-zinc-400 hover:text-white hover:bg-[#2a2a2a]"
-                          }`}
-                          title={`Usar OpenAI (${openAiDalleModel || "dall-e-3"}) para renderizar após a conversa`}
-                        >
-                          <span>OpenAI</span>
-                          <span className={selectedChatModel === "chatgpt_dalle3" ? "text-[7.5px] text-black/60 lowercase" : "text-[7.5px] text-slate-500 lowercase"}>
-                            ({openAiDalleModel || "dall-e-3"})
-                          </span>
-                        </button>
-                      )}
+                  <div className="flex flex-col gap-2 border-b border-zinc-800/60 pb-2">
+                    {/* Selector 1: Prompt / Chat Text Models */}
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                      <span className="text-[8px] font-mono text-[#D4AF37] uppercase font-bold shrink-0">1. IA de Conversa (Prompt):</span>
+                      <div className="flex items-center gap-1 bg-black p-1 rounded border border-zinc-800 flex-wrap max-w-full overflow-hidden">
+                        {enabledPromptModels.map((m) => {
+                          const { badge, display } = formatModelDisplayLabel(m, openAiModel);
+                          const lower = m.toLowerCase();
+                          const isOpenAi = lower.startsWith("gpt-") || lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("openai:");
+                          if (isOpenAi && !openAiKey) return null;
+
+                          const isSelected = selectedPromptModel === m;
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setSelectedPromptModel(m)}
+                              className={`px-2 py-0.5 text-[9px] font-mono rounded transition-all cursor-pointer flex items-center gap-1 border select-none ${
+                                isSelected
+                                  ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37] shadow-sm"
+                                  : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                              }`}
+                              title={m}
+                            >
+                              <span className="opacity-90 shrink-0">{badge}</span>
+                              <span className="truncate max-w-[140px]">({display})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    <span className="text-[8px] text-zinc-500 font-mono hidden sm:inline">
-                      O assistente se recorda de toda a conversa anterior
-                    </span>
+                    {/* Selector 2: Image Models */}
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                      <span className="text-[8px] font-mono text-emerald-400 uppercase font-bold shrink-0">2. IA de Renderização (Imagem):</span>
+                      <div className="flex items-center gap-1 bg-black p-1 rounded border border-zinc-800 flex-wrap max-w-full overflow-hidden">
+                        {enabledImageModels.map((m) => {
+                          const { badge, display } = formatModelDisplayLabel(m, openAiDalleModel);
+                          const lower = m.toLowerCase();
+                          const isOpenAiModel = lower.startsWith("openai:") || lower.startsWith("gpt-image") || lower.startsWith("dall-e") || lower === "chatgpt_dalle3";
+                          if (isOpenAiModel && !openAiKey) return null;
+
+                          const isSelected = selectedChatModel === m;
+
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setSelectedChatModel(m)}
+                              className={`px-2 py-0.5 text-[9px] font-mono rounded transition-all cursor-pointer flex items-center gap-1 border select-none ${
+                                isSelected
+                                  ? "bg-emerald-500 text-black font-bold border-emerald-400 shadow-sm"
+                                  : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                              }`}
+                              title={m}
+                            >
+                              <span className="opacity-90 shrink-0">{badge}</span>
+                              <span className="truncate max-w-[140px]">({display})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-start gap-2">
                     {/* Compact Visual Instruction Droplet on the Left */}
                     <div 
                       onDragOver={(e) => { e.preventDefault(); setIsDraggingModalVisualInstruction(true); }}
@@ -2065,7 +2197,7 @@ ${userPromptText}`;
                         }
                       }}
                       onClick={() => modalVisualInstructionInputRef.current?.click()}
-                      className={`w-10 h-10 shrink-0 border-2 border-dashed rounded flex items-center justify-center cursor-pointer relative overflow-hidden transition-all ${
+                      className={`w-10 h-[72px] shrink-0 border-2 border-dashed rounded flex items-center justify-center cursor-pointer relative overflow-hidden transition-all ${
                         isDraggingModalVisualInstruction
                           ? "border-[#D4AF37] bg-[#D4AF37]/10"
                           : scene.visualInstructionImage
@@ -2115,35 +2247,35 @@ ${userPromptText}`;
                       )}
                     </div>
 
-                    {/* Chat Input Field */}
-                    <input
-                      type="text"
+                    {/* Chat 3-line Textarea Field */}
+                    <textarea
+                      rows={3}
                       value={chatInputText}
                       onChange={(e) => setChatInputText(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                        if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault();
                           if (!isChatGenerating && chatInputText.trim()) {
-                            handleSendChatMessage(e);
+                            handleSendChatMessage(e as any);
                           }
                         }
                       }}
                       disabled={isChatGenerating}
-                      className="flex-1 h-10 bg-black border border-zinc-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]/50 placeholder-zinc-650"
-                      placeholder="Descreva mudanças: 'Adicione mais mistério', 'Mude a iluminação para luz de velas' (Ctrl+Enter)..."
+                      className="flex-1 bg-black border border-zinc-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]/50 placeholder-zinc-650 resize-none font-mono leading-relaxed"
+                      placeholder="Descreva mudanças: 'Adicione mais mistério', 'Mude a iluminação para luz de velas' (Pressione Enter para enviar, Shift+Enter para nova linha)..."
                     />
 
                     {/* Small Paper Plane Button on the Right */}
                     <button
                       type="submit"
                       disabled={isChatGenerating || !chatInputText.trim()}
-                      className="w-10 h-10 shrink-0 bg-[#D4AF37] hover:bg-white text-black rounded flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                      title="Conversar e Renderizar (Ctrl+Enter)"
+                      className="w-10 h-[72px] shrink-0 bg-[#D4AF37] hover:bg-white text-black rounded flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                      title="Conversar e Renderizar (Enter)"
                     >
                       {isChatGenerating ? (
-                        <Loader2 size={14} className="animate-spin" />
+                        <Loader2 size={16} className="animate-spin" />
                       ) : (
-                        <Send size={14} />
+                        <Send size={16} />
                       )}
                     </button>
                   </div>
@@ -2151,14 +2283,18 @@ ${userPromptText}`;
               </div>
 
               {/* Right Column: Active Scene Preview */}
-              <div className="w-full lg:w-[35%] bg-[#121212] p-5 flex flex-col justify-between overflow-y-auto space-y-4">
-                <div className="space-y-4">
-                  <span className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 block font-bold border-b border-zinc-800 pb-1.5">
+              <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-800/80 bg-[#121212] p-5 flex flex-col justify-between overflow-y-auto space-y-4 min-w-0">
+                <div className="space-y-4 w-full">
+                  <span className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 block font-bold border-b border-zinc-800 pb-1.5 text-left">
                     Ilustração Ativa da Cena
                   </span>
 
                   {/* Active Widescreen 16:9 Image Preview */}
-                  <div className="relative aspect-[16/9] w-full rounded overflow-hidden border border-[#333] bg-black">
+                  <div 
+                    onClick={() => scene.generatedImageUrl && setZoomedImageUrl(scene.generatedImageUrl)}
+                    className={`relative aspect-[16/9] w-full rounded overflow-hidden border border-[#333] bg-black ${scene.generatedImageUrl ? "cursor-pointer" : ""}`}
+                    title={scene.generatedImageUrl ? "Clique para ampliar a imagem" : undefined}
+                  >
                     {scene.generatedImageUrl ? (
                       <>
                         <img 
@@ -2183,7 +2319,7 @@ ${userPromptText}`;
                           <div className="absolute top-2 left-2 right-2 bg-amber-950/95 border border-amber-500/25 p-2 text-[8px] text-amber-200 flex items-start gap-1.5 rounded-md backdrop-blur-sm z-10 text-left animate-fadeIn shadow-lg">
                             <AlertTriangle size={12} className="text-[#D4AF37] shrink-0 mt-0.5" />
                             <div className="flex-1 leading-snug">
-                              <strong>Esboço de Standby Ativo:</strong> Motor de IA offline ou limite de faturamento excedido. Veja o motivo exato desenhado no próprio card.
+                              <strong>Esboço de Standby Ativo:</strong> Motor de IA offline ou limite de faturamento excedido.
                             </div>
                           </div>
                         )}
@@ -2196,29 +2332,27 @@ ${userPromptText}`;
                     )}
                   </div>
 
-
-
                   {/* Active Scene Meta */}
-                  <div className="space-y-3 font-mono text-[10px] bg-black/45 p-3.5 rounded border border-zinc-850">
+                  <div className="space-y-3 font-mono text-[10px] bg-black/45 p-3.5 rounded border border-zinc-850 w-full text-left">
                     <div>
-                      <span className="text-zinc-500 uppercase block">Texto/Narração original:</span>
-                      <p className="text-[#E0D8D0] font-sans italic mt-0.5 text-xs leading-relaxed select-text">
+                      <span className="text-zinc-500 uppercase block font-bold text-[8.5px]">Texto/Narração original:</span>
+                      <p className="text-[#E0D8D0] font-sans italic mt-1 text-xs leading-relaxed select-text whitespace-pre-wrap break-words">
                         "{scene.text}"
                       </p>
                     </div>
 
-                    <div className="border-t border-zinc-900 pt-2">
-                      <span className="text-[#D4AF37] uppercase block">Diretriz Visual (PT-BR):</span>
-                      <p className="text-zinc-300 font-sans mt-0.5 text-[10px] leading-relaxed max-h-24 overflow-y-auto select-text font-light">
+                    <div className="border-t border-zinc-900 pt-2.5">
+                      <span className="text-[#D4AF37] uppercase block font-bold text-[8.5px]">Diretriz Visual (PT-BR):</span>
+                      <div className="text-zinc-300 font-sans mt-1 text-[11px] leading-relaxed max-h-36 overflow-y-auto select-text font-light pr-1 text-left whitespace-pre-wrap break-words border border-zinc-900/60 bg-black/30 p-2 rounded w-full">
                         {scene.description || "Nenhuma diretriz"}
-                      </p>
+                      </div>
                     </div>
 
-                    <div className="border-t border-zinc-900 pt-2">
-                      <span className="text-[#D4AF37] uppercase block">Prompt de Imagem Ativo (EN):</span>
-                      <p className="text-zinc-400 mt-0.5 text-[9px] leading-relaxed font-mono max-h-24 overflow-y-auto select-all">
+                    <div className="border-t border-zinc-900 pt-2.5">
+                      <span className="text-[#D4AF37] uppercase block font-bold text-[8.5px]">Prompt de Imagem Ativo (EN):</span>
+                      <div className="text-zinc-400 mt-1 text-[10px] leading-relaxed font-mono max-h-36 overflow-y-auto select-all pr-1 text-left whitespace-pre-wrap break-words border border-zinc-900/60 bg-black/30 p-2 rounded w-full">
                         {scene.prompt || "Nenhum prompt"}
-                      </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2236,8 +2370,33 @@ ${userPromptText}`;
 
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* FULL-RESOLUTION LIGHTBOX ZOOM MODAL */}
+      {zoomedImageUrl && createPortal(
+        <div 
+          className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-4 sm:p-8 animate-fadeIn cursor-pointer select-none"
+          onClick={() => setZoomedImageUrl(null)}
+          role="dialog"
+        >
+          <div className="relative max-w-7xl max-h-[90vh] w-full flex flex-col items-center justify-center">
+            <img
+              src={zoomedImageUrl}
+              alt="Imagem Ampliada"
+              className="max-w-full max-h-[82vh] object-contain rounded-lg border border-[#D4AF37]/40 shadow-[0_0_50px_rgba(212,175,55,0.25)]"
+              referrerPolicy="no-referrer"
+            />
+            <div className="mt-3 px-4 py-1.5 bg-black/80 border border-zinc-800 rounded-full text-zinc-300 text-[10px] font-mono uppercase tracking-widest flex items-center gap-2">
+              <span>Clique na tela ou pressione ESC para fechar</span>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </>
   );
 }
+
+export default React.memo(StoryboardCardComponent);

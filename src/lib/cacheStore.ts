@@ -126,19 +126,20 @@ export async function getCacheSizeMB(): Promise<number> {
     return new Promise((resolve) => {
       const transaction = db.transaction(STORE_NAME, "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const request = store.getAll();
+      let totalChars = 0;
+      const request = store.openCursor();
 
-      request.onsuccess = () => {
-        const items = request.result || [];
-        let totalChars = 0;
-        for (const item of items) {
-          if (item.data && typeof item.data === "string") {
-            totalChars += item.data.length;
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+        if (cursor) {
+          if (cursor.value && cursor.value.data && typeof cursor.value.data === "string") {
+            totalChars += cursor.value.data.length;
           }
+          cursor.continue();
+        } else {
+          const sizeInMB = totalChars / (1024 * 1024);
+          resolve(parseFloat(sizeInMB.toFixed(2)));
         }
-        // Base64 string length is roughly equivalent to size in bytes. 1024 * 1024 = 1MB.
-        const sizeInMB = totalChars / (1024 * 1024);
-        resolve(parseFloat(sizeInMB.toFixed(2)));
       };
 
       request.onerror = () => {

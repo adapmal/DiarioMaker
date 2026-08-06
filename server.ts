@@ -15,6 +15,7 @@ const upload = multer({ storage, limits: { fileSize: 250 * 1024 * 1024 } });
 
 const SESSION_FILE_PATH = path.join(process.cwd(), "session_store.json");
 const USER_CONFIG_PATH = path.join(process.cwd(), "user_config.json");
+const API_SECRETS_PATH = path.join(process.cwd(), "api_secrets.json");
 const PROJECTS_DIR = path.join(process.cwd(), "projects");
 const SERVER_LOG_FILE = path.join(process.cwd(), "server_error.log");
 
@@ -28,36 +29,145 @@ function logErrorToFile(context: string, err: any) {
   } catch (_) {}
 }
 
-// Helper to load settings from user_config.json with robust defaults
+function sanitizeErrorMessage(msg: any): string {
+  if (!msg) return "";
+  let str = typeof msg === "string" ? msg : (msg?.message || String(msg));
+  str = str.replace(/sk-proj-[a-zA-Z0-9_-]{10,}/gi, "sk-proj-***");
+  str = str.replace(/sk-[a-zA-Z0-9_-]{10,}/gi, "sk-***");
+  str = str.replace(/AIzaSy[a-zA-Z0-9_-]{10,}/gi, "AIzaSy***");
+  str = str.replace(/AQ\.[a-zA-Z0-9_-]{10,}/gi, "AQ.***");
+  return str;
+}
+
+// Helper to strip all API key properties from objects before saving to disk
+function stripApiKeys(obj: any): any {
+  if (!obj || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(item => stripApiKeys(item));
+  }
+  const cleaned: any = {};
+  for (const key of Object.keys(obj)) {
+    if (
+      key === "customGeminiKey" ||
+      key === "customOpenAiKey" ||
+      key === "openAiKey" ||
+      key === "customApiKey" ||
+      key === "apiKey" ||
+      key === "geminiApiKey" ||
+      key === "openaiApiKey" ||
+      key === "elevenLabsKey" ||
+      key === "secret" ||
+      key === "secrets"
+    ) {
+      continue;
+    }
+    cleaned[key] = stripApiKeys(obj[key]);
+  }
+  return cleaned;
+}
+
+// Helper to load sensitive API keys from git-ignored api_secrets.json
+function loadApiSecrets() {
+  try {
+    if (fs.existsSync(API_SECRETS_PATH)) {
+      const data = fs.readFileSync(API_SECRETS_PATH, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.warn("Failed to load api_secrets.json:", err);
+  }
+  return {};
+}
+
+// Helper to load settings from user_config.json merged with api_secrets.json
 function loadUserConfig() {
+  let config: any = {};
   try {
     if (fs.existsSync(USER_CONFIG_PATH)) {
       const data = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
-      return JSON.parse(data);
+      config = stripApiKeys(JSON.parse(data));
     }
   } catch (err) {
     console.warn("Failed to load user_config.json:", err);
   }
-  return {};
+  const secrets = loadApiSecrets();
+  return { ...config, ...secrets };
+}
+
+function getCanonicalKey(item: any): string {
+  if (!item) return "";
+  if (typeof item === "object") {
+    if (item.sceneId && item.letter) {
+      return `scene:${item.sceneId}_${item.letter}`;
+    }
+    return getCanonicalKey(item.url);
+  }
+  const url = String(item);
+  if (url.includes("/imagens/")) {
+    const fn = url.split("/imagens/").pop()?.split("?")[0];
+    if (fn) return `file:${fn}`;
+  }
+  if (url.startsWith("idb://")) {
+    return `idb:${url.replace("idb://", "")}`;
+  }
+  if (url.startsWith("data:")) {
+    const payload = url.split(",")[1] || url;
+    return `b64:${payload.length}_${payload.slice(0, 32)}_${payload.slice(-32)}`;
+  }
+  return url;
+}
+
+function sanitizeArchive(archive: any[]): any[] {
+  if (!Array.isArray(archive)) return [];
+  const keyMap = new Map<string, any>();
+  archive.forEach((item: any) => {
+    if (!item || !item.url) return;
+    const key = getCanonicalKey(item);
+    const existing = keyMap.get(key);
+    if (!existing) {
+      keyMap.set(key, item);
+    } else if (item.url.startsWith("/projects/") && !existing.url.startsWith("/projects/")) {
+      keyMap.set(key, item);
+    }
+  });
+  return Array.from(keyMap.values());
 }
 
 // Helper to sanitize scenes and ensure "Midjourney" is replaced with "Nano Banana"
 function sanitizeScenes(scenes: any[]): any[] {
   if (!Array.isArray(scenes)) return [];
   return scenes.map((scene: any) => {
-    if (scene && scene.promptTargetTool) {
+    if (!scene) return scene;
+    if (scene.promptTargetTool) {
       const tool = String(scene.promptTargetTool).trim().toLowerCase();
       if (tool === "midjourney" || tool.includes("midjourney")) {
         scene.promptTargetTool = "Nano Banana";
       }
     }
+    if (scene.renderError) {
+      scene.renderError = sanitizeErrorMessage(scene.renderError);
+    }
+    if (scene.text) {
+      scene.text = sanitizeErrorMessage(scene.text);
+    }
+    if (Array.isArray(scene.chatHistory)) {
+      scene.chatHistory = scene.chatHistory.map((msg: any) => {
+        if (!msg) return msg;
+        if (msg.text) msg.text = sanitizeErrorMessage(msg.text);
+        if (msg.reasoning) msg.reasoning = sanitizeErrorMessage(msg.reasoning);
+        return msg;
+      });
+    }
+    if (Array.isArray(scene.imageVersions) && scene.imageVersions.length > 0) {
+      scene.imageVersions = sanitizeArchive(scene.imageVersions);
+    }
     return scene;
   });
 }
 
-// Enable JSON body parser with generous limit for larger scripts
-app.use(express.json({ limit: "150mb" }));
-app.use(express.urlencoded({ limit: "150mb", extended: true }));
+// Enable JSON body parser with generous 500mb limit for projects with heavy Base64 image caches
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
 // Server-side robust session API
 app.get("/api/storyboard/session", (req, res) => {
@@ -67,6 +177,9 @@ app.get("/api/storyboard/session", (req, res) => {
       const parsed = JSON.parse(rawData);
       if (parsed && Array.isArray(parsed.scenes)) {
         parsed.scenes = sanitizeScenes(parsed.scenes);
+        if (Array.isArray(parsed.sessionImageArchive)) {
+          parsed.sessionImageArchive = sanitizeArchive(parsed.sessionImageArchive);
+        }
         // Extract project folder name from the active session store state
         let targetFolder = "260802";
         if (parsed.folder) {
@@ -97,10 +210,16 @@ app.post("/api/storyboard/autosave", (req, res) => {
       scriptReferenceImage,
       connectionGroups,
       selectedStyle,
-      consecutiveNumbering
+      consecutiveNumbering,
+      enabledPromptModels,
+      enabledImageModels,
+      openAiModel,
+      openAiDalleModel,
+      batchSelectedPromptModel,
+      batchSelectedImageModel
     } = req.body;
     
-    const sessionData = {
+    const sessionData = stripApiKeys({
       scenes: Array.isArray(scenes) ? sanitizeScenes(scenes) : [],
       stylePreference: stylePreference || "auto",
       projectName: projectName || "Meu Storyboard",
@@ -109,9 +228,15 @@ app.post("/api/storyboard/autosave", (req, res) => {
       connectionGroups: Array.isArray(connectionGroups) ? connectionGroups : [],
       selectedStyle: selectedStyle || "auto",
       consecutiveNumbering: consecutiveNumbering !== undefined ? consecutiveNumbering : true,
+      enabledPromptModels: Array.isArray(enabledPromptModels) ? enabledPromptModels : undefined,
+      enabledImageModels: Array.isArray(enabledImageModels) ? enabledImageModels : undefined,
+      openAiModel: openAiModel || undefined,
+      openAiDalleModel: openAiDalleModel || undefined,
+      batchSelectedPromptModel: batchSelectedPromptModel || undefined,
+      batchSelectedImageModel: batchSelectedImageModel || undefined,
       updatedAt: new Date().toISOString(),
       isAutosave: true
-    };
+    });
     const jsonStr = JSON.stringify(sessionData, null, 2);
     try {
       fs.writeFileSync(SESSION_AUTOSAVE_PATH, jsonStr, "utf-8");
@@ -202,10 +327,16 @@ app.post("/api/storyboard/session", (req, res) => {
       selectedStyle,
       consecutiveNumbering,
       diaryDate,
-      saveVersion
+      saveVersion,
+      enabledPromptModels,
+      enabledImageModels,
+      openAiModel,
+      openAiDalleModel,
+      batchSelectedPromptModel,
+      batchSelectedImageModel
     } = req.body;
     
-    const sessionData = {
+    const sessionData = stripApiKeys({
       scenes: Array.isArray(scenes) ? sanitizeScenes(scenes) : [],
       stylePreference: stylePreference || "auto",
       projectName: projectName || "Meu Storyboard",
@@ -216,9 +347,26 @@ app.post("/api/storyboard/session", (req, res) => {
       consecutiveNumbering: consecutiveNumbering !== undefined ? consecutiveNumbering : true,
       diaryDate: diaryDate || "",
       saveVersion: saveVersion !== undefined ? saveVersion : 1,
+      enabledPromptModels: Array.isArray(enabledPromptModels) ? enabledPromptModels : undefined,
+      enabledImageModels: Array.isArray(enabledImageModels) ? enabledImageModels : undefined,
+      openAiModel: openAiModel || undefined,
+      openAiDalleModel: openAiDalleModel || undefined,
+      batchSelectedPromptModel: batchSelectedPromptModel || undefined,
+      batchSelectedImageModel: batchSelectedImageModel || undefined,
       updatedAt: new Date().toISOString()
-    };
-    fs.writeFileSync(SESSION_FILE_PATH, JSON.stringify(sessionData, null, 2), "utf-8");
+    });
+    const jsonStr = JSON.stringify(sessionData, null, 2);
+    try {
+      fs.writeFileSync(SESSION_FILE_PATH, jsonStr, "utf-8");
+    } catch (wErr) {
+      try {
+        const tmpPath = `${SESSION_FILE_PATH}.tmp_${Date.now()}`;
+        fs.writeFileSync(tmpPath, jsonStr, "utf-8");
+        fs.renameSync(tmpPath, SESSION_FILE_PATH);
+      } catch (rErr) {
+        console.warn("Retried atomic write for session_store.json:", rErr);
+      }
+    }
     return res.json({ success: true });
   } catch (error: any) {
     console.error("Error writing session file:", error);
@@ -375,6 +523,12 @@ app.post("/api/storyboard/projects/save", (req, res) => {
       consecutiveNumbering,
       diaryDate,
       saveVersion,
+      enabledPromptModels,
+      enabledImageModels,
+      openAiModel,
+      openAiDalleModel,
+      batchSelectedPromptModel,
+      batchSelectedImageModel,
       updatedAt
     } = req.body;
 
@@ -393,7 +547,7 @@ app.post("/api/storyboard/projects/save", (req, res) => {
       fs.mkdirSync(imagesDir, { recursive: true });
     }
 
-    const sessionData = {
+    const sessionData = stripApiKeys({
       scenes: Array.isArray(scenes) ? sanitizeScenes(scenes) : [],
       stylePreference: stylePreference || "auto",
       projectName: projectName || safeFolder,
@@ -404,9 +558,15 @@ app.post("/api/storyboard/projects/save", (req, res) => {
       consecutiveNumbering: consecutiveNumbering !== undefined ? consecutiveNumbering : true,
       diaryDate: diaryDate || "",
       saveVersion: saveVersion !== undefined ? saveVersion : 1,
+      enabledPromptModels: Array.isArray(enabledPromptModels) ? enabledPromptModels : undefined,
+      enabledImageModels: Array.isArray(enabledImageModels) ? enabledImageModels : undefined,
+      openAiModel: openAiModel || undefined,
+      openAiDalleModel: openAiDalleModel || undefined,
+      batchSelectedPromptModel: batchSelectedPromptModel || undefined,
+      batchSelectedImageModel: batchSelectedImageModel || undefined,
       updatedAt: updatedAt || new Date().toISOString(),
       isAutosave: false
-    };
+    });
 
     const projectJsonPath = path.join(projectDir, "storyboard.json");
     const jsonStr = JSON.stringify(sessionData, null, 2);
@@ -425,7 +585,13 @@ app.post("/api/storyboard/projects/save", (req, res) => {
     try {
       fs.writeFileSync(SESSION_FILE_PATH, jsonStr, "utf-8");
     } catch (sErr) {
-      console.warn("Failed to write global session file:", sErr);
+      try {
+        const tmpPath = `${SESSION_FILE_PATH}.tmp_${Date.now()}`;
+        fs.writeFileSync(tmpPath, jsonStr, "utf-8");
+        fs.renameSync(tmpPath, SESSION_FILE_PATH);
+      } catch (rErr) {
+        console.warn("Failed to write global session file:", rErr);
+      }
     }
 
     return res.json({ success: true, path: projectJsonPath, updatedAt: sessionData.updatedAt });
@@ -670,22 +836,8 @@ async function callGeminiWithRetry<T>(
   let lastError: any = null;
   let delay = initialDelayMs;
   
-  // Adaptive model list promotion based on stability map
-  const now = Date.now();
-  let modelsToTry = [preferredModel, ...fallbackModels];
-  const stats = modelStabilityMap[preferredModel];
-  if (stats && stats.failureCount >= 1 && (now - stats.lastFailureTime < 600000)) { // 10 minutes cache
-    const stableFallbacks = fallbackModels.filter(f => {
-      const fStats = modelStabilityMap[f];
-      return !fStats || fStats.failureCount === 0 || (now - fStats.lastFailureTime >= 600000);
-    });
-    if (stableFallbacks.length > 0) {
-      const promoted = stableFallbacks[0];
-      const otherFallbacks = fallbackModels.filter(f => f !== promoted);
-      modelsToTry = [promoted, preferredModel, ...otherFallbacks];
-      console.log(`[Gemini API Stability Circuit Breaker] O modelo ${preferredModel} foi considerado instável temporariamente. Promovendo o modelo estável ${promoted} para primeira tentativa.`);
-    }
-  }
+  // Strict single-model execution (no auto-fallback to unwanted models)
+  let modelsToTry = [preferredModel];
   
   for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
     const currentModel = modelsToTry[attempt];
@@ -762,15 +914,16 @@ async function callGeminiWithRetry<T>(
 
 // Helper to extract clean human-readable messages from OpenAI JSON error responses
 function parseOpenAiErrorText(status: number, errText: string, prefix = "OpenAI Error"): string {
+  let cleanMsg = errText;
   try {
     const parsed = JSON.parse(errText);
     if (parsed && parsed.error && typeof parsed.error.message === "string") {
-      return `${prefix} (Status ${status}): ${parsed.error.message}`;
+      cleanMsg = parsed.error.message;
     }
   } catch (e) {
     // Fallback if not valid JSON
   }
-  return `${prefix} (Status ${status}): ${errText}`;
+  return sanitizeErrorMessage(`${prefix} (Status ${status}): ${cleanMsg}`);
 }
 
 // OpenAI chat completions proxy helper
@@ -1042,21 +1195,103 @@ app.get("/api/storyboard/config", (req, res) => {
 
 app.post("/api/storyboard/config", (req, res) => {
   try {
+    const { customGeminiKey, customOpenAiKey, ...generalConfig } = req.body;
+    
+    // Save API secrets separately to api_secrets.json (git-ignored)
+    if (customGeminiKey !== undefined || customOpenAiKey !== undefined) {
+      const currentSecrets = loadApiSecrets();
+      const updatedSecrets = {
+        ...currentSecrets,
+        ...(customGeminiKey !== undefined && { customGeminiKey }),
+        ...(customOpenAiKey !== undefined && { customOpenAiKey })
+      };
+      fs.writeFileSync(API_SECRETS_PATH, JSON.stringify(updatedSecrets, null, 2), "utf-8");
+    }
+
+    // Save general non-sensitive preferences to user_config.json
     const currentConfig = loadUserConfig();
-    const newConfig = {
+    delete currentConfig.customGeminiKey;
+    delete currentConfig.customOpenAiKey;
+    
+    const newGeneralConfig = {
       ...currentConfig,
-      ...req.body
+      ...generalConfig
     };
-    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(newConfig, null, 2), "utf-8");
-    return res.json({ success: true, config: newConfig });
+    fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(newGeneralConfig, null, 2), "utf-8");
+    
+    const fullMergedConfig = loadUserConfig();
+    return res.json({ success: true, config: fullMergedConfig });
   } catch (err: any) {
-    console.error("Error writing user_config.json:", err);
+    console.error("Error saving server configurations:", err);
     return res.status(500).json({ error: "Failed to save server configurations." });
   }
 });
 
+const OPENAI_MASTER_CATALOG = [
+  { id: "gpt-image-2", category: "image", name: "GPT Image 2", description: "Modelo recomendado de imagem direta (Image API)" },
+  { id: "gpt-image-2-2026-04-21", category: "image", name: "GPT Image 2 Snapshot", description: "Snapshot recomendado de imagem" },
+  { id: "gpt-image-1.5", category: "image", name: "GPT Image 1.5", description: "Geração de imagens alta resolução" },
+  { id: "gpt-image-1", category: "image", name: "GPT Image 1", description: "Modelo de imagem padrão" },
+  { id: "gpt-image-1-mini", category: "image", name: "GPT Image 1 Mini", description: "Modelo rápido e econômico" },
+  { id: "chatgpt-image-latest", category: "image", name: "ChatGPT Image Latest", description: "Modelo de imagem conversacional" },
+  { id: "gpt-4o", category: "conversation", name: "GPT-4o", description: "Multimodal conversacional avançado" },
+  { id: "gpt-4o-mini", category: "conversation", name: "GPT-4o Mini", description: "Conversacional rápido e ultraleve" },
+  { id: "gpt-5", category: "conversation", name: "GPT-5", description: "Modelo flagship de nova geração" },
+  { id: "gpt-5-pro", category: "conversation", name: "GPT-5 Pro", description: "Modelo de raciocínio profundo" },
+  { id: "gpt-5-mini", category: "conversation", name: "GPT-5 Mini", description: "Modelo compacto de alta performance" },
+  { id: "gpt-5.6-luna", category: "conversation", name: "GPT-5.6 Luna", description: "Variante especializada de alta precisão" },
+  { id: "gpt-5.6-terra", category: "conversation", name: "GPT-5.6 Terra", description: "Variante recomendada para roteiros" },
+  { id: "gpt-5.6-sol", category: "conversation", name: "GPT-5.6 Sol", description: "Variante de síntese criativa" },
+  { id: "o1", category: "conversation", name: "o1", description: "Raciocínio lógico avançado" },
+  { id: "o3-mini", category: "conversation", name: "o3-mini", description: "Raciocínio ultrarrápido" }
+];
+
 app.post("/api/storyboard/test-key", async (req, res) => {
-  const { customApiKey } = req.body;
+  const { customApiKey, openAiKey, provider } = req.body;
+
+  if (provider === "openai" || openAiKey || req.headers["x-openai-key"]) {
+    const keyToTest = openAiKey || (req.headers["x-openai-key"] as string) || customApiKey;
+    if (!keyToTest || !keyToTest.trim()) {
+      return res.status(400).json({ error: "Nenhuma chave de API OpenAI fornecida para teste." });
+    }
+    try {
+      const response = await fetch("https://api.openai.com/v1/models", {
+        headers: { "Authorization": `Bearer ${keyToTest.trim()}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const rawModels: any[] = Array.isArray(data?.data) ? data.data : [];
+        const allowedModelIds = rawModels.map(m => m.id || "").filter(Boolean);
+
+        const allowedImageModels = allowedModelIds.filter(id => id.includes("image") || id.startsWith("dall-e"));
+        const allowedTextModels = allowedModelIds.filter(id => id.startsWith("gpt-") || id.startsWith("o1") || id.startsWith("o3") || id.startsWith("chatgpt"));
+
+        const missingCatalogModels = OPENAI_MASTER_CATALOG.filter(item => !allowedModelIds.includes(item.id));
+
+        return res.json({ 
+          success: true, 
+          message: "Sua chave de API do OpenAI foi verificada e está ativa!",
+          totalAllowed: allowedModelIds.length,
+          allowedModelIds,
+          allowedImageModels,
+          allowedTextModels,
+          missingCatalogModels
+        });
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        return res.status(400).json({ 
+          success: false, 
+          error: errData?.error?.message || `Erro ao autenticar com a API OpenAI (${response.status}).` 
+        });
+      }
+    } catch (err: any) {
+      return res.status(400).json({ 
+        success: false, 
+        error: err.message || "Erro ao conectar com a API OpenAI." 
+      });
+    }
+  }
+
   const activeKey = (req.headers["x-gemini-key"] as string) || customApiKey;
   if (!activeKey || !activeKey.trim()) {
     return res.status(400).json({ error: "Nenhuma chave de API fornecida para teste." });
@@ -1350,7 +1585,13 @@ app.get("/api/storyboard/available-models", async (req, res) => {
     openAiTextModels.push(
       "gpt-4o-mini",
       "gpt-4o",
-      "gpt-4.5-preview",
+      "gpt-5",
+      "gpt-5-pro",
+      "gpt-5-mini",
+      "gpt-5.6-luna",
+      "gpt-5.6-terra",
+      "gpt-5.6-sol",
+      "o1",
       "o1-mini",
       "o3-mini"
     );
@@ -1614,22 +1855,33 @@ Ensure the clothing style, hair, skin features, props, facial structures, color 
     }).join("\n");
   }
 
-  const userPromptText = `Generate a fresh, improved visual description (written in Brazilian Portuguese (PT-BR) ONLY) and English image prompt for this storyboard segment narration.
-You should provide a different creative angle or improved composition than the current description if provided below.
+  const userPromptText = `Generate a fresh, high-quality visual description (written in Brazilian Portuguese (PT-BR) ONLY) and a detailed English image prompt for this storyboard segment narration.
 
 Narration Segment: "${text}"
-Current Visual Description (to improve/change): "${currentDescription || ""}"
-Current Image Prompt (to improve/change): "${currentPrompt || ""}"
+${generationGuidelines ? `\nCRITICAL USER INSTRUCTIONS & CORRECTIONS (MUST OVERRIDE & PRIORITIZE):\n"${generationGuidelines.trim()}"\n` : ""}
+
+IMPORTANT INSTRUCTION:
+Build a clean, renewed prompt focused on the narration segment and the CRITICAL USER INSTRUCTIONS above. Do NOT carry over unwanted or incorrect elements from previous generations.
+
+Provide your output strictly as a JSON object with two keys:
+1. "description": A concise visual scene description in Portuguese (PT-BR).
+2. "prompt": A detailed, highly descriptive image generation prompt written in English.
+
 Styling Directive: ${styleGuidance}
 ${directionPrompt}
 ${toolGuidance}${connectedContext}`;
 
-  // Dynamically select model based on parameter, fallback to standard gemini-3.6-flash
   const modelToUse = promptAiModel || "gemini-3.6-flash";
-
   const openAiKey = req.headers["x-openai-key"] as string;
   const openAiModel = req.headers["x-openai-model"] as string || "gpt-4o-mini";
-  const useOpenAi = (promptAiModel === "chatgpt" || (req.headers["x-use-openai"] === "true" && promptAiModel !== "gemini-3.6-flash" && promptAiModel !== "gemini-3.1-pro-preview")) && !!openAiKey;
+  const useOpenAi = (
+    promptAiModel === "chatgpt" ||
+    promptAiModel === "gpt-4o-mini" ||
+    promptAiModel === "gpt-4o" ||
+    promptAiModel?.startsWith("gpt-") ||
+    promptAiModel?.includes("openai") ||
+    req.headers["x-use-openai"] === "true"
+  ) && !!openAiKey;
 
   if (useOpenAi) {
     console.log(`[OpenAI API] Scene Regeneration using model: ${openAiModel}`);
@@ -1699,6 +1951,30 @@ ${toolGuidance}${connectedContext}`;
     });
   } catch (error: any) {
     console.error(`[Gemini API] Scene regeneration failed on requested model ${modelToUse}:`, error);
+    if (openAiKey) {
+      console.log("[Gemini API] Scene regeneration Gemini failed. Auto-falling back to OpenAI...");
+      try {
+        const systemInstructionWithJsonPrompt = `${SYSTEM_INSTRUCTION}\nYou MUST return a JSON object containing exactly:
+- "description": cinematic visual description in PT-BR (string)
+- "prompt": high-quality English image prompt ending with "16:9 aspect ratio" (string)`;
+
+        const gptOutput = await callOpenAiChat(
+          openAiKey,
+          openAiModel,
+          systemInstructionWithJsonPrompt,
+          userPromptText,
+          true
+        );
+        const result = JSON.parse(gptOutput || "{}");
+        return res.json({
+          ...result,
+          promptAiModelUsed: `openai:${openAiModel}`,
+          isCustomKeyUsed: true
+        });
+      } catch (gptFallbackErr: any) {
+        console.error("[OpenAI API] Fallback after Gemini error failed:", gptFallbackErr);
+      }
+    }
     res.status(500).json({
       error: `Falha ao gerar prompt no modelo Gemini (${modelToUse}): ${formatGeminiError(error)}`
     });
@@ -1792,8 +2068,15 @@ You must respond with a JSON object following this EXACT schema:
 Make sure your response matches the JSON structure perfectly.`;
 
   const openAiKey = req.headers["x-openai-key"] as string;
-  const openAiModel = req.headers["x-openai-model"] as string || "gpt-4o-mini";
-  const useOpenAi = req.headers["x-use-openai"] === "true" && !!openAiKey;
+  const requestedTextModel = (req.body?.model || req.headers["x-openai-model"] || "gpt-4o-mini") as string;
+  const openAiModel = requestedTextModel.replace(/^openai:/, "");
+  const useOpenAi = (
+    req.headers["x-use-openai"] === "true" ||
+    openAiModel.startsWith("gpt-") ||
+    openAiModel.startsWith("o1") ||
+    openAiModel.startsWith("o3") ||
+    openAiModel.includes("openai")
+  ) && !!openAiKey;
 
   if (useOpenAi) {
     console.log(`[OpenAI API] Chat Visual Editor using model: ${openAiModel}`);
@@ -1891,6 +2174,26 @@ Make sure your response matches the JSON structure perfectly.`;
     });
   } catch (error: any) {
     console.error("[Gemini API] Chat-edit backend failed:", error);
+    if (openAiKey) {
+      console.log("[Gemini API] Chat-edit Gemini failed. Auto-falling back to OpenAI...");
+      try {
+        const gptOutput = await callOpenAiChat(
+          openAiKey,
+          openAiModel || "gpt-4o-mini",
+          systemPrompt,
+          `Processe a solicitação do usuário: "${userMessage}"`,
+          true
+        );
+        const result = JSON.parse(gptOutput || "{}");
+        return res.json({
+          ...result,
+          promptAiModelUsed: `openai:${openAiModel || "gpt-4o-mini"}`,
+          isCustomKeyUsed: true
+        });
+      } catch (gptFallbackErr: any) {
+        console.error("[OpenAI API] Fallback after Gemini error failed:", gptFallbackErr);
+      }
+    }
     res.status(500).json({
       error: formatGeminiError(error)
     });
@@ -2011,24 +2314,35 @@ app.post("/api/storyboard/generate-image", async (req, res) => {
     const isUsingCustomKey = !!(activeKey && activeKey.trim());
 
     const openAiKey = req.headers["x-openai-key"] as string;
-    const openAiDalleModel = req.headers["x-openai-dalle-model"] as string || "dall-e-3";
-    const useOpenAi = model === "chatgpt_dalle3" && !!openAiKey;
+    const requestedDalleModel = model?.startsWith("openai:")
+      ? model.replace("openai:", "")
+      : (model && (model.startsWith("gpt-image") || model.startsWith("dall-e") || model === "chatgpt-image-latest"))
+      ? model
+      : (req.headers["x-openai-dalle-model"] as string || "gpt-image-2");
+
+    const useOpenAi = (
+      model === "chatgpt_dalle3" ||
+      model?.startsWith("openai:") ||
+      model?.startsWith("gpt-") ||
+      model?.startsWith("dall") ||
+      model?.includes("openai")
+    ) && !!openAiKey;
 
     let searchQuery = "atmospheric,scenery";
     const promptLower = prompt.toLowerCase();
 
     if (useOpenAi) {
-      console.log(`[OpenAI API] Image Generation using model: ${openAiDalleModel}`);
+      console.log(`[OpenAI API] Image Generation using model: ${requestedDalleModel}`);
       try {
-        const dalleUrl = await callOpenAiImage(openAiKey, openAiDalleModel, prompt);
+        const dalleUrl = await callOpenAiImage(openAiKey, requestedDalleModel, prompt);
         return res.json({
           imageUrl: dalleUrl,
           keywords: searchQuery,
           metadata: {
-            engineName: `DALL-E 3 (${openAiDalleModel})`,
-            resolution: openAiDalleModel === "dall-e-3" ? "1792x1024 (Widescreen)" : "1024x1024 (Quadrado)",
+            engineName: `OpenAI (${requestedDalleModel})`,
+            resolution: requestedDalleModel === "dall-e-3" ? "1792x1024 (Widescreen)" : "1024x1024 (Quadrado)",
             renderTimeSeconds: 4.5,
-            creativeShader: "Geração de imagem fotorrealista premium via rede neural artificial do OpenAI DALL-E."
+            creativeShader: "Geração de imagem fotorrealista premium via rede neural artificial do OpenAI."
           },
           isAiGenerated: true,
           generationError: "",

@@ -1,8 +1,0 @@
-{
-  "projectFolder": "260802",
-  "customGeminiKey": "wv0ZxA",
-  "customOpenAiKey": "xze82mDoEA",
-  "useOpenAiForPrompts": true,
-  "openAiModel": "gpt-4o-mini",
-  "openAiDalleModel": "gpt-image-2"
-}
