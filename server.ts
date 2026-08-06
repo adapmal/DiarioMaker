@@ -57,15 +57,58 @@ function loadUserConfig() {
   return { ...config, ...secrets };
 }
 
+function getCanonicalKey(item: any): string {
+  if (!item) return "";
+  if (typeof item === "object") {
+    if (item.sceneId && item.letter) {
+      return `scene:${item.sceneId}_${item.letter}`;
+    }
+    return getCanonicalKey(item.url);
+  }
+  const url = String(item);
+  if (url.includes("/imagens/")) {
+    const fn = url.split("/imagens/").pop()?.split("?")[0];
+    if (fn) return `file:${fn}`;
+  }
+  if (url.startsWith("idb://")) {
+    return `idb:${url.replace("idb://", "")}`;
+  }
+  if (url.startsWith("data:")) {
+    const payload = url.split(",")[1] || url;
+    return `b64:${payload.length}_${payload.slice(0, 32)}_${payload.slice(-32)}`;
+  }
+  return url;
+}
+
+function sanitizeArchive(archive: any[]): any[] {
+  if (!Array.isArray(archive)) return [];
+  const keyMap = new Map<string, any>();
+  archive.forEach((item: any) => {
+    if (!item || !item.url) return;
+    const key = getCanonicalKey(item);
+    const existing = keyMap.get(key);
+    if (!existing) {
+      keyMap.set(key, item);
+    } else if (item.url.startsWith("/projects/") && !existing.url.startsWith("/projects/")) {
+      keyMap.set(key, item);
+    }
+  });
+  return Array.from(keyMap.values());
+}
+
 // Helper to sanitize scenes and ensure "Midjourney" is replaced with "Nano Banana"
 function sanitizeScenes(scenes: any[]): any[] {
   if (!Array.isArray(scenes)) return [];
   return scenes.map((scene: any) => {
-    if (scene && scene.promptTargetTool) {
+    if (!scene) return scene;
+    if (scene.promptTargetTool) {
       const tool = String(scene.promptTargetTool).trim().toLowerCase();
       if (tool === "midjourney" || tool.includes("midjourney")) {
         scene.promptTargetTool = "Nano Banana";
       }
+    }
+    if (Array.isArray(scene.imageVersions) && scene.imageVersions.length > 0) {
+      scene.imageVersions = sanitizeArchive(scene.imageVersions);
     }
     return scene;
   });
@@ -83,6 +126,9 @@ app.get("/api/storyboard/session", (req, res) => {
       const parsed = JSON.parse(rawData);
       if (parsed && Array.isArray(parsed.scenes)) {
         parsed.scenes = sanitizeScenes(parsed.scenes);
+        if (Array.isArray(parsed.sessionImageArchive)) {
+          parsed.sessionImageArchive = sanitizeArchive(parsed.sessionImageArchive);
+        }
         // Extract project folder name from the active session store state
         let targetFolder = "260802";
         if (parsed.folder) {
@@ -1093,8 +1139,71 @@ app.post("/api/storyboard/config", (req, res) => {
   }
 });
 
+const OPENAI_MASTER_CATALOG = [
+  { id: "gpt-image-2", category: "image", name: "GPT Image 2", description: "Modelo recomendado de imagem direta (Image API)" },
+  { id: "gpt-image-2-2026-04-21", category: "image", name: "GPT Image 2 Snapshot", description: "Snapshot recomendado de imagem" },
+  { id: "gpt-image-1.5", category: "image", name: "GPT Image 1.5", description: "Geração de imagens alta resolução" },
+  { id: "gpt-image-1", category: "image", name: "GPT Image 1", description: "Modelo de imagem padrão" },
+  { id: "gpt-image-1-mini", category: "image", name: "GPT Image 1 Mini", description: "Modelo rápido e econômico" },
+  { id: "chatgpt-image-latest", category: "image", name: "ChatGPT Image Latest", description: "Modelo de imagem conversacional" },
+  { id: "gpt-4o", category: "conversation", name: "GPT-4o", description: "Multimodal conversacional avançado" },
+  { id: "gpt-4o-mini", category: "conversation", name: "GPT-4o Mini", description: "Conversacional rápido e ultraleve" },
+  { id: "gpt-5", category: "conversation", name: "GPT-5", description: "Modelo flagship de nova geração" },
+  { id: "gpt-5-pro", category: "conversation", name: "GPT-5 Pro", description: "Modelo de raciocínio profundo" },
+  { id: "gpt-5-mini", category: "conversation", name: "GPT-5 Mini", description: "Modelo compacto de alta performance" },
+  { id: "gpt-5.6-luna", category: "conversation", name: "GPT-5.6 Luna", description: "Variante especializada de alta precisão" },
+  { id: "gpt-5.6-terra", category: "conversation", name: "GPT-5.6 Terra", description: "Variante recomendada para roteiros" },
+  { id: "gpt-5.6-sol", category: "conversation", name: "GPT-5.6 Sol", description: "Variante de síntese criativa" },
+  { id: "o1", category: "conversation", name: "o1", description: "Raciocínio lógico avançado" },
+  { id: "o3-mini", category: "conversation", name: "o3-mini", description: "Raciocínio ultrarrápido" }
+];
+
 app.post("/api/storyboard/test-key", async (req, res) => {
-  const { customApiKey } = req.body;
+  const { customApiKey, openAiKey, provider } = req.body;
+
+  if (provider === "openai" || openAiKey || req.headers["x-openai-key"]) {
+    const keyToTest = openAiKey || (req.headers["x-openai-key"] as string) || customApiKey;
+    if (!keyToTest || !keyToTest.trim()) {
+      return res.status(400).json({ error: "Nenhuma chave de API OpenAI fornecida para teste." });
+    }
+    try {
+      const response = await fetch("https://api.openai.com/v1/models", {
+        headers: { "Authorization": `Bearer ${keyToTest.trim()}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const rawModels: any[] = Array.isArray(data?.data) ? data.data : [];
+        const allowedModelIds = rawModels.map(m => m.id || "").filter(Boolean);
+
+        const allowedImageModels = allowedModelIds.filter(id => id.includes("image") || id.startsWith("dall-e"));
+        const allowedTextModels = allowedModelIds.filter(id => id.startsWith("gpt-") || id.startsWith("o1") || id.startsWith("o3") || id.startsWith("chatgpt"));
+
+        const missingCatalogModels = OPENAI_MASTER_CATALOG.filter(item => !allowedModelIds.includes(item.id));
+
+        return res.json({ 
+          success: true, 
+          message: "Sua chave de API do OpenAI foi verificada e está ativa!",
+          totalAllowed: allowedModelIds.length,
+          allowedModelIds,
+          allowedImageModels,
+          allowedTextModels,
+          missingCatalogModels
+        });
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        return res.status(400).json({ 
+          success: false, 
+          error: errData?.error?.message || `Erro ao autenticar com a API OpenAI (${response.status}).` 
+        });
+      }
+    } catch (err: any) {
+      return res.status(400).json({ 
+        success: false, 
+        error: err.message || "Erro ao conectar com a API OpenAI." 
+      });
+    }
+  }
+
   const activeKey = (req.headers["x-gemini-key"] as string) || customApiKey;
   if (!activeKey || !activeKey.trim()) {
     return res.status(400).json({ error: "Nenhuma chave de API fornecida para teste." });
@@ -1652,12 +1761,18 @@ Ensure the clothing style, hair, skin features, props, facial structures, color 
     }).join("\n");
   }
 
-  const userPromptText = `Generate a fresh, improved visual description (written in Brazilian Portuguese (PT-BR) ONLY) and English image prompt for this storyboard segment narration.
-You should provide a different creative angle or improved composition than the current description if provided below.
+  const userPromptText = `Generate a fresh, high-quality visual description (written in Brazilian Portuguese (PT-BR) ONLY) and a detailed English image prompt for this storyboard segment narration.
 
 Narration Segment: "${text}"
-Current Visual Description (to improve/change): "${currentDescription || ""}"
-Current Image Prompt (to improve/change): "${currentPrompt || ""}"
+${generationGuidelines ? `\nCRITICAL USER INSTRUCTIONS & CORRECTIONS (MUST OVERRIDE & PRIORITIZE):\n"${generationGuidelines.trim()}"\n` : ""}
+
+IMPORTANT INSTRUCTION:
+Build a clean, renewed prompt focused on the narration segment and the CRITICAL USER INSTRUCTIONS above. Do NOT carry over unwanted or incorrect elements from previous generations.
+
+Provide your output strictly as a JSON object with two keys:
+1. "description": A concise visual scene description in Portuguese (PT-BR).
+2. "prompt": A detailed, highly descriptive image generation prompt written in English.
+
 Styling Directive: ${styleGuidance}
 ${directionPrompt}
 ${toolGuidance}${connectedContext}`;
@@ -2098,12 +2213,15 @@ app.post("/api/storyboard/generate-image", async (req, res) => {
     const isUsingCustomKey = !!(activeKey && activeKey.trim());
 
     const openAiKey = req.headers["x-openai-key"] as string;
-    const requestedDalleModel = (model === "gpt-image-2" || model === "dall-e-3" || model === "dall-e-2") ? model : (req.headers["x-openai-dalle-model"] as string || "gpt-image-2");
+    const requestedDalleModel = model?.startsWith("openai:")
+      ? model.replace("openai:", "")
+      : (model && (model.startsWith("gpt-image") || model.startsWith("dall-e") || model === "chatgpt-image-latest"))
+      ? model
+      : (req.headers["x-openai-dalle-model"] as string || "gpt-image-2");
+
     const useOpenAi = (
       model === "chatgpt_dalle3" ||
-      model === "gpt-image-2" ||
-      model === "dall-e-3" ||
-      model === "dall-e-2" ||
+      model?.startsWith("openai:") ||
       model?.startsWith("gpt-") ||
       model?.startsWith("dall") ||
       model?.includes("openai")

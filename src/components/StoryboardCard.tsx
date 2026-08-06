@@ -41,6 +41,18 @@ import { resizeAndCompressImage } from "../utils";
 
 const getLetterFromIndex = (index: number): string => String.fromCharCode(65 + (index % 26));
 
+const formatModelDisplayName = (name: string): string => {
+  if (!name) return "";
+  let clean = name.replace(/^ollama:/i, "");
+  if (clean.includes("/")) {
+    clean = clean.split("/").pop() || clean;
+  }
+  if (clean.length > 18) {
+    return clean.slice(0, 15) + "...";
+  }
+  return clean;
+};
+
 interface StoryboardCardProps {
   key?: string;
   scene: StoryboardScene;
@@ -360,7 +372,38 @@ function StoryboardCardComponent({
   // Conversational chat edit states
   const [chatInputText, setChatInputText] = useState("");
   const [isChatGenerating, setIsChatGenerating] = useState(false);
-  const [selectedChatModel, setSelectedChatModel] = useState<"nano_banana" | "nano_banana_pro" | "nano_banana_2" | "chatgpt_dalle3">("nano_banana");
+  const [selectedChatModel, setSelectedChatModel] = useState<string>(() => {
+    return enabledImageModels.includes("nano_banana") 
+      ? "nano_banana" 
+      : (enabledImageModels[0] || "nano_banana");
+  });
+
+  const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!enabledImageModels.includes(selectedChatModel) && enabledImageModels.length > 0) {
+      setSelectedChatModel(enabledImageModels[0]);
+    }
+  }, [enabledImageModels]);
+
+  useEffect(() => {
+    if (isStudioOpen) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [scene.chatHistory, isChatGenerating, isStudioOpen]);
+
+  useEffect(() => {
+    if (zoomedImageUrl) {
+      const handleZoomKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setZoomedImageUrl(null);
+        }
+      };
+      window.addEventListener("keydown", handleZoomKeyDown);
+      return () => window.removeEventListener("keydown", handleZoomKeyDown);
+    }
+  }, [zoomedImageUrl]);
 
   // Drag and Drop "droplet" + Manual PC File Upload features
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -825,8 +868,27 @@ ${userPromptText}`;
         timestamp: new Date().toLocaleTimeString()
       };
 
+      const newVersion = imgResult.imageUrl ? {
+        id: `version-${Date.now()}`,
+        url: imgResult.imageUrl,
+        model: selectedChatModel,
+        timestamp: new Date().toLocaleTimeString(),
+        prompt: editResult.newPrompt,
+        description: editResult.newDescription,
+        engineName: "Estúdio AI"
+      } : null;
+
+      const updatedVersions = newVersion 
+        ? [newVersion, ...(scene.imageVersions || [])] 
+        : (scene.imageVersions || []);
+
       onUpdate(scene.id, {
-        chatHistory: [...currentHistory, assistantMsg]
+        chatHistory: [...currentHistory, assistantMsg],
+        ...(imgResult.imageUrl ? { generatedImageUrl: imgResult.imageUrl } : {}),
+        ...(editResult.newPrompt ? { prompt: editResult.newPrompt } : {}),
+        ...(editResult.newDescription ? { description: editResult.newDescription } : {}),
+        imageVersions: updatedVersions,
+        renderStatus: "completed"
       });
 
     } catch (err: any) {
@@ -1028,7 +1090,11 @@ ${userPromptText}`;
           }`}
         >
           {/* 16:9 Pure Unobstructed Image Viewport */}
-          <div className="relative w-full aspect-[16/9] bg-black flex items-center justify-center overflow-hidden group">
+          <div 
+            onClick={() => activeImageUrl && setZoomedImageUrl(activeImageUrl)}
+            className={`relative w-full aspect-[16/9] bg-black flex items-center justify-center overflow-hidden group ${activeImageUrl ? "cursor-pointer" : ""}`}
+            title={activeImageUrl ? "Clique para ampliar a ilustração em tela cheia" : undefined}
+          >
 
             {activeImageUrl ? (
               <img 
@@ -1166,58 +1232,37 @@ ${userPromptText}`;
                   Modelo:
                 </span>
                 <div className="flex items-center gap-3 flex-wrap">
-                  {enabledImageModels.includes("nano_banana") && (
-                    <label className="flex items-center gap-1 cursor-pointer text-[9px] font-mono text-zinc-300 hover:text-white select-none">
-                      <input
-                        type="radio"
-                        name={`card-model-${scene.id}`}
-                        value="nano_banana"
-                        checked={(scene.selectedModel || "nano_banana") === "nano_banana"}
-                        onChange={() => onUpdate(scene.id, { selectedModel: "nano_banana" })}
-                        className="accent-[#D4AF37] cursor-pointer"
-                      />
-                      <span>NB2 Lite</span>
-                    </label>
-                  )}
-                  {enabledImageModels.includes("nano_banana_pro") && (
-                    <label className="flex items-center gap-1 cursor-pointer text-[9px] font-mono text-zinc-300 hover:text-white select-none">
-                      <input
-                        type="radio"
-                        name={`card-model-${scene.id}`}
-                        value="nano_banana_pro"
-                        checked={scene.selectedModel === "nano_banana_pro"}
-                        onChange={() => onUpdate(scene.id, { selectedModel: "nano_banana_pro" })}
-                        className="accent-[#D4AF37] cursor-pointer"
-                      />
-                      <span>NB Pro</span>
-                    </label>
-                  )}
-                  {enabledImageModels.includes("nano_banana_2") && (
-                    <label className="flex items-center gap-1 cursor-pointer text-[9px] font-mono text-zinc-300 hover:text-white select-none">
-                      <input
-                        type="radio"
-                        name={`card-model-${scene.id}`}
-                        value="nano_banana_2"
-                        checked={scene.selectedModel === "nano_banana_2"}
-                        onChange={() => onUpdate(scene.id, { selectedModel: "nano_banana_2" })}
-                        className="accent-[#D4AF37] cursor-pointer"
-                      />
-                      <span>NB2</span>
-                    </label>
-                  )}
-                  {openAiKey && enabledImageModels.includes("chatgpt_dalle3") && (
-                    <label className="flex items-center gap-1 cursor-pointer text-[9px] font-mono text-zinc-300 hover:text-white select-none">
-                      <input
-                        type="radio"
-                        name={`card-model-${scene.id}`}
-                        value="chatgpt_dalle3"
-                        checked={scene.selectedModel === "chatgpt_dalle3"}
-                        onChange={() => onUpdate(scene.id, { selectedModel: "chatgpt_dalle3" })}
-                        className="accent-[#D4AF37] cursor-pointer"
-                      />
-                      <span>OpenAI ({openAiDalleModel || "dall-e-3"})</span>
-                    </label>
-                  )}
+                  {enabledImageModels.map((m) => {
+                    let label = "NB2 Lite";
+                    if (m === "nano_banana") label = "NB2 Lite";
+                    else if (m === "nano_banana_pro") label = "NB Pro";
+                    else if (m === "nano_banana_2") label = "NB2";
+                    else if (m === "chatgpt_dalle3") label = `OpenAI (${openAiDalleModel || "gpt-image-2"})`;
+                    else if (m.startsWith("openai:") || m.startsWith("gpt-image") || m.startsWith("dall-e")) {
+                      label = `OpenAI (${m.replace("openai:", "")})`;
+                    } else {
+                      label = m;
+                    }
+
+                    const isOpenAiModel = m.startsWith("openai:") || m.startsWith("gpt-image") || m.startsWith("dall-e") || m === "chatgpt_dalle3";
+                    if (isOpenAiModel && !openAiKey) return null;
+
+                    const isChecked = (scene.selectedModel || "nano_banana") === m || (m === "chatgpt_dalle3" && scene.selectedModel === "chatgpt_dalle3");
+
+                    return (
+                      <label key={m} className="flex items-center gap-1 cursor-pointer text-[9px] font-mono text-zinc-300 hover:text-white select-none">
+                        <input
+                          type="radio"
+                          name={`card-model-${scene.id}`}
+                          value={m}
+                          checked={isChecked}
+                          onChange={() => onUpdate(scene.id, { selectedModel: m as any })}
+                          className="accent-[#D4AF37] cursor-pointer"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1751,31 +1796,38 @@ ${userPromptText}`;
                         onUpdate(scene.id, { promptAiModel: "" });
                       }
                     }}
-                    className="flex-1 bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer"
+                    className="w-full min-w-0 bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer truncate"
+                    title={localAiModel ? `Modelo selecionado: ${localAiModel}` : "Selecione o modelo de IA"}
                   >
                     <optgroup label="Google Gemini">
-                      {(availableModels?.gemini?.text || []).map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
+                      {(availableModels?.gemini?.text || ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"])
+                        .filter((m) => enabledPromptModels.includes(m))
+                        .map((m) => (
+                          <option key={m} value={m} title={m}>
+                            {formatModelDisplayName(m)}
+                          </option>
+                        ))}
                     </optgroup>
                     <optgroup label="OpenAI GPT">
-                      {(availableModels?.openai?.text || []).map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
+                      {(availableModels?.openai?.text || ["gpt-4o-mini", "gpt-4o"])
+                        .filter((m) => enabledPromptModels.includes(m))
+                        .map((m) => (
+                          <option key={m} value={m} title={m}>
+                            {formatModelDisplayName(m)}
+                          </option>
+                        ))}
                     </optgroup>
                     {ollamaModels && ollamaModels.length > 0 && (
                       <optgroup label="Ollama Local">
-                        {ollamaModels.map((m) => (
-                          <option key={`ollama-${m}`} value={`ollama:${m}`}>
-                            Ollama: {m}
-                          </option>
-                        ))}
+                        {ollamaModels
+                          .filter((m) => enabledPromptModels.includes(`ollama:${m}`) || enabledPromptModels.includes(m))
+                          .map((m) => (
+                            <option key={`ollama-${m}`} value={`ollama:${m}`} title={m}>
+                              Ollama: {formatModelDisplayName(m)}
+                            </option>
+                          ))}
                       </optgroup>
                     )}
-                    <optgroup label="Outros">
-                      <option value="ollama">Ollama (Padrão Global)</option>
-                      <option value="custom">✍ Personalizado...</option>
-                    </optgroup>
                   </select>
 
                   {(!(availableModels?.gemini?.text || []).includes(localAiModel) && 
@@ -1846,7 +1898,11 @@ ${userPromptText}`;
 
       {/* NANO BANANA ART STUDIO INTERACTIVE CHAT MODAL */}
       {isStudioOpen && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-black/95 backdrop-blur-md animate-fadeIn">
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-black/95 backdrop-blur-md animate-fadeIn"
+          role="dialog"
+          onWheel={(e) => e.stopPropagation()}
+        >
           <div 
             className="bg-[#101010] border border-[#2b2b2b] rounded-lg shadow-2xl max-w-6xl w-full flex flex-col h-[85vh] max-h-[85vh] overflow-hidden text-[#E4DCD3]"
             onClick={(e) => e.stopPropagation()}
@@ -1879,7 +1935,7 @@ ${userPromptText}`;
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
               
               {/* Left Column: Chat Conversation Thread */}
-              <div className="flex-1 flex flex-col h-full border-r border-[#222] bg-[#0c0c0c] min-w-0">
+              <div className="flex-1 flex flex-col h-full border-r border-[#222] bg-[#0c0c0c] min-h-0">
                 
                 {/* Scrollable Chat Feed */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 min-h-0">
@@ -1930,7 +1986,11 @@ ${userPromptText}`;
                         {/* candidate image render inside chat bubble */}
                         {msg.imageUrl && (
                           <div className="mt-3.5 space-y-2">
-                            <div className="relative aspect-[16/9] w-full max-w-md rounded overflow-hidden border border-zinc-800 group/chatimg bg-black shadow-inner">
+                            <div 
+                              onClick={() => setZoomedImageUrl(msg.imageUrl)}
+                              className="relative aspect-[16/9] w-full max-w-md rounded overflow-hidden border border-zinc-800 group/chatimg bg-black shadow-inner cursor-pointer"
+                              title="Clique para ampliar a imagem"
+                            >
                               <img 
                                 src={msg.imageUrl} 
                                 alt="Candidato a imagem da cena" 
@@ -1950,6 +2010,7 @@ ${userPromptText}`;
                                   href={msg.imageUrl} 
                                   target="_blank" 
                                   rel="noreferrer" 
+                                  onClick={(e) => e.stopPropagation()}
                                   className="p-1 bg-black/85 text-white rounded hover:bg-black transition text-[9px]"
                                   title="Abrir em nova aba"
                                 >
@@ -2000,6 +2061,9 @@ ${userPromptText}`;
                       </div>
                     </div>
                   )}
+
+                  {/* Auto scroll anchor */}
+                  <div ref={chatEndRef} />
                 </div>
 
                 {/* Chat Input Dock Area */}
@@ -2009,58 +2073,40 @@ ${userPromptText}`;
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     {/* Model selector tabs */}
-                    <div className="flex items-center gap-1 bg-black p-1 rounded border border-zinc-800">
+                    <div className="flex items-center gap-1 bg-black p-1 rounded border border-zinc-800 flex-wrap">
                       <span className="text-[8px] font-mono text-zinc-500 uppercase px-1.5 font-bold">Modelo:</span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedChatModel("nano_banana")}
-                        className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer ${
-                          selectedChatModel === "nano_banana"
-                            ? "bg-[#D4AF37] text-black font-bold"
-                            : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-                        }`}
-                      >
-                        Img3 Fast
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedChatModel("nano_banana_pro")}
-                        className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer ${
-                          selectedChatModel === "nano_banana_pro"
-                            ? "bg-[#D4AF37] text-black font-bold"
-                            : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-                        }`}
-                      >
-                        Img3 Pro
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedChatModel("nano_banana_2")}
-                        className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer ${
-                          selectedChatModel === "nano_banana_2"
-                            ? "bg-[#D4AF37] text-black font-bold"
-                            : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-                        }`}
-                      >
-                        Img3 Art
-                      </button>
-                      {openAiKey && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedChatModel("chatgpt_dalle3")}
-                          className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer flex items-center gap-1 ${
-                            selectedChatModel === "chatgpt_dalle3"
-                              ? "bg-[#D4AF37] text-black font-bold"
-                              : "text-zinc-400 hover:text-white hover:bg-[#2a2a2a]"
-                          }`}
-                          title={`Usar OpenAI (${openAiDalleModel || "dall-e-3"}) para renderizar após a conversa`}
-                        >
-                          <span>OpenAI</span>
-                          <span className={selectedChatModel === "chatgpt_dalle3" ? "text-[7.5px] text-black/60 lowercase" : "text-[7.5px] text-slate-500 lowercase"}>
-                            ({openAiDalleModel || "dall-e-3"})
-                          </span>
-                        </button>
-                      )}
+                      {enabledImageModels.map((m) => {
+                        let label = "NB2 Lite";
+                        if (m === "nano_banana") label = "NB2 Lite";
+                        else if (m === "nano_banana_pro") label = "NB Pro";
+                        else if (m === "nano_banana_2") label = "NB2";
+                        else if (m === "chatgpt_dalle3") label = `OpenAI (${openAiDalleModel || "gpt-image-2"})`;
+                        else if (m.startsWith("openai:") || m.startsWith("gpt-image") || m.startsWith("dall-e")) {
+                          label = `OpenAI (${m.replace("openai:", "")})`;
+                        } else {
+                          label = m;
+                        }
+
+                        const isOpenAiModel = m.startsWith("openai:") || m.startsWith("gpt-image") || m.startsWith("dall-e") || m === "chatgpt_dalle3";
+                        if (isOpenAiModel && !openAiKey) return null;
+
+                        const isSelected = selectedChatModel === m;
+
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setSelectedChatModel(m)}
+                            className={`px-2 py-0.5 text-[9px] font-mono uppercase rounded transition-colors cursor-pointer ${
+                              isSelected
+                                ? "bg-[#D4AF37] text-black font-bold"
+                                : "text-zinc-400 hover:text-white hover:bg-zinc-900"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <span className="text-[8px] text-zinc-500 font-mono hidden sm:inline">
@@ -2068,7 +2114,7 @@ ${userPromptText}`;
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-start gap-2">
                     {/* Compact Visual Instruction Droplet on the Left */}
                     <div 
                       onDragOver={(e) => { e.preventDefault(); setIsDraggingModalVisualInstruction(true); }}
@@ -2081,7 +2127,7 @@ ${userPromptText}`;
                         }
                       }}
                       onClick={() => modalVisualInstructionInputRef.current?.click()}
-                      className={`w-10 h-10 shrink-0 border-2 border-dashed rounded flex items-center justify-center cursor-pointer relative overflow-hidden transition-all ${
+                      className={`w-10 h-[72px] shrink-0 border-2 border-dashed rounded flex items-center justify-center cursor-pointer relative overflow-hidden transition-all ${
                         isDraggingModalVisualInstruction
                           ? "border-[#D4AF37] bg-[#D4AF37]/10"
                           : scene.visualInstructionImage
@@ -2131,35 +2177,35 @@ ${userPromptText}`;
                       )}
                     </div>
 
-                    {/* Chat Input Field */}
-                    <input
-                      type="text"
+                    {/* Chat 3-line Textarea Field */}
+                    <textarea
+                      rows={3}
                       value={chatInputText}
                       onChange={(e) => setChatInputText(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                        if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault();
                           if (!isChatGenerating && chatInputText.trim()) {
-                            handleSendChatMessage(e);
+                            handleSendChatMessage(e as any);
                           }
                         }
                       }}
                       disabled={isChatGenerating}
-                      className="flex-1 h-10 bg-black border border-zinc-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]/50 placeholder-zinc-650"
-                      placeholder="Descreva mudanças: 'Adicione mais mistério', 'Mude a iluminação para luz de velas' (Ctrl+Enter)..."
+                      className="flex-1 bg-black border border-zinc-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]/50 placeholder-zinc-650 resize-none font-mono leading-relaxed"
+                      placeholder="Descreva mudanças: 'Adicione mais mistério', 'Mude a iluminação para luz de velas' (Pressione Enter para enviar, Shift+Enter para nova linha)..."
                     />
 
                     {/* Small Paper Plane Button on the Right */}
                     <button
                       type="submit"
                       disabled={isChatGenerating || !chatInputText.trim()}
-                      className="w-10 h-10 shrink-0 bg-[#D4AF37] hover:bg-white text-black rounded flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                      title="Conversar e Renderizar (Ctrl+Enter)"
+                      className="w-10 h-[72px] shrink-0 bg-[#D4AF37] hover:bg-white text-black rounded flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                      title="Conversar e Renderizar (Enter)"
                     >
                       {isChatGenerating ? (
-                        <Loader2 size={14} className="animate-spin" />
+                        <Loader2 size={16} className="animate-spin" />
                       ) : (
-                        <Send size={14} />
+                        <Send size={16} />
                       )}
                     </button>
                   </div>
@@ -2174,7 +2220,11 @@ ${userPromptText}`;
                   </span>
 
                   {/* Active Widescreen 16:9 Image Preview */}
-                  <div className="relative aspect-[16/9] w-full rounded overflow-hidden border border-[#333] bg-black">
+                  <div 
+                    onClick={() => scene.generatedImageUrl && setZoomedImageUrl(scene.generatedImageUrl)}
+                    className={`relative aspect-[16/9] w-full rounded overflow-hidden border border-[#333] bg-black ${scene.generatedImageUrl ? "cursor-pointer" : ""}`}
+                    title={scene.generatedImageUrl ? "Clique para ampliar a imagem" : undefined}
+                  >
                     {scene.generatedImageUrl ? (
                       <>
                         <img 
@@ -2250,6 +2300,28 @@ ${userPromptText}`;
                 </div>
               </div>
 
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* FULL-RESOLUTION LIGHTBOX ZOOM MODAL */}
+      {zoomedImageUrl && createPortal(
+        <div 
+          className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-4 sm:p-8 animate-fadeIn cursor-pointer select-none"
+          onClick={() => setZoomedImageUrl(null)}
+          role="dialog"
+        >
+          <div className="relative max-w-7xl max-h-[90vh] w-full flex flex-col items-center justify-center">
+            <img
+              src={zoomedImageUrl}
+              alt="Imagem Ampliada"
+              className="max-w-full max-h-[82vh] object-contain rounded-lg border border-[#D4AF37]/40 shadow-[0_0_50px_rgba(212,175,55,0.25)]"
+              referrerPolicy="no-referrer"
+            />
+            <div className="mt-3 px-4 py-1.5 bg-black/80 border border-zinc-800 rounded-full text-zinc-300 text-[10px] font-mono uppercase tracking-widest flex items-center gap-2">
+              <span>Clique na tela ou pressione ESC para fechar</span>
             </div>
           </div>
         </div>,

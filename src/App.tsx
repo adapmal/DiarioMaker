@@ -89,6 +89,172 @@ const DEFAULT_ARTISTIC_STYLES: ArtisticStyle[] = [
   }
 ];
 
+const PromptHoverTooltip = ({ promptText }: { promptText: string }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setShowTooltip(true);
+    }, 1000);
+  };
+
+  const handleMouseLeave = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setShowTooltip(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  return (
+    <div 
+      onMouseEnter={handleMouseEnter} 
+      onMouseLeave={handleMouseLeave} 
+      className="relative flex-1"
+    >
+      <div className="line-clamp-2 text-[8px] text-slate-400 italic cursor-help">
+        {promptText}
+      </div>
+
+      {showTooltip && (
+        <div 
+          className="absolute left-0 right-0 bottom-full mb-1.5 z-[999999] bg-[#0c0c0c] text-zinc-200 border border-[#D4AF37] p-3 rounded-lg shadow-[0_0_25px_rgba(212,175,55,0.35)] text-[9px] font-mono leading-relaxed max-h-48 overflow-y-auto animate-fadeIn select-text pointer-events-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-1 mb-1.5">
+            <span className="text-[8px] font-mono text-[#D4AF37] uppercase font-bold">
+              Prompt de Imagem Completo (EN)
+            </span>
+            <span className="text-[7.5px] text-zinc-500 font-mono">1s hover</span>
+          </div>
+          <p className="text-zinc-300 font-mono text-[8.5px] whitespace-pre-wrap leading-normal">{promptText}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const getCanonicalImageKey = (item: { url?: string; sceneId?: string; letter?: string } | string | undefined): string => {
+  if (!item) return "";
+  if (typeof item === "object") {
+    if (item.sceneId && item.letter) {
+      return `scene:${item.sceneId}_${item.letter}`;
+    }
+    return getCanonicalImageKey(item.url);
+  }
+  const urlStr = item;
+  if (urlStr.includes("/imagens/")) {
+    const filename = urlStr.split("/imagens/").pop()?.split("?")[0];
+    if (filename) return `file:${filename}`;
+  }
+  if (urlStr.startsWith("idb://")) {
+    return `idb:${urlStr.replace("idb://", "")}`;
+  }
+  if (urlStr.startsWith("data:")) {
+    const payload = urlStr.split(",")[1] || urlStr;
+    return `b64:${payload.length}_${payload.slice(0, 32)}_${payload.slice(-32)}`;
+  }
+  return urlStr;
+};
+
+export const isSameImage = (url1: string | undefined, url2: string | undefined): boolean => {
+  if (!url1 || !url2) return false;
+  if (url1 === url2) return true;
+  const k1 = getCanonicalImageKey(url1);
+  const k2 = getCanonicalImageKey(url2);
+  return k1 !== "" && k1 === k2;
+};
+
+export const sanitizeArchiveArray = (items: ArchivedImage[]): ArchivedImage[] => {
+  if (!Array.isArray(items)) return [];
+  const keyMap = new Map<string, ArchivedImage>();
+
+  items.forEach((item) => {
+    if (!item || !item.url) return;
+    const key = getCanonicalImageKey(item);
+    const existing = keyMap.get(key);
+    if (!existing) {
+      keyMap.set(key, item);
+    } else {
+      if (item.url.startsWith("/projects/") && !existing.url.startsWith("/projects/")) {
+        keyMap.set(key, item);
+      }
+    }
+  });
+
+  return Array.from(keyMap.values());
+};
+
+interface ModelPriceInfo {
+  priceRank: number;
+  priceLabel: string;
+  updatedAt: string;
+}
+
+const MODEL_PRICES: Record<string, ModelPriceInfo> = {
+  // Gemini Prompt Models
+  "gemini-2.0-flash-lite": { priceRank: 1, priceLabel: "$0.075 / 1M tokens", updatedAt: "06/08/2026" },
+  "gemini-2.5-flash": { priceRank: 2, priceLabel: "$0.10 / 1M tokens", updatedAt: "06/08/2026" },
+  "gemini-3.5-flash": { priceRank: 3, priceLabel: "$0.15 / 1M tokens", updatedAt: "06/08/2026" },
+  "gemini-3.6-flash": { priceRank: 4, priceLabel: "$0.15 / 1M tokens", updatedAt: "06/08/2026" },
+  "gemini-1.5-flash": { priceRank: 5, priceLabel: "$0.15 / 1M tokens", updatedAt: "06/08/2026" },
+  "gemini-2.5-pro": { priceRank: 6, priceLabel: "$1.25 / 1M tokens", updatedAt: "06/08/2026" },
+  "gemini-3.5-pro": { priceRank: 7, priceLabel: "$1.25 / 1M tokens", updatedAt: "06/08/2026" },
+  "gemini-1.5-pro": { priceRank: 8, priceLabel: "$1.25 / 1M tokens", updatedAt: "06/08/2026" },
+
+  // Gemini Image Models
+  "imagen-3.0-fast-001": { priceRank: 1, priceLabel: "$0.02 / imagem", updatedAt: "06/08/2026" },
+  "imagen-3.0-generate-002": { priceRank: 2, priceLabel: "$0.03 / imagem", updatedAt: "06/08/2026" },
+  "nano_banana": { priceRank: 1, priceLabel: "Gratuito (Shared)", updatedAt: "06/08/2026" },
+  "nano_banana_pro": { priceRank: 2, priceLabel: "Gratuito (High Contrast)", updatedAt: "06/08/2026" },
+  "nano_banana_2": { priceRank: 3, priceLabel: "Gratuito (Fine Art)", updatedAt: "06/08/2026" },
+
+  // OpenAI Prompt Models
+  "gpt-5-nano": { priceRank: 1, priceLabel: "$0.05 / 1M tokens", updatedAt: "06/08/2026" },
+  "gpt-5-nano-2025-08-07": { priceRank: 2, priceLabel: "$0.05 / 1M tokens", updatedAt: "06/08/2026" },
+  "gpt-4o-mini": { priceRank: 3, priceLabel: "$0.15 / 1M tokens", updatedAt: "06/08/2026" },
+  "o3-mini": { priceRank: 4, priceLabel: "$1.10 / 1M tokens", updatedAt: "06/08/2026" },
+  "gpt-5-mini": { priceRank: 5, priceLabel: "$1.50 / 1M tokens", updatedAt: "06/08/2026" },
+  "gpt-4o": { priceRank: 6, priceLabel: "$2.50 / 1M tokens", updatedAt: "06/08/2026" },
+  "gpt-5.2": { priceRank: 7, priceLabel: "$2.50 / 1M tokens", updatedAt: "06/08/2026" },
+  "gpt-5.6-terra": { priceRank: 8, priceLabel: "$3.00 / 1M tokens", updatedAt: "06/08/2026" },
+  "gpt-5.6-luna": { priceRank: 9, priceLabel: "$3.00 / 1M tokens", updatedAt: "06/08/2026" },
+  "gpt-5.6-sol": { priceRank: 10, priceLabel: "$3.00 / 1M tokens", updatedAt: "06/08/2026" },
+  "o1-mini": { priceRank: 11, priceLabel: "$3.00 / 1M tokens", updatedAt: "06/08/2026" },
+  "gpt-5": { priceRank: 12, priceLabel: "$5.00 / 1M tokens", updatedAt: "06/08/2026" },
+  "gpt-5-pro": { priceRank: 13, priceLabel: "$10.00 / 1M tokens", updatedAt: "06/08/2026" },
+  "o1": { priceRank: 14, priceLabel: "$15.00 / 1M tokens", updatedAt: "06/08/2026" },
+  "o1-pro": { priceRank: 15, priceLabel: "$60.00 / 1M tokens", updatedAt: "06/08/2026" },
+
+  // OpenAI Image Models
+  "gpt-image-1-mini": { priceRank: 1, priceLabel: "$0.01 / imagem", updatedAt: "06/08/2026" },
+  "dall-e-2": { priceRank: 2, priceLabel: "$0.02 / imagem", updatedAt: "06/08/2026" },
+  "gpt-image-1": { priceRank: 3, priceLabel: "$0.03 / imagem", updatedAt: "06/08/2026" },
+  "chatgpt-image-latest": { priceRank: 4, priceLabel: "$0.04 / imagem", updatedAt: "06/08/2026" },
+  "dall-e-3": { priceRank: 5, priceLabel: "$0.04 / imagem", updatedAt: "06/08/2026" },
+  "gpt-image-1.5": { priceRank: 6, priceLabel: "$0.05 / imagem", updatedAt: "06/08/2026" },
+  "gpt-image-2": { priceRank: 7, priceLabel: "$0.06 / imagem", updatedAt: "06/08/2026" },
+  "gpt-image-2-2026-04-21": { priceRank: 8, priceLabel: "$0.06 / imagem", updatedAt: "06/08/2026" }
+};
+
+function getModelPriceInfo(modelId: string): ModelPriceInfo {
+  const cleanId = modelId.replace(/^openai:/, "");
+  return MODEL_PRICES[cleanId] || { priceRank: 99, priceLabel: "Preço sob consulta", updatedAt: "06/08/2026" };
+}
+
+function sortByPrice(models: string[]): string[] {
+  return [...models].sort((a, b) => {
+    const priceA = getModelPriceInfo(a).priceRank;
+    const priceB = getModelPriceInfo(b).priceRank;
+    return priceA - priceB;
+  });
+}
+
 export default function App() {
   const [scenes, setScenes] = useState<StoryboardScene[]>(() => {
     try {
@@ -499,14 +665,19 @@ export default function App() {
           const cleanOpenAiText = allOpenAi.filter(m => !m.includes("image") && !m.startsWith("dall-e"));
           const cleanOpenAiImage = allOpenAi.filter(m => m.includes("image") || m.startsWith("dall-e"));
 
+          const finalGeminiText = sortByPrice(data.gemini?.text || []);
+          const finalGeminiImage = sortByPrice(data.gemini?.image || []);
+          const finalOpenAiText = sortByPrice(cleanOpenAiText.length > 0 ? cleanOpenAiText : ["gpt-4o-mini", "gpt-4o", "gpt-4.5-preview", "o1-mini", "o3-mini"]);
+          const finalOpenAiImage = sortByPrice(cleanOpenAiImage.length > 0 ? cleanOpenAiImage : ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3", "dall-e-2"]);
+
           setAvailableModels({
             gemini: {
-              text: data.gemini?.text || [],
-              image: data.gemini?.image || []
+              text: finalGeminiText,
+              image: finalGeminiImage
             },
             openai: {
-              text: cleanOpenAiText.length > 0 ? cleanOpenAiText : ["gpt-4o-mini", "gpt-4o", "gpt-4.5-preview", "o1-mini", "o3-mini"],
-              image: cleanOpenAiImage.length > 0 ? cleanOpenAiImage : ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3", "dall-e-2"]
+              text: finalOpenAiText,
+              image: finalOpenAiImage
             }
           });
           if (isGemini) {
@@ -1068,27 +1239,47 @@ export default function App() {
   const [sessionImageArchive, setSessionImageArchive] = useState<ArchivedImage[]>(() => {
     try {
       const saved = localStorage.getItem("ethos_storyboard_image_archive");
-      return saved ? JSON.parse(saved) : [];
+      return saved ? sanitizeArchiveArray(JSON.parse(saved)) : [];
     } catch {
       return [];
     }
   });
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
+  const [isOpenAiTestingKey, setIsOpenAiTestingKey] = useState(false);
+  const [openAiKeyTestResult, setOpenAiKeyTestResult] = useState<{
+    success: boolean;
+    message: string;
+    totalAllowed?: number;
+    allowedImageModels?: string[];
+    allowedTextModels?: string[];
+    missingCatalogModels?: { id: string; name: string; category: string; description: string }[];
+  } | null>(null);
 
-  // Update cached size tracker only when opening config view to avoid reading all IndexedDB images into RAM on every scene tick
+  // Reset scroll to top when opening config view & update cache size tracker
   useEffect(() => {
     if (activeView === "config") {
       getCacheSizeMB().then(setCacheSizeMB).catch(() => {});
+      window.scrollTo({ top: 0, behavior: "instant" });
+      if (mainScrollRef.current) {
+        mainScrollRef.current.scrollTop = 0;
+      }
+      const scrollContainer = document.querySelector("main") || document.documentElement;
+      if (scrollContainer) scrollContainer.scrollTop = 0;
     }
   }, [activeView]);
 
   // Scroll locking mechanism when the Gallery or Script modal is open + ESC key close listener
   useEffect(() => {
-    const isAnyModalOpen = isGalleryOpen || showScriptModal;
+    const isAnyModalOpen = isGalleryOpen || showScriptModal || !!zoomedImageUrl;
     if (isAnyModalOpen) {
       document.body.style.overflow = "hidden";
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === "Escape") {
+          if (zoomedImageUrl) {
+            setZoomedImageUrl(null);
+            return;
+          }
           if (isGalleryOpen) setIsGalleryOpen(false);
           if (showScriptModal) setShowScriptModal(false);
         }
@@ -1101,7 +1292,7 @@ export default function App() {
     } else {
       document.body.style.overflow = "";
     }
-  }, [isGalleryOpen, showScriptModal]);
+  }, [isGalleryOpen, showScriptModal, zoomedImageUrl]);
 
   useEffect(() => {
     const persistArchive = async () => {
@@ -1189,13 +1380,14 @@ export default function App() {
         }
         
         if (cloned.imageVersions && cloned.imageVersions.length > 0) {
-          cloned.imageVersions = await Promise.all(cloned.imageVersions.map(async (v) => {
+          const hydratedVersions = await Promise.all(cloned.imageVersions.map(async (v) => {
             const clonedV = { ...v };
             if (clonedV.url) {
               clonedV.url = await ensureDiskImageUrl(clonedV.url, projectFolder, cloned.id, cloned.sceneNumber || "");
             }
             return clonedV;
           }));
+          cloned.imageVersions = sanitizeArchiveArray(hydratedVersions as any) as any;
         }
         return cloned;
       }));
@@ -1215,24 +1407,10 @@ export default function App() {
         return cloned;
       }));
 
-      // Deduplicate pass: collapse duplicate entries matching same sceneId & letter OR same URL
-      const uniqueMap = new Map<string, ArchivedImage>();
-      processed.forEach((item) => {
-        if (!item.url) return;
-        const key = item.sceneId && item.letter ? `${item.sceneId}_${item.letter}` : item.url;
-        if (!uniqueMap.has(key)) {
-          uniqueMap.set(key, item);
-        } else {
-          const existing = uniqueMap.get(key)!;
-          if (item.url.startsWith("/projects/") && !existing.url.startsWith("/projects/")) {
-            uniqueMap.set(key, item);
-          }
-        }
-      });
-      return Array.from(uniqueMap.values());
+      return sanitizeArchiveArray(processed);
     } catch (e) {
       console.warn("Hydration failed for archive:", e);
-      return dehydrated;
+      return sanitizeArchiveArray(dehydrated);
     }
   };
 
@@ -1615,12 +1793,13 @@ export default function App() {
     if (scenes.length === 0) return;
     
     setSessionImageArchive((prevArchive) => {
+      const sanitizedPrev = sanitizeArchiveArray(prevArchive);
       const archiveMap = new Map<string, ArchivedImage>();
       
-      // Preserve existing archive items using unique key
-      prevArchive.forEach((item) => {
+      // Preserve existing archive items using canonical key
+      sanitizedPrev.forEach((item) => {
         if (!item.url) return;
-        const key = item.sceneId && item.letter ? `${item.sceneId}_${item.letter}` : item.url;
+        const key = getCanonicalImageKey(item);
         archiveMap.set(key, item);
       });
 
@@ -1631,45 +1810,47 @@ export default function App() {
         if (scene.generatedImageUrl) {
           const activeVersion = (scene.imageVersions || []).find(v => v.url === scene.generatedImageUrl);
           const activeLetter = activeVersion?.letter || "A";
-          const key = `${scene.id}_${activeLetter}`;
-          if (!archiveMap.has(key) || archiveMap.get(key)?.url !== scene.generatedImageUrl) {
-            archiveMap.set(key, {
-              id: `sync-act-${scene.id}-${activeLetter}`,
-              url: scene.generatedImageUrl,
-              timestamp: new Date().toLocaleTimeString(),
-              sceneId: scene.id,
-              originalSceneNumber: scene.sceneNumber || "",
-              prompt: scene.prompt || "",
-              text: scene.text || "",
-              model: scene.selectedModel,
-              engineName: scene.engineName,
-              renderTimeSeconds: scene.renderTimeSeconds,
-              letter: activeLetter
-            });
+          const activeItemObj = {
+            id: `sync-act-${scene.id}-${activeLetter}`,
+            url: scene.generatedImageUrl,
+            timestamp: new Date().toLocaleTimeString(),
+            sceneId: scene.id,
+            originalSceneNumber: scene.sceneNumber || "",
+            prompt: scene.prompt || "",
+            text: scene.text || "",
+            model: scene.selectedModel,
+            engineName: scene.engineName,
+            renderTimeSeconds: scene.renderTimeSeconds,
+            letter: activeLetter
+          };
+          const key = getCanonicalImageKey(activeItemObj);
+          if (!archiveMap.has(key)) {
+            archiveMap.set(key, activeItemObj);
             changed = true;
           }
         }
         
         // Sync versioned images
         if (scene.imageVersions && scene.imageVersions.length > 0) {
-          scene.imageVersions.forEach((v) => {
+          scene.imageVersions.forEach((v, vIdx) => {
             if (!v.url) return;
-            const letter = v.letter || "A";
-            const key = `${scene.id}_${letter}`;
-            if (!archiveMap.has(key) || archiveMap.get(key)?.url !== v.url) {
-              archiveMap.set(key, {
-                id: v.id || `sync-v-${scene.id}-${letter}`,
-                url: v.url,
-                timestamp: v.timestamp || new Date().toLocaleTimeString(),
-                sceneId: scene.id,
-                originalSceneNumber: scene.sceneNumber || "",
-                prompt: v.prompt || scene.prompt || "",
-                text: v.description || scene.text || "",
-                model: v.model,
-                engineName: v.engineName,
-                renderTimeSeconds: v.renderTimeSeconds,
-                letter: letter
-              });
+            const letter = v.letter || getLetterFromIndex(vIdx);
+            const versionItemObj = {
+              id: v.id || `sync-v-${scene.id}-${letter}`,
+              url: v.url,
+              timestamp: v.timestamp || new Date().toLocaleTimeString(),
+              sceneId: scene.id,
+              originalSceneNumber: scene.sceneNumber || "",
+              prompt: v.prompt || scene.prompt || "",
+              text: v.description || scene.text || "",
+              model: v.model,
+              engineName: v.engineName,
+              renderTimeSeconds: v.renderTimeSeconds,
+              letter: letter
+            };
+            const key = getCanonicalImageKey(versionItemObj);
+            if (!archiveMap.has(key)) {
+              archiveMap.set(key, versionItemObj);
               changed = true;
             }
           });
@@ -1845,6 +2026,40 @@ export default function App() {
       setKeyTestResult({ success: false, message: err.message || "Erro ao validar chave de API." });
     } finally {
       setIsTestingKey(false);
+    }
+  };
+
+  // Test OpenAI API key validity
+  const handleTestOpenAiKey = async () => {
+    if (!openAiKey || !openAiKey.trim()) {
+      setOpenAiKeyTestResult({ success: false, message: "Insira uma chave OpenAI válida no campo antes de testar." });
+      return;
+    }
+    setIsOpenAiTestingKey(true);
+    setOpenAiKeyTestResult(null);
+    try {
+      const response = await fetch("/api/storyboard/test-key", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-openai-key": openAiKey
+        },
+        body: JSON.stringify({ openAiKey, provider: "openai" })
+      });
+      const data = await safeParseResponse(response, "Chave de API OpenAI inválida ou erro na validação.");
+      setOpenAiKeyTestResult({
+        success: true,
+        message: data.message,
+        totalAllowed: data.totalAllowed,
+        allowedImageModels: data.allowedImageModels,
+        allowedTextModels: data.allowedTextModels,
+        missingCatalogModels: data.missingCatalogModels
+      });
+      setNotification(`✓ Chave OpenAI verificada com sucesso! ${data.totalAllowed || 0} modelos liberados.`);
+    } catch (err: any) {
+      setOpenAiKeyTestResult({ success: false, message: err.message || "Erro ao validar chave de API OpenAI." });
+    } finally {
+      setIsOpenAiTestingKey(false);
     }
   };
 
@@ -2103,8 +2318,8 @@ Output MUST be valid JSON only, matching this schema exactly:
     }
 
     // If there is an old active generated image that isn't in versions yet, we will push it first
-    if (scene.generatedImageUrl && fields.generatedImageUrl && fields.generatedImageUrl !== scene.generatedImageUrl) {
-      if (!updatedVersions.some(v => v.url === scene.generatedImageUrl)) {
+    if (scene.generatedImageUrl && fields.generatedImageUrl && !isSameImage(fields.generatedImageUrl, scene.generatedImageUrl)) {
+      if (!updatedVersions.some(v => isSameImage(v.url, scene.generatedImageUrl))) {
         const letter = getLetterFromIndex(currentCount);
         oldLetter = letter;
         currentCount += 1;
@@ -2124,7 +2339,7 @@ Output MUST be valid JSON only, matching this schema exactly:
     }
 
     // If the new active image is set and is not yet in versions
-    if (fields.generatedImageUrl && !updatedVersions.some(v => v.url === fields.generatedImageUrl)) {
+    if (fields.generatedImageUrl && !updatedVersions.some(v => isSameImage(v.url, fields.generatedImageUrl))) {
       const letter = getLetterFromIndex(currentCount);
       newLetter = letter;
       currentCount += 1;
@@ -2142,11 +2357,14 @@ Output MUST be valid JSON only, matching this schema exactly:
       updatedVersions = [newVersion, ...updatedVersions].slice(0, 6);
     } else if (fields.generatedImageUrl) {
       updatedVersions = updatedVersions.slice(0, 6);
-      const matchedNew = updatedVersions.find(v => v.url === fields.generatedImageUrl);
+      const matchedNew = updatedVersions.find(v => isSameImage(v.url, fields.generatedImageUrl));
       if (matchedNew?.letter) {
         newLetter = matchedNew.letter;
       }
     }
+
+    // Sanitize image versions to purge any duplicate entries
+    updatedVersions = sanitizeArchiveArray(updatedVersions as any) as any;
 
     // Update image archive
     if (fields.generatedImageUrl) {
@@ -2154,8 +2372,8 @@ Output MUST be valid JSON only, matching this schema exactly:
         let updatedArchive = [...prevArchive];
         
         // Add old image with its oldLetter
-        if (scene.generatedImageUrl && scene.generatedImageUrl !== fields.generatedImageUrl) {
-          if (!updatedArchive.some(item => item.url === scene.generatedImageUrl)) {
+        if (scene.generatedImageUrl && !isSameImage(scene.generatedImageUrl, fields.generatedImageUrl)) {
+          if (!updatedArchive.some(item => isSameImage(item.url, scene.generatedImageUrl))) {
             updatedArchive.push({
               id: Math.random().toString(36).substring(2, 9),
               url: scene.generatedImageUrl,
@@ -2173,7 +2391,7 @@ Output MUST be valid JSON only, matching this schema exactly:
         }
         
         // Add new image with its newLetter
-        if (!updatedArchive.some(item => item.url === fields.generatedImageUrl)) {
+        if (!updatedArchive.some(item => isSameImage(item.url, fields.generatedImageUrl))) {
           updatedArchive.push({
             id: Math.random().toString(36).substring(2, 9),
             url: fields.generatedImageUrl!,
@@ -2188,7 +2406,7 @@ Output MUST be valid JSON only, matching this schema exactly:
             letter: newLetter
           });
         }
-        return updatedArchive;
+        return sanitizeArchiveArray(updatedArchive);
       });
     }
 
@@ -3790,22 +4008,25 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     if (!scene) return [];
     
     const archiveImages = sessionImageArchive.filter(item => item.sceneId === sceneId);
-    const sceneMap = new Map<string, ArchivedImage>();
+    const keyMap = new Map<string, ArchivedImage>();
 
-    // 1. Add archive images
-    archiveImages.forEach(item => {
-      if (!item.url) return;
-      const letter = item.letter || "A";
-      const key = `${sceneId}_${letter}`;
-      sceneMap.set(key, item);
-    });
+    const addOrUpdate = (item: ArchivedImage) => {
+      if (!item || !item.url) return;
+      const key = getCanonicalImageKey(item);
+      const existing = keyMap.get(key);
+      if (!existing) {
+        keyMap.set(key, item);
+      } else {
+        if (item.url.startsWith("/projects/") && !existing.url.startsWith("/projects/")) {
+          keyMap.set(key, item);
+        }
+      }
+    };
 
-    // 2. Overlay scene active image
+    // 1. Add active scene image
     if (scene.generatedImageUrl) {
       const activeVersion = (scene.imageVersions || []).find(v => v.url === scene.generatedImageUrl);
-      const activeLetter = activeVersion?.letter || "A";
-      const key = `${sceneId}_${activeLetter}`;
-      sceneMap.set(key, {
+      addOrUpdate({
         id: `active-${sceneId}`,
         url: scene.generatedImageUrl,
         timestamp: new Date().toLocaleTimeString(),
@@ -3816,41 +4037,41 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         model: scene.selectedModel,
         engineName: scene.engineName,
         renderTimeSeconds: scene.renderTimeSeconds,
-        letter: activeLetter
+        letter: activeVersion?.letter || "A"
       });
     }
 
-    // 3. Overlay scene versions
+    // 2. Add scene versions
     if (scene.imageVersions) {
-      scene.imageVersions.forEach((v) => {
+      scene.imageVersions.forEach((v, vIdx) => {
         if (!v.url) return;
-        const letter = v.letter || "A";
-        const key = `${sceneId}_${letter}`;
-        if (!sceneMap.has(key)) {
-          sceneMap.set(key, {
-            id: v.id || `v-${sceneId}-${letter}`,
-            url: v.url,
-            timestamp: v.timestamp || new Date().toLocaleTimeString(),
-            sceneId: sceneId,
-            originalSceneNumber: scene.sceneNumber || "",
-            prompt: v.prompt || scene.prompt || "",
-            text: v.description || scene.text || "",
-            model: v.model,
-            engineName: v.engineName,
-            renderTimeSeconds: v.renderTimeSeconds,
-            letter: letter
-          });
-        }
+        addOrUpdate({
+          id: v.id || `v-${sceneId}-${v.letter || vIdx}`,
+          url: v.url,
+          timestamp: v.timestamp || new Date().toLocaleTimeString(),
+          sceneId: sceneId,
+          originalSceneNumber: scene.sceneNumber || "",
+          prompt: v.prompt || scene.prompt || "",
+          text: v.description || scene.text || "",
+          model: v.model,
+          engineName: v.engineName,
+          renderTimeSeconds: v.renderTimeSeconds,
+          letter: v.letter || getLetterFromIndex(vIdx)
+        });
       });
     }
 
-    return Array.from(sceneMap.values());
+    // 3. Add archive items
+    archiveImages.forEach(item => addOrUpdate(item));
+
+    return Array.from(keyMap.values());
   };
 
   // Helper to query all discarded/orphan images that belong to deleted or merged scene IDs
   const getDiscardedImages = () => {
     const activeSceneIds = new Set(scenes.map(s => s.id));
-    return sessionImageArchive.filter(item => !activeSceneIds.has(item.sceneId));
+    const rawDiscarded = sessionImageArchive.filter(item => !activeSceneIds.has(item.sceneId));
+    return sanitizeArchiveArray(rawDiscarded);
   };
 
   // Action: Set archived image as active generatedImageUrl in a scene
@@ -4117,7 +4338,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 title="Clique para editar o nome do projeto"
               />
 
-              {/* Below Projeto Ativo: Pasta do projeto (Servidor) and AutoSave side-by-side */}
+              {/* Below Projeto Ativo: Pasta do projeto (Servidor) and AutoSave with Undo/Redo above it */}
               <div className="flex items-center gap-2 mt-1 text-[9px] font-mono">
                 <div className="flex items-center gap-1">
                   <span className="text-[#D4AF37] font-bold text-[8px] uppercase tracking-wider">Pasta:</span>
@@ -4137,14 +4358,47 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
                 <span className="text-zinc-700">|</span>
 
-                <div className="flex items-center gap-1 select-none">
-                  <span className="text-zinc-500">AutoSave:</span>
-                  <span className="text-emerald-400 font-semibold">Ativo</span>
-                  {lastDiskSaveTime && (
-                    <span className="text-zinc-500 text-[8px]">
-                      ({lastDiskSaveTime})
-                    </span>
-                  )}
+                <div className="flex flex-col gap-0.5">
+                  {/* UNDO / REDO BUTTONS MOVED DIRECTLY ABOVE AUTOSAVE */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={handleUndo}
+                      disabled={history.length === 0}
+                      className={`px-1.5 py-0.5 border text-[8px] uppercase tracking-wider font-mono font-bold transition-all flex items-center gap-1 rounded ${
+                        history.length === 0
+                          ? "border-zinc-800/40 text-zinc-650 bg-transparent cursor-not-allowed opacity-35"
+                          : "border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10 cursor-pointer"
+                      }`}
+                      title="Desfazer a última ação (Undo)"
+                    >
+                      <Undo size={9} />
+                      <span>Desfazer ({history.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRedo}
+                      disabled={redoStack.length === 0}
+                      className={`p-1 border text-[8px] uppercase tracking-wider font-mono font-bold transition-all flex items-center justify-center rounded ${
+                        redoStack.length === 0
+                          ? "border-zinc-800/40 text-zinc-650 bg-transparent cursor-not-allowed opacity-35"
+                          : "border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10 cursor-pointer"
+                      }`}
+                      title={`Refazer a última ação desfeita (${redoStack.length})`}
+                    >
+                      <Redo size={9} />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1 select-none">
+                    <span className="text-zinc-500">AutoSave:</span>
+                    <span className="text-emerald-400 font-semibold">Ativo</span>
+                    {lastDiskSaveTime && (
+                      <span className="text-zinc-500 text-[8px]">
+                        ({lastDiskSaveTime})
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -4153,42 +4407,6 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           {/* RIGHT GROUP: Actions, Scroll 7x, Queue status, Config, Gerar cenas vazias */}
           <div className="flex items-center gap-3 flex-wrap lg:flex-nowrap">
             
-            {/* UNDO / REDO BUTTONS */}
-            <div className="flex items-center gap-1.5 bg-neutral-900/30 border border-zinc-800/60 p-1 rounded-md">
-              {/* Desfazer (smaller, retains text and icon) */}
-              <button
-                type="button"
-                onClick={handleUndo}
-                disabled={history.length === 0}
-                className={`px-2 py-1 border text-[10px] uppercase tracking-wider font-mono font-bold transition-all flex items-center gap-1 rounded ${
-                  history.length === 0
-                    ? "border-zinc-800/40 text-zinc-650 bg-transparent cursor-not-allowed opacity-35"
-                    : "border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10 cursor-pointer"
-                }`}
-                title="Desfazer a última ação (Undo)"
-              >
-                <Undo size={11} />
-                <span>Desfazer ({history.length})</span>
-              </button>
-
-              {/* Refazer (smaller, arrow icon ONLY) */}
-              <button
-                type="button"
-                onClick={handleRedo}
-                disabled={redoStack.length === 0}
-                className={`p-1.5 border text-[10px] uppercase tracking-wider font-mono font-bold transition-all flex items-center justify-center rounded ${
-                  redoStack.length === 0
-                    ? "border-zinc-800/40 text-zinc-650 bg-transparent cursor-not-allowed opacity-35"
-                    : "border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10 cursor-pointer"
-                }`}
-                title={`Refazer a última ação desfeita (${redoStack.length})`}
-              >
-                <Redo size={11} />
-              </button>
-            </div>
-
-            <div className="h-7 w-px bg-zinc-800 hidden sm:block" />
-
             {/* STACKED: Acervo de Imagens and Roteiro do Projeto */}
             <div className="flex flex-col gap-1">
               <button
@@ -4273,24 +4491,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
             <div className="h-7 w-px bg-zinc-800 hidden lg:block" />
 
-            {/* Cena Ativa Counter */}
-            <div className="flex flex-col h-full justify-between">
-              <span className="text-[7px] uppercase tracking-wider text-zinc-500 font-mono font-bold block mb-0.5">Cena Ativa</span>
-              <div className="h-11 px-2.5 rounded-lg bg-zinc-950/60 border border-zinc-900 flex items-center justify-center min-w-[70px]">
-                <span className="text-lg font-mono font-black text-[#D4AF37] tracking-tight">
-                  {scenes.length > 0 
-                    ? (scenes[visibleSceneIndex]?.sceneNumber || String(visibleSceneIndex + 1)).padStart(2, "0") 
-                    : "00"}
-                </span>
-                <span className="text-[9px] font-mono font-bold text-zinc-650 ml-1 select-none">
-                  / {String(scenes.length).padStart(2, "0")}
-                </span>
-              </div>
-            </div>
-
-            <div className="h-7 w-px bg-zinc-800 hidden lg:block" />
-
-            {/* TOP RIGHT NAVIGATION COLUMNS: Gerar Cenas Vazias & Configurações/Storyboard */}
+            {/* TOP RIGHT NAVIGATION COLUMNS: Gerar Cenas Vazias (SWAPPED TO FIRST) & Cena Ativa Counter / Configurações */}
             <div className="flex items-center gap-2 ml-auto lg:ml-0">
               
               {/* Standalone Column 1: Gerar Cenas Vazias Dropdown Menu */}
@@ -4328,86 +4529,62 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 font-bold block">
                         1. Modelo de IA para Prompts (Texto):
                       </span>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <label className={`flex items-center gap-1.5 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedPromptModel === "gemini-3.5-flash" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
-                          <input
-                            type="radio"
-                            name="batchPromptModel"
-                            value="gemini-3.5-flash"
-                            checked={batchSelectedPromptModel === "gemini-3.5-flash"}
-                            onChange={() => updateBatchPromptModel("gemini-3.5-flash")}
-                            className="accent-[#D4AF37]"
-                          />
-                          <span>Google Gemini</span>
-                        </label>
-
-                        <label className={`flex items-center gap-1.5 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedPromptModel === "gpt-4o-mini" || batchSelectedPromptModel === "chatgpt" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
-                          <input
-                            type="radio"
-                            name="batchPromptModel"
-                            value="gpt-4o-mini"
-                            checked={batchSelectedPromptModel === "gpt-4o-mini" || batchSelectedPromptModel === "chatgpt"}
-                            onChange={() => updateBatchPromptModel("gpt-4o-mini")}
-                            className="accent-[#D4AF37]"
-                          />
-                          <span>OpenAI (ChatGPT)</span>
-                        </label>
+                      <div className="flex flex-col gap-1 max-h-36 overflow-y-auto pr-1">
+                        {enabledPromptModels.map((m) => {
+                          const isChecked = batchSelectedPromptModel === m;
+                          const priceInfo = getModelPriceInfo(m);
+                          return (
+                            <label key={m} className={`flex items-center gap-1.5 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${isChecked ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`} title={`💰 Valor: ${priceInfo.priceLabel} | 📅 Atualizado em: ${priceInfo.updatedAt}`}>
+                              <input
+                                type="radio"
+                                name="batchPromptModel"
+                                value={m}
+                                checked={isChecked}
+                                onChange={() => updateBatchPromptModel(m)}
+                                className="accent-[#D4AF37]"
+                              />
+                              <span>{m.startsWith("gpt-") || m.startsWith("o1") || m.startsWith("o3") ? `OpenAI (${m})` : `Google (${m})`}</span>
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
 
-                    {/* Radio Group 2: Modelo de Imagem (Render) */}
+                    {/* Radio Group 2: Modelo de Imagem */}
                     <div className="space-y-1.5 bg-[#111] p-2 rounded border border-zinc-800">
                       <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 font-bold block">
-                        2. Modelo de IA para Imagens (Render):
+                        2. Modelo de IA para Renderização de Imagem:
                       </span>
-                      <div className="grid grid-cols-1 gap-1">
-                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "gemini-2.5-flash-image" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
-                          <input
-                            type="radio"
-                            name="batchImageModel"
-                            value="gemini-2.5-flash-image"
-                            checked={batchSelectedImageModel === "gemini-2.5-flash-image"}
-                            onChange={() => updateBatchImageModel("gemini-2.5-flash-image")}
-                            className="accent-[#D4AF37]"
-                          />
-                          <span>🍌 Nano Banana (Google Flash Image)</span>
-                        </label>
+                      <div className="flex flex-col gap-1 max-h-36 overflow-y-auto pr-1">
+                        {enabledImageModels.map((m) => {
+                          let label = "NB2 Lite";
+                          if (m === "nano_banana") label = "🍌 Nano Banana (NB2 Lite)";
+                          else if (m === "nano_banana_pro") label = "🍌 Nano Banana Pro (High Contrast)";
+                          else if (m === "nano_banana_2") label = "🍌 Nano Banana 2 (Fine Art)";
+                          else if (m === "chatgpt_dalle3") label = `🎨 OpenAI (${openAiDalleModel || "gpt-image-2"})`;
+                          else if (m.startsWith("openai:") || m.startsWith("gpt-image") || m.startsWith("dall-e")) {
+                            label = `🎨 OpenAI (${m.replace("openai:", "")})`;
+                          } else {
+                            label = m;
+                          }
 
-                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "imagen-3.0-generate-002" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-[#D4AF37] font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
-                          <input
-                            type="radio"
-                            name="batchImageModel"
-                            value="imagen-3.0-generate-002"
-                            checked={batchSelectedImageModel === "imagen-3.0-generate-002"}
-                            onChange={() => updateBatchImageModel("imagen-3.0-generate-002")}
-                            className="accent-[#D4AF37]"
-                          />
-                          <span>🎨 Google Imagen 3 (Alta Qualidade)</span>
-                        </label>
+                          const isChecked = batchSelectedImageModel === m;
+                          const priceInfo = getModelPriceInfo(m);
 
-                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "imagen-3.0-fast-generate-001" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-[#D4AF37] font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
-                          <input
-                            type="radio"
-                            name="batchImageModel"
-                            value="imagen-3.0-fast-generate-001"
-                            checked={batchSelectedImageModel === "imagen-3.0-fast-generate-001"}
-                            onChange={() => updateBatchImageModel("imagen-3.0-fast-generate-001")}
-                            className="accent-[#D4AF37]"
-                          />
-                          <span>⚡ Google Fast Imagen 3 (Rápido)</span>
-                        </label>
-
-                        <label className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${batchSelectedImageModel === "gpt-image-2" ? "bg-[#D4AF37]/15 border-[#D4AF37] text-[#D4AF37] font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`}>
-                          <input
-                            type="radio"
-                            name="batchImageModel"
-                            value="gpt-image-2"
-                            checked={batchSelectedImageModel === "gpt-image-2"}
-                            onChange={() => updateBatchImageModel("gpt-image-2")}
-                            className="accent-[#D4AF37]"
-                          />
-                          <span>🤖 OpenAI GPT-Image 2 (Oficial)</span>
-                        </label>
+                          return (
+                            <label key={m} className={`flex items-center gap-2 p-1.5 rounded border text-[9px] font-mono cursor-pointer transition-all ${isChecked ? "bg-[#D4AF37]/15 border-[#D4AF37] text-white font-bold" : "bg-[#181818] border-zinc-800 text-zinc-400 hover:border-zinc-700"}`} title={`💰 Valor: ${priceInfo.priceLabel} | 📅 Atualizado em: ${priceInfo.updatedAt}`}>
+                              <input
+                                type="radio"
+                                name="batchImageModel"
+                                value={m}
+                                checked={isChecked}
+                                onChange={() => updateBatchImageModel(m)}
+                                className="accent-[#D4AF37]"
+                              />
+                              <span>{label}</span>
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -4468,6 +4645,23 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
                   </div>
                 )}
+              </div>
+
+              <div className="h-7 w-px bg-zinc-800 hidden lg:block" />
+
+              {/* Cena Ativa Counter (SWAPPED TO AFTER GERAR CENAS VAZIAS) */}
+              <div className="flex flex-col h-full justify-between shrink-0">
+                <span className="text-[7px] uppercase tracking-wider text-zinc-500 font-mono font-bold block mb-0.5 whitespace-nowrap">Cena Ativa</span>
+                <div className="h-11 px-3 rounded-lg bg-zinc-950/60 border border-zinc-900 flex items-center justify-center min-w-[105px] sm:min-w-[125px] whitespace-nowrap shrink-0">
+                  <span className="text-base sm:text-lg font-mono font-black text-[#D4AF37] tracking-tight">
+                    {scenes.length > 0 
+                      ? (scenes[visibleSceneIndex]?.sceneNumber || String(visibleSceneIndex + 1)).padStart(2, "0") 
+                      : "00"}
+                  </span>
+                  <span className="text-[9px] font-mono font-bold text-zinc-650 ml-1 select-none">
+                    / {String(scenes.length).padStart(2, "0")}
+                  </span>
+                </div>
               </div>
 
               {/* Standalone Column 2: Square Icon-Only Configurações / Storyboard Button */}
@@ -4747,10 +4941,6 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 <div className="space-y-4 pt-1">
                   {activeApiTab === "gemini" && (
                     <div className="space-y-4 animate-fadeIn">
-                      <p className="text-[11px] text-slate-400 leading-relaxed">
-                        Está enfrentando erros de limite de cota (<code className="text-rose-400 font-mono">429 Resource Exhausted</code>)? Insira sua chave de API gratuita do Gemini para rodar diretamente em sua cota pessoal.
-                      </p>
-                      
                       <div className="space-y-2">
                         <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
                           Chave de API Gemini
@@ -4780,6 +4970,14 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                             className="flex-1 py-1.5 border border-[#333] bg-[#0a0a0a] hover:bg-[#111] text-center text-slate-400 hover:text-white text-[10px] uppercase tracking-wider font-mono rounded transition-all"
                           >
                             Criar chave grátis
+                          </a>
+                          <a
+                            href="https://ai.google.dev/pricing"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 py-1.5 border border-[#333] bg-[#0a0a0a] hover:bg-[#111] text-center text-slate-400 hover:text-white text-[10px] uppercase tracking-wider font-mono rounded transition-all"
+                          >
+                            Modelos Gemini Preços
                           </a>
                           {customApiKey && (
                             <>
@@ -4858,8 +5056,9 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                             <div className="space-y-1">
                               <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Prompt (Clique para Habilitar/Desabilitar na Interface):</span>
                               <div className="flex flex-wrap gap-1">
-                                {(availableModels.gemini?.text || ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"]).map((m) => {
+                                {sortByPrice(availableModels.gemini?.text || ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"]).map((m) => {
                                   const isEnabled = enabledPromptModels.includes(m);
+                                  const priceInfo = getModelPriceInfo(m);
                                   return (
                                     <button
                                       key={m}
@@ -4870,7 +5069,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                           ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
                                           : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
                                       }`}
-                                      title={isEnabled ? "Clique para desabilitar este modelo nas cartelas" : "Clique para habilitar este modelo nas cartelas"}
+                                      title={`💰 Valor: ${priceInfo.priceLabel} | 📅 Atualizado em: ${priceInfo.updatedAt}\n${isEnabled ? "Clique para desabilitar nas cartelas" : "Clique para habilitar nas cartelas"}`}
                                     >
                                       {isEnabled ? "✓ " : ""}{m}
                                     </button>
@@ -4879,15 +5078,16 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                               </div>
                             </div>
                             <div className="space-y-1 pt-2 border-t border-[#222]">
-                              <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Imagem (Clique para Habilitar/Desabilitar na Interface):</span>
+                              <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Imagem (Ordenado por preço. Hover p/ consultar):</span>
                               <div className="flex flex-wrap gap-1">
                                 {[
                                   { id: "nano_banana", name: "NB2 Lite" },
                                   { id: "nano_banana_pro", name: "NB Pro" },
                                   { id: "nano_banana_2", name: "NB2" },
-                                  ...(availableModels.gemini?.image || []).filter(m => !["nano_banana", "nano_banana_pro", "nano_banana_2"].includes(m)).map(m => ({ id: m, name: m }))
+                                  ...sortByPrice((availableModels.gemini?.image || []).filter(m => !["nano_banana", "nano_banana_pro", "nano_banana_2"].includes(m))).map(m => ({ id: m, name: m }))
                                 ].map((item) => {
                                   const isEnabled = enabledImageModels.includes(item.id);
+                                  const priceInfo = getModelPriceInfo(item.id);
                                   return (
                                     <button
                                       key={item.id}
@@ -4898,7 +5098,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                           ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
                                           : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
                                       }`}
-                                      title={isEnabled ? "Clique para desabilitar este modelo de imagem nas cartelas" : "Clique para habilitar este modelo de imagem nas cartelas"}
+                                      title={`💰 Valor: ${priceInfo.priceLabel} | 📅 Atualizado em: ${priceInfo.updatedAt}\n${isEnabled ? "Clique para desabilitar nas cartelas" : "Clique para habilitar nas cartelas"}`}
                                     >
                                       {isEnabled ? "✓ " : ""}{item.name}
                                     </button>
@@ -4914,10 +5114,6 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
                   {activeApiTab === "chatgpt" && (
                     <div className="space-y-4 animate-fadeIn">
-                      <p className="text-[11px] text-slate-400 leading-relaxed">
-                        Quer criar roteiros, prompts e renderizações com a tecnologia do ChatGPT e DALL-E? Ative a integração inserindo sua chave OpenAI abaixo.
-                      </p>
-
                       <div className="space-y-3">
                         <div className="space-y-1.5">
                           <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
@@ -4939,206 +5135,218 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                               {showOpenAiKey ? <EyeOff size={14} /> : <Eye size={14} />}
                             </button>
                           </div>
-                        </div>
 
-                        {openAiKey.trim() && (
-                          <>
-                            {/* Toggle use OpenAI for prompt structuring */}
-                            <div className="flex items-center justify-between p-2.5 bg-black/25 border border-[#222] rounded">
-                              <div className="space-y-0.5">
-                                <span className="text-[10px] font-bold text-[#E0D8D0] uppercase tracking-wide">
-                                  Usar ChatGPT para Prompts
-                                </span>
-                                <p className="text-[9px] text-slate-400">
-                                  Processa roteiros e descrições com IA OpenAI
-                                </p>
-                              </div>
-                              <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={useOpenAiForPrompts}
-                                  onChange={(e) => setUseOpenAiForPrompts(e.target.checked)}
-                                  className="sr-only peer"
-                                />
-                                <div className="w-8 h-4 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-450 after:border-zinc-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#D4AF37] peer-checked:after:bg-black"></div>
-                              </label>
-                            </div>
-
-                            {/* Chat model selection */}
-                            {useOpenAiForPrompts && (
-                              <div className="space-y-1.5">
-                                <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
-                                  Modelo do ChatGPT
-                                </label>
-                                <div className="flex gap-1.5">
-                                  <select
-                                    value={(availableModels.openai?.text || []).includes(openAiModel) ? openAiModel : (openAiModel === "" ? "" : "custom")}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      if (val !== "custom") {
-                                        setOpenAiModel(val);
-                                      } else {
-                                        setOpenAiModel("");
-                                      }
-                                    }}
-                                    className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
-                                  >
-                                    {(availableModels.openai?.text || []).map((m) => (
-                                      <option key={m} value={m}>{m}</option>
-                                    ))}
-                                    <option value="custom">✍ Digitar ID de Modelo Personalizado...</option>
-                                  </select>
-                                  {(!(availableModels.openai?.text || []).includes(openAiModel) || openAiModel === "") && (
-                                    <input
-                                      type="text"
-                                      value={openAiModel}
-                                      placeholder="Ex: gpt-4.5-preview"
-                                      onChange={(e) => setOpenAiModel(e.target.value)}
-                                      className="w-1/2 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
-                                    />
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* DALL-E image generation model selection */}
-                            <div className="space-y-1.5">
-                              <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
-                                Modelo DALL-E (Imagem)
-                              </label>
-                              <div className="flex gap-1.5">
-                                <select
-                                  value={(availableModels.openai?.image || []).includes(openAiDalleModel) ? openAiDalleModel : (openAiDalleModel === "" ? "" : "custom")}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    if (val !== "custom") {
-                                      setOpenAiDalleModel(val);
-                                    } else {
-                                      setOpenAiDalleModel("");
-                                    }
-                                  }}
-                                  className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
-                                >
-                                  {(availableModels.openai?.image || []).map((m) => (
-                                    <option key={m} value={m}>{m}</option>
-                                  ))}
-                                  <option value="custom">✍ Digitar ID de Modelo Personalizado...</option>
-                                </select>
-                                {(!(availableModels.openai?.image || []).includes(openAiDalleModel) || openAiDalleModel === "") && (
-                                  <input
-                                    type="text"
-                                    value={openAiDalleModel}
-                                    placeholder="Ex: dall-e-3-hd"
-                                    onChange={(e) => setOpenAiDalleModel(e.target.value)}
-                                    className="w-1/2 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono"
-                                  />
-                                )}
-                              </div>
-                            </div>
-                            
-                            {/* Dynamic OpenAI Models list */}
-                            <div className="space-y-3 pt-3 border-t border-[#2b2b2b]">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] uppercase tracking-wider text-[#D4AF37] font-mono font-bold">
-                                  Modelos OpenAI Disponíveis
-                                </span>
+                          <div className="flex gap-2 pt-1">
+                            <a
+                              href="https://platform.openai.com/settings/proj_aX8Pr9i9WlzgjKWtcJORJSiS/limits"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 py-1.5 border border-[#333] bg-[#0a0a0a] hover:bg-[#111] text-center text-slate-400 hover:text-white text-[10px] uppercase tracking-wider font-mono rounded transition-all"
+                            >
+                              Criar chave OpenAI
+                            </a>
+                            <a
+                              href="https://openai.com/api/pricing/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 py-1.5 border border-[#333] bg-[#0a0a0a] hover:bg-[#111] text-center text-slate-400 hover:text-white text-[10px] uppercase tracking-wider font-mono rounded transition-all"
+                            >
+                              OpenAI preços
+                            </a>
+                            {openAiKey && (
+                              <>
                                 <button
                                   type="button"
-                                  onClick={() => fetchAvailableModels("openai")}
-                                  disabled={openaiSearchStatus === "searching"}
-                                  className={`text-[9px] uppercase font-mono px-2 py-0.5 rounded border transition-all cursor-pointer disabled:opacity-50 ${
-                                    openaiSearchStatus === "success"
-                                      ? "bg-emerald-950/40 border-emerald-900/60 text-emerald-400 font-bold"
-                                      : openaiSearchStatus === "error"
-                                      ? "bg-rose-950/40 border-rose-900/60 text-rose-400 font-bold"
-                                      : "border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
-                                  }`}
+                                  onClick={handleTestOpenAiKey}
+                                  disabled={isOpenAiTestingKey}
+                                  className="px-2.5 py-1.5 border border-[#D4AF37]/35 bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] text-[10px] uppercase tracking-wider font-mono rounded transition-all cursor-pointer disabled:opacity-50"
                                 >
-                                  {openaiSearchStatus === "searching" && "⏳ Buscando..."}
-                                  {openaiSearchStatus === "success" && "✓ Atualizado!"}
-                                  {openaiSearchStatus === "error" && "✗ Falha!"}
-                                  {openaiSearchStatus === "idle" && "🔎 Buscar Online"}
+                                  {isOpenAiTestingKey ? "Testando..." : "Testar"}
                                 </button>
-                              </div>
-                              
-                              <div className="space-y-2 max-h-48 overflow-y-auto bg-black/20 p-2.5 rounded border border-[#222]">
-                                <div className="space-y-1">
-                                  <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Prompt (Clique para Habilitar/Desabilitar na Interface):</span>
-                                  <div className="flex flex-wrap gap-1">
-                                    {(availableModels.openai?.text || ["gpt-4o-mini", "gpt-4o"]).map((m) => {
-                                      const isEnabled = enabledPromptModels.includes(m);
-                                      return (
-                                        <button
-                                          key={m}
-                                          type="button"
-                                          onClick={() => toggleEnabledPromptModel(m)}
-                                          className={`px-2 py-0.5 text-[9px] rounded font-mono border transition-all cursor-pointer select-none ${
-                                            isEnabled
-                                              ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
-                                              : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
-                                          }`}
-                                          title={isEnabled ? "Clique para desabilitar este modelo de prompt nas cartelas" : "Clique para habilitar este modelo de prompt nas cartelas"}
-                                        >
-                                          {isEnabled ? "✓ " : ""}{m}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                                <div className="space-y-1 pt-2 border-t border-[#222]">
-                                  <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Imagem (Clique para Habilitar/Desabilitar na Interface):</span>
-                                  <div className="flex flex-wrap gap-1">
-                                    {[
-                                      { id: "chatgpt_dalle3", name: `OpenAI (${openAiDalleModel || "dall-e-3"})` }
-                                    ].map((item) => {
-                                      const isEnabled = enabledImageModels.includes(item.id);
-                                      return (
-                                        <button
-                                          key={item.id}
-                                          type="button"
-                                          onClick={() => toggleEnabledImageModel(item.id)}
-                                          className={`px-2 py-0.5 text-[9px] rounded font-mono border transition-all cursor-pointer select-none ${
-                                            isEnabled
-                                              ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
-                                              : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
-                                          }`}
-                                          title={isEnabled ? "Clique para desabilitar este modelo de imagem nas cartelas" : "Clique para habilitar este modelo de imagem nas cartelas"}
-                                        >
-                                          {isEnabled ? "✓ " : ""}{item.name}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </>
-                        )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenAiKey("");
+                                    setOpenAiKeyTestResult(null);
+                                    setNotification("Integração OpenAI removida.");
+                                  }}
+                                  className="px-2.5 py-1.5 border border-rose-950/40 bg-rose-950/10 hover:bg-rose-950/30 text-rose-400 text-[10px] uppercase tracking-wider font-mono rounded transition-all cursor-pointer"
+                                >
+                                  Limpar
+                                </button>
+                              </>
+                            )}
+                          </div>
 
-                        {openAiKey ? (
-                          <div className="flex items-center justify-between p-2.5 bg-emerald-950/20 border border-emerald-900/30 rounded">
-                            <div className="flex items-center gap-1.5 text-[9px] font-mono text-emerald-400">
+                          {openAiKey ? (
+                            <div className="flex items-center gap-1.5 text-[9px] font-mono text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 px-2 py-1 rounded mt-2">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                               <span>OpenAI Ativo</span>
                             </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-[9px] font-mono text-slate-500 bg-black/20 border border-[#222] px-2 py-1 rounded mt-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
+                              <span>Chave OpenAI Ausente (Imagens rodando via Nano Banana)</span>
+                            </div>
+                          )}
+
+                          {openAiKeyTestResult && (
+                            <div className={`p-3 rounded-lg border text-[10px] font-mono leading-relaxed mt-2.5 space-y-2.5 ${openAiKeyTestResult.success ? "bg-emerald-950/20 border-emerald-800/60 text-emerald-300" : "bg-rose-950/30 border-rose-800 text-rose-300"}`}>
+                              <div className="flex items-center justify-between font-bold border-b border-emerald-900/40 pb-1.5 flex-wrap gap-1">
+                                <span>{openAiKeyTestResult.message}</span>
+                                {openAiKeyTestResult.totalAllowed !== undefined && (
+                                  <span className="bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/30 text-[9px]">
+                                    {openAiKeyTestResult.totalAllowed} modelos autorizados no projeto
+                                  </span>
+                                )}
+                              </div>
+
+                              {openAiKeyTestResult.success && openAiKeyTestResult.allowedImageModels && openAiKeyTestResult.allowedImageModels.length > 0 && (
+                                <div className="space-y-1.5">
+                                  <div className="text-[9.5px] font-bold text-[#D4AF37] uppercase tracking-wider">
+                                    Geração de Imagem Liberada na sua chave ({openAiKeyTestResult.allowedImageModels.length}):
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {openAiKeyTestResult.allowedImageModels.map((m) => (
+                                      <span key={m} className="px-1.5 py-0.5 bg-black/60 border border-[#D4AF37]/40 text-[#D4AF37] rounded text-[8.5px] font-mono">
+                                        {m}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {openAiKeyTestResult.success && openAiKeyTestResult.allowedTextModels && openAiKeyTestResult.allowedTextModels.length > 0 && (
+                                <div className="space-y-1.5">
+                                  <div className="text-[9.5px] font-bold text-slate-300 uppercase tracking-wider">
+                                    Modelos Conversacionais / Raciocínio ({openAiKeyTestResult.allowedTextModels.length}):
+                                  </div>
+                                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                                    {openAiKeyTestResult.allowedTextModels.map((m) => (
+                                      <span key={m} className="px-1.5 py-0.5 bg-zinc-900/90 border border-zinc-700/60 text-zinc-300 rounded text-[8.5px] font-mono">
+                                        {m}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {openAiKeyTestResult.success && openAiKeyTestResult.missingCatalogModels && openAiKeyTestResult.missingCatalogModels.length > 0 && (
+                                <div className="pt-2 border-t border-amber-900/40 space-y-2">
+                                  <div className="flex items-center justify-between text-amber-300 font-bold text-[9px] uppercase tracking-wider flex-wrap gap-1">
+                                    <span>⚠️ {openAiKeyTestResult.missingCatalogModels.length} modelos recomendados pendentes no seu Project Limits</span>
+                                    <a
+                                      href="https://platform.openai.com/settings/proj_aX8Pr9i9WlzgjKWtcJORJSiS/limits"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 rounded transition-all text-[8px] uppercase tracking-wider cursor-pointer"
+                                    >
+                                      ⚙️ Liberar no OpenAI Project Limits
+                                    </a>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {openAiKeyTestResult.missingCatalogModels.map((m) => (
+                                      <span key={m.id} className="px-1.5 py-0.5 bg-amber-950/30 border border-amber-800/40 text-amber-400 rounded text-[8px] font-mono" title={m.description}>
+                                        {m.name} ({m.id})
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Dynamic OpenAI Models list */}
+                        <div className="space-y-3 pt-3 border-t border-[#2b2b2b]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase tracking-wider text-[#D4AF37] font-mono font-bold">
+                              Modelos OpenAI Disponíveis (Ordenados por Preço)
+                            </span>
                             <button
                               type="button"
-                              onClick={() => {
-                                setOpenAiKey("");
-                                setUseOpenAiForPrompts(false);
-                                setNotification("Integração OpenAI removida.");
-                              }}
-                              className="text-[9px] uppercase font-mono text-rose-400 hover:text-rose-350 transition-colors cursor-pointer"
+                              onClick={() => fetchAvailableModels("openai")}
+                              disabled={openaiSearchStatus === "searching"}
+                              className={`text-[9px] uppercase font-mono px-2 py-0.5 rounded border transition-all cursor-pointer disabled:opacity-50 ${
+                                openaiSearchStatus === "success"
+                                  ? "bg-emerald-950/40 border-emerald-900/60 text-emerald-400 font-bold"
+                                  : openaiSearchStatus === "error"
+                                  ? "bg-rose-950/40 border-rose-900/60 text-rose-400 font-bold"
+                                  : "border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                              }`}
                             >
-                              Desativar
+                              {openaiSearchStatus === "searching" && "⏳ Buscando..."}
+                              {openaiSearchStatus === "success" && "✓ Atualizado!"}
+                              {openaiSearchStatus === "error" && "✗ Falha!"}
+                              {openaiSearchStatus === "idle" && "🔎 Buscar Online"}
                             </button>
                           </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 text-[9px] font-mono text-slate-500 bg-black/20 border border-[#222] px-2 py-1 rounded">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
-                            <span>Chave OpenAI Ausente (Imagens rodando via Nano Banana)</span>
+                          
+                          <div className="space-y-2 max-h-48 overflow-y-auto bg-black/20 p-2.5 rounded border border-[#222]">
+                            <div className="space-y-1">
+                              <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Prompt (Clique para Habilitar/Desabilitar. Hover p/ consultar preço):</span>
+                              <div className="flex flex-wrap gap-1">
+                                {sortByPrice(availableModels.openai?.text || ["gpt-4o-mini", "gpt-4o"]).map((m) => {
+                                  const isEnabled = enabledPromptModels.includes(m);
+                                  const priceInfo = getModelPriceInfo(m);
+                                  return (
+                                    <button
+                                      key={m}
+                                      type="button"
+                                      onClick={() => toggleEnabledPromptModel(m)}
+                                      className={`px-2 py-0.5 text-[9px] rounded font-mono border transition-all cursor-pointer select-none ${
+                                        isEnabled
+                                          ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
+                                          : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
+                                      }`}
+                                      title={`💰 Valor: ${priceInfo.priceLabel} | 📅 Atualizado em: ${priceInfo.updatedAt}\n${isEnabled ? "Clique para desabilitar nas cartelas" : "Clique para habilitar nas cartelas"}`}
+                                    >
+                                      {isEnabled ? "✓ " : ""}{m}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="space-y-1 pt-2 border-t border-[#222]">
+                              <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Imagem (Clique para Habilitar/Desabilitar. Hover p/ consultar preço):</span>
+                              <div className="flex flex-wrap gap-1">
+                                {sortByPrice(availableModels.openai?.image && availableModels.openai.image.length > 0 
+                                  ? availableModels.openai.image 
+                                  : ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "chatgpt-image-latest", "dall-e-3", "dall-e-2"]
+                                ).map((m) => {
+                                  const modelId = `openai:${m}`;
+                                  const isEnabled = enabledImageModels.includes(modelId) || (m === "gpt-image-2" && enabledImageModels.includes("chatgpt_dalle3"));
+                                  const priceInfo = getModelPriceInfo(m);
+                                  return (
+                                    <button
+                                      key={m}
+                                      type="button"
+                                      onClick={() => {
+                                        setEnabledImageModels((prev) => {
+                                          if (prev.includes(modelId)) {
+                                            return prev.filter(x => x !== modelId && x !== "chatgpt_dalle3");
+                                          } else {
+                                            return [...prev, modelId];
+                                          }
+                                        });
+                                        setOpenAiDalleModel(m);
+                                        setNotification(`✓ Modelo OpenAI (${m}) ${isEnabled ? "desativado" : "ativado"} nas cartelas!`);
+                                      }}
+                                      className={`px-2 py-0.5 text-[9px] rounded font-mono border transition-all cursor-pointer select-none ${
+                                        isEnabled
+                                          ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
+                                          : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
+                                      }`}
+                                      title={`💰 Valor: ${priceInfo.priceLabel} | 📅 Atualizado em: ${priceInfo.updatedAt}\n${isEnabled ? "Clique para desabilitar nas cartelas" : "Clique para habilitar nas cartelas"}`}
+                                    >
+                                      {isEnabled ? "✓ " : ""}OpenAI ({m})
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -5154,65 +5362,57 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                           <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
                             URL da API do Ollama
                           </label>
-                          <input
-                            type="text"
-                            value={ollamaUrl}
-                            onChange={(e) => setOllamaUrl(e.target.value)}
-                            placeholder="http://localhost:11434"
-                            className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-1.5 text-xs font-mono text-white focus:border-[#D4AF37] focus:outline-none"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
-                            Modelo no Ollama
-                          </label>
                           <div className="flex gap-1.5">
-                            {ollamaModels.length > 0 ? (
-                              <select
-                                value={ollamaModels.includes(ollamaModel) ? ollamaModel : "custom"}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (val !== "custom") {
-                                    setOllamaModel(val);
-                                  } else {
-                                    setOllamaModel("");
-                                  }
-                                }}
-                                className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-2.5 py-1.5 text-xs text-white focus:border-[#D4AF37] focus:outline-none font-mono cursor-pointer"
-                              >
-                                {ollamaModels.map((m) => (
-                                  <option key={m} value={m}>{m}</option>
-                                ))}
-                                <option value="custom">✍ Digitar Personalizado...</option>
-                              </select>
-                            ) : (
-                              <input
-                                type="text"
-                                value={ollamaModel}
-                                onChange={(e) => setOllamaModel(e.target.value)}
-                                placeholder="Ex: llama3, mistral, deepseek-r1"
-                                className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-3 py-1.5 text-xs font-mono text-white focus:border-[#D4AF37] focus:outline-none"
-                              />
-                            )}
+                            <input
+                              type="text"
+                              value={ollamaUrl}
+                              onChange={(e) => setOllamaUrl(e.target.value)}
+                              placeholder="http://localhost:11434"
+                              className="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-3 py-1.5 text-xs font-mono text-white focus:border-[#D4AF37] focus:outline-none"
+                            />
                             <button
                               type="button"
                               onClick={fetchOllamaModels}
                               disabled={isFetchingOllamaModels}
                               className="px-2.5 py-1.5 border border-[#D4AF37]/35 bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black text-[#D4AF37] text-[10px] uppercase tracking-wider font-mono rounded transition-all cursor-pointer disabled:opacity-50"
                             >
-                              {isFetchingOllamaModels ? "Buscando..." : "Buscar Modelos"}
+                              {isFetchingOllamaModels ? "Buscando..." : "🔎 Buscar Modelos"}
                             </button>
                           </div>
-                          {(!ollamaModels.includes(ollamaModel) || ollamaModel === "") && ollamaModels.length > 0 && (
-                            <input
-                              type="text"
-                              value={ollamaModel}
-                              onChange={(e) => setOllamaModel(e.target.value)}
-                              placeholder="Digite o ID do modelo Ollama"
-                              className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-1.5 text-xs font-mono text-white focus:border-[#D4AF37] focus:outline-none mt-1.5"
-                            />
-                          )}
+                        </div>
+
+                        {/* Ollama Models Toggle Selection Section */}
+                        <div className="space-y-3 pt-3 border-t border-[#2b2b2b]">
+                          <span className="text-[10px] uppercase tracking-wider text-[#D4AF37] font-mono font-bold block">
+                            Modelos Ollama Encontrados no PC
+                          </span>
+                          
+                          <div className="space-y-2 max-h-48 overflow-y-auto bg-black/20 p-2.5 rounded border border-[#222]">
+                            <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">
+                              Clique para Habilitar/Desabilitar nas Cartelas:
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {(ollamaModels && ollamaModels.length > 0 ? ollamaModels : ["llama3", "mistral"]).map((m) => {
+                                const keyWithPrefix = `ollama:${m}`;
+                                const isEnabled = enabledPromptModels.includes(keyWithPrefix) || enabledPromptModels.includes(m);
+                                return (
+                                  <button
+                                    key={m}
+                                    type="button"
+                                    onClick={() => toggleEnabledPromptModel(keyWithPrefix)}
+                                    className={`px-2 py-0.5 text-[9px] rounded font-mono border transition-all cursor-pointer select-none ${
+                                      isEnabled
+                                        ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
+                                        : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
+                                    }`}
+                                    title={isEnabled ? `Clique para desabilitar ${m} nas cartelas` : `Clique para habilitar ${m} nas cartelas`}
+                                  >
+                                    {isEnabled ? "✓ " : ""}{m}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
                         </div>
 
                         <div className="bg-black/35 p-3 rounded border border-zinc-850 space-y-1.5">
@@ -6610,13 +6810,15 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                 <img
                                   src={img.url}
                                   alt="Preview"
-                                  className="w-full h-full object-cover select-none pointer-events-none"
+                                  className="w-full h-full object-cover select-none cursor-pointer"
                                   referrerPolicy="no-referrer"
+                                  onClick={() => setZoomedImageUrl(img.url)}
+                                  title="Clique para ampliar em tela cheia"
                                 />
 
                                 {/* Active badge on top right */}
                                 {isActiveInScene && (
-                                  <span className="absolute top-1.5 right-1.5 bg-emerald-500 text-black text-[8px] font-mono font-bold uppercase px-1 py-0.5 rounded shadow">
+                                  <span className="absolute top-1.5 right-1.5 bg-emerald-500 text-black text-[8px] font-mono font-bold uppercase px-1 py-0.5 rounded shadow z-10 pointer-events-none">
                                     Ativa
                                   </span>
                                 )}
@@ -6624,63 +6826,74 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                 {/* Hover action sheet */}
                                 <div className="absolute inset-0 bg-black/95 opacity-0 group-hover:opacity-100 flex flex-col justify-between p-2.5 transition-all duration-200">
                                   {/* Top part: details */}
-                                  <div className="text-[9px] font-mono text-slate-400 space-y-0.5 leading-normal">
-                                    <div className="text-slate-300 flex justify-between">
+                                  <div className="text-[9px] font-mono text-slate-400 space-y-0.5 leading-normal flex-1 flex flex-col">
+                                    <div 
+                                      onClick={() => setZoomedImageUrl(img.url)}
+                                      className="text-slate-300 flex justify-between cursor-pointer hover:text-white transition-colors"
+                                      title="Clique para ampliar em tela cheia"
+                                    >
                                       <span>IA: {img.model || "Flux / MJ"}</span>
                                       <span className="text-slate-500">{img.timestamp}</span>
                                     </div>
-                                    <div className="line-clamp-3 text-[8px] text-slate-400 italic">
-                                      {img.prompt}
-                                    </div>
+                                    <PromptHoverTooltip promptText={img.prompt || ""} />
                                   </div>
 
                                   {/* Bottom part: actions */}
-                                  <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-[#222]">
+                                  <div className="space-y-1 pt-1.5 border-t border-[#222]">
                                     {!isActiveInScene ? (
                                       <button
                                         type="button"
                                         onClick={() => handleActivateArchiveImage(scene.id, img.url, img)}
-                                        className="col-span-2 py-1 bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black border border-[#D4AF37]/30 text-[#D4AF37] text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all text-center"
+                                        className="w-full py-1 bg-[#D4AF37]/10 hover:bg-[#D4AF37] hover:text-black border border-[#D4AF37]/30 text-[#D4AF37] text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all text-center"
                                       >
-                                        Ativar na Cena
+                                        ✓ Ativar na Cena
                                       </button>
                                     ) : (
-                                      <span className="col-span-2 py-1 text-center text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 text-[8px] uppercase tracking-wider font-mono font-bold rounded">
-                                        Imagem Ativa
+                                      <span className="w-full py-1 block text-center text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 text-[8px] uppercase tracking-wider font-mono font-bold rounded">
+                                        ✓ Imagem Ativa
                                       </span>
                                     )}
 
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const cleanTitle = (scene.text || "")
-                                          .toLowerCase()
-                                          .normalize("NFD")
-                                          .replace(/[\u0300-\u036f]/g, "")
-                                          .replace(/[^a-z0-9]/g, "-")
-                                          .replace(/-+/g, "-")
-                                          .substring(0, 24)
-                                          .replace(/^-|-$/g, "");
-                                        const num = consecutiveNumbering 
-                                          ? String(idx + 1).padStart(2, "0") 
-                                          : (scene.sceneNumber || String(idx + 1));
-                                        const letter = img.letter || "A";
-                                        const filename = `cena-${num}_${letter}${cleanTitle ? `-${cleanTitle}` : ""}.png`;
-                                        handleDownloadArchiveImage(img.url, filename);
-                                      }}
-                                      className="py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all text-center"
-                                      title="Baixar Foto"
-                                    >
-                                      Baixar
-                                    </button>
-
+                                    <div className="grid grid-cols-2 gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => setZoomedImageUrl(img.url)}
+                                        className="py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all text-center"
+                                        title="Ampliar em tela cheia"
+                                      >
+                                        🔍 Ampliar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const cleanTitle = (scene.text || "")
+                                            .toLowerCase()
+                                            .normalize("NFD")
+                                            .replace(/[\u0300-\u036f]/g, "")
+                                            .replace(/[^a-z0-9]/g, "-")
+                                            .replace(/-+/g, "-")
+                                            .substring(0, 24)
+                                            .replace(/^-|-$/g, "");
+                                          const num = consecutiveNumbering 
+                                            ? String(idx + 1).padStart(2, "0") 
+                                            : (scene.sceneNumber || String(idx + 1));
+                                          const letter = img.letter || "A";
+                                          const filename = `cena-${num}_${letter}${cleanTitle ? `-${cleanTitle}` : ""}.png`;
+                                          handleDownloadArchiveImage(img.url, filename);
+                                        }}
+                                        className="py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all text-center"
+                                        title="Baixar Foto"
+                                      >
+                                        💾 Baixar
+                                      </button>
+                                    </div>
                                     <button
                                       type="button"
                                       onClick={() => {
                                         navigator.clipboard.writeText(img.prompt);
                                         setNotification("✓ Prompt copiado para a área de transferência!");
                                       }}
-                                      className="py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all flex items-center justify-center gap-1"
+                                      className="w-full py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all flex items-center justify-center gap-1"
                                       title="Copiar Prompt"
                                     >
                                       <Copy size={8} />
@@ -6820,7 +7033,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
             {/* Footer / Controls */}
             <div className="px-6 py-4 border-t border-[#333]/60 bg-black/40 flex items-center justify-between shrink-0 font-mono text-[9px] text-slate-500 uppercase tracking-widest">
-              <span>Total de {sessionImageArchive.length} imagens no acervo completo</span>
+              <span>Total de {sanitizeArchiveArray(sessionImageArchive).length} imagens no acervo completo</span>
               {!showConfirmPurgeDiscarded ? (
                 <button
                   type="button"
@@ -6933,6 +7146,27 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             </p>
             <div className="text-[10px] text-zinc-400 font-mono uppercase tracking-widest animate-pulse">
               Aguarde enquanto os timecodes são corrigidos no disco...
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Lightbox Zoom Modal Overlay */}
+      {zoomedImageUrl && (
+        <div 
+          className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-4 sm:p-8 animate-fadeIn cursor-pointer select-none"
+          onClick={() => setZoomedImageUrl(null)}
+          role="dialog"
+        >
+          <div className="relative max-w-7xl max-h-[90vh] w-full flex flex-col items-center justify-center">
+            <img
+              src={zoomedImageUrl}
+              alt="Imagem Ampliada"
+              className="max-w-full max-h-[82vh] object-contain rounded-lg border border-[#D4AF37]/40 shadow-[0_0_50px_rgba(212,175,55,0.25)]"
+              referrerPolicy="no-referrer"
+            />
+            <div className="mt-3 px-4 py-1.5 bg-black/80 border border-zinc-800 rounded-full text-zinc-300 text-[10px] font-mono uppercase tracking-widest flex items-center gap-2">
+              <span>Clique na tela ou pressione ESC para fechar</span>
             </div>
           </div>
         </div>
