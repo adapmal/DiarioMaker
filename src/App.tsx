@@ -5,7 +5,7 @@ import ScriptInputArea from "./components/ScriptInputArea";
 import StoryboardCard from "./components/StoryboardCard";
 import { SAMPLE_SCRIPTS } from "./data/samples";
 import { generateFCPXML, generateEDL, alignAudioToExistingScenes } from "./lib/timecodeUtils";
-import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, Plus, Info, Key, Eye, EyeOff, Lock, Check, CheckCircle2, Loader2, FileText, Save, Upload, Undo, Redo, Settings, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu, Mic, Edit3 } from "lucide-react";
+import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, Plus, Info, Key, Eye, EyeOff, Lock, Check, CheckCircle2, Loader2, FileText, Save, Upload, Undo, Redo, Settings, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu, Mic, Edit3, FolderOpen, Folder } from "lucide-react";
 import { getCachedImage, setCachedImage, getCacheSizeMB, clearCache } from "./lib/cacheStore";
 import { prepareImageBlobForDownload } from "./lib/imageUtils";
 import { motion, AnimatePresence } from "motion/react";
@@ -534,6 +534,7 @@ export default function App() {
   // Custom Confirmation States to avoid browser alert/confirm iframe blockage
   const [showClearCacheModal, setShowClearCacheModal] = useState(false);
   const [showConfirmClearCache, setShowConfirmClearCache] = useState(false);
+  const [showConfirmClearProjectCache, setShowConfirmClearProjectCache] = useState(false);
   const [confirmRestoreBackup, setConfirmRestoreBackup] = useState<"main" | "autosave" | null>(null);
   const [showConfirmPurgeDiscarded, setShowConfirmPurgeDiscarded] = useState(false);
   const [newProjectModalError, setNewProjectModalError] = useState<string | null>(null);
@@ -1050,8 +1051,33 @@ export default function App() {
     }
   });
 
+const getTodayDateYmd = (): string => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}/${mm}/${dd}`;
+};
+
+const deriveFolderFromDate = (dateStr: string): string => {
+  if (!dateStr) return "meu-projeto";
+  const clean = dateStr.replace(/\//g, "-");
+  const parts = clean.split("-");
+  if (parts.length === 3 && parts[0].length >= 2 && parts[1] && parts[2]) {
+    const yy = parts[0].slice(-2);
+    const mm = parts[1].padStart(2, "0");
+    const dd = parts[2].padStart(2, "0");
+    return `${yy}${mm}${dd}`;
+  }
+  const digits = dateStr.replace(/[^0-9]/g, "");
+  if (digits.length >= 6) {
+    return digits.slice(-6);
+  }
+  return "meu-projeto";
+};
+
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
-  const [newProjectDate, setNewProjectDate] = useState("");
+  const [newProjectDate, setNewProjectDate] = useState(getTodayDateYmd());
   const [newProjectScript, setNewProjectScript] = useState("");
   const [newProjectAudioFile, setNewProjectAudioFile] = useState<File | null>(null);
   const [newProjectAudioFileName, setNewProjectAudioFileName] = useState<string | undefined>();
@@ -2151,12 +2177,11 @@ export default function App() {
     return bestStyleId;
   };
 
-  // Generate initial storyboard from Raw Text
   const handleGenerateStoryboard = async (
     rawText: string, 
     preference: StylePreference, 
     referenceImage?: string,
-    selectedEngine?: "gemini" | "openai" | "ollama"
+    selectedEngine?: string
   ) => {
     pushToHistory([]);
     setIsGenerating(true);
@@ -2164,9 +2189,13 @@ export default function App() {
     setStylePreference(preference);
     setActiveView("storyboard");
 
+    const engineLower = (selectedEngine || "").toLowerCase();
+    const isOllamaSelected = engineLower.startsWith("ollama:") || engineLower.includes("ollama");
+    const isOpenAiSelected = engineLower.startsWith("gpt-") || engineLower.startsWith("o1") || engineLower.startsWith("o3") || engineLower.startsWith("openai:") || selectedEngine === "openai";
+
     // If an engine is explicitly specified, respect it. Otherwise fallback to the general toggle.
-    const useOpenAi = selectedEngine 
-      ? (selectedEngine === "openai" && !!openAiKey)
+    const useOpenAi = isOpenAiSelected 
+      ? (isOpenAiSelected && !!openAiKey)
       : (useOpenAiForPrompts && !!openAiKey);
 
     const resolvedStyleId = preference === "auto" ? detectStylePreference(rawText) : preference;
@@ -2174,7 +2203,7 @@ export default function App() {
     const stylePrompt = matchedStyle ? matchedStyle.prompt : "";
 
     try {
-      if (selectedEngine === "ollama") {
+      if (isOllamaSelected) {
         try {
           const activeOllamaUrl = ollamaUrl.trim().replace(/\/$/, "");
           const systemInstruction = `You are an expert film director and AI storyboard prompt engineer. Your task is to analyze the narrative script and segment it into logical, pacing-appropriate sequential scenes. You MUST map 100% of the input text into sequential scenes verbatim in the "text" field.
@@ -3315,55 +3344,167 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     setNotification("Arquivo de texto dos prompts exportado com sucesso!");
   };
 
+  const handleBrowseFolder = async () => {
+    try {
+      const res = await fetch("/api/storyboard/browse-folder", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.folderName) {
+          setProjectFolder(data.folderName);
+          setNotification(`✓ Pasta do projeto alterada no Explorer: ${data.folderName}`);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to open Explorer folder browser:", err);
+    }
+  };
+
+  const compressAudioFile = async (file: File): Promise<File> => {
+    // If file is already smaller than 18MB, return directly
+    if (file.size < 18 * 1024 * 1024) {
+      return file;
+    }
+    try {
+      setNotification(`⚡ Otimizando áudio (${(file.size / 1024 / 1024).toFixed(1)}MB) para respeitar o limite de 25MB da OpenAI...`);
+      const arrayBuffer = await file.arrayBuffer();
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+      const duration = decodedBuffer.duration;
+      // Calculate target sample rate dynamically so encoded 16-bit PCM WAV is ALWAYS <= 18MB (18,874,368 bytes = 9,437,184 samples)
+      let targetSampleRate = 16000;
+      if (duration > 0) {
+        const maxSamplesAllowed = 9437184;
+        const calculatedRate = Math.floor(maxSamplesAllowed / duration);
+        targetSampleRate = Math.max(8000, Math.min(16000, calculatedRate));
+      }
+
+      const offlineCtx = new OfflineAudioContext(1, Math.ceil(duration * targetSampleRate), targetSampleRate);
+
+      const source = offlineCtx.createBufferSource();
+      source.buffer = decodedBuffer;
+      source.connect(offlineCtx.destination);
+      source.start(0);
+
+      const renderedBuffer = await offlineCtx.startRendering();
+      const pcmData = renderedBuffer.getChannelData(0);
+
+      const wavBlob = encodeWavMono16Bit(pcmData, targetSampleRate);
+      const compressedName = file.name.replace(/\.[^/.]+$/, "") + "_opt.wav";
+      const compressedFile = new File([wavBlob], compressedName, { type: "audio/wav" });
+      console.log(`[Audio Transcoder] Transcoded audio from ${(file.size / 1024 / 1024).toFixed(1)}MB down to ${(compressedFile.size / 1024 / 1024).toFixed(1)}MB (SampleRate: ${targetSampleRate}Hz)`);
+      return compressedFile;
+    } catch (err) {
+      console.warn("[Audio Transcoder] Compression skipped, using original file:", err);
+      return file;
+    }
+  };
+
+  const encodeWavMono16Bit = (samples: Float32Array, sampleRate: number): Blob => {
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
+    const writeStr = (v: DataView, offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) v.setUint8(offset + i, str.charCodeAt(i));
+    };
+    writeStr(view, 0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * 2, true);
+    writeStr(view, 8, 'WAVE');
+    writeStr(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(view, 36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++, offset += 2) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+    return new Blob([buffer], { type: 'audio/wav' });
+  };
+
   // Handle project creation with audio narration
   const handleGenerateStoryboardWithAudio = async (params: {
     text: string;
     style: StylePreference;
     referenceImage?: string;
-    selectedEngine?: "gemini" | "openai" | "ollama";
+    selectedEngine?: string;
     audioFile?: File | null;
     audioBase64?: string;
     audioMimeType?: string;
     audioFileName?: string;
+    audioPath?: string;
     explicitProjectName?: string;
   }) => {
-    const { text, style, referenceImage, selectedEngine, audioFile, audioBase64, audioMimeType, explicitProjectName } = params;
+    const { text, style, referenceImage, selectedEngine, audioFile, audioBase64, audioMimeType, audioPath, explicitProjectName } = params;
 
-    if (!audioFile && !audioBase64) {
-      handleGenerateStoryboard(text, style, referenceImage, selectedEngine);
+    if (!audioFile && !audioBase64 && !audioPath) {
+      handleGenerateStoryboard(text, style, referenceImage, selectedEngine as any);
       return;
     }
 
     setIsGenerating(true);
-    setNotification("🎙️ Enviando e transcrevendo áudio da narração via IA...");
+    setNotification("🎙️ Transcrevendo narração em áudio via IA... Aguarde.");
+    setActiveView("storyboard");
+    setShowScriptModal(false);
 
     try {
       const activeProjectName = explicitProjectName || projectName || "meu-projeto";
       let response: Response;
 
+      const isOpenAiEngine = selectedEngine === "openai" || selectedEngine?.startsWith("gpt-") || selectedEngine?.includes("openai") || (useOpenAiForPrompts && !!openAiKey);
+
       if (audioFile) {
+        // Set instant HD object URL for full quality local audio playback
+        try {
+          const localHdUrl = URL.createObjectURL(audioFile);
+          setAudioNarrationUrl(localHdUrl);
+        } catch (_) {}
+
+        const fileToUpload = await compressAudioFile(audioFile);
         const formData = new FormData();
-        formData.append("audio", audioFile);
+        formData.append("audio", fileToUpload);
         formData.append("projectName", activeProjectName);
+        if (selectedEngine) formData.append("engine", selectedEngine);
 
         response = await fetch("/api/storyboard/transcribe-audio", {
           method: "POST",
           headers: {
-            ...(customApiKey ? { "x-gemini-key": customApiKey } : {})
+            ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
+            ...(isOpenAiEngine && openAiKey ? {
+              "x-use-openai": "true",
+              "x-openai-key": openAiKey,
+              "x-openai-model": openAiModel
+            } : {})
           },
           body: formData
         });
       } else {
+        if (audioPath) {
+          setAudioNarrationUrl(`/api/storyboard/stream-local-audio?path=${encodeURIComponent(audioPath)}`);
+        }
         response = await fetch("/api/storyboard/transcribe-audio", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(customApiKey ? { "x-gemini-key": customApiKey } : {})
+            ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
+            ...(isOpenAiEngine && openAiKey ? {
+              "x-use-openai": "true",
+              "x-openai-key": openAiKey,
+              "x-openai-model": openAiModel
+            } : {})
           },
           body: JSON.stringify({
             audioBase64,
             audioMimeType,
-            projectName: activeProjectName
+            audioPath,
+            projectName: activeProjectName,
+            selectedEngine
           })
         });
       }
@@ -3374,7 +3515,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       }
 
       const audioData = await response.json();
-      if (audioData.audioUrl) {
+      if (audioData.audioUrl && !audioFile && !audioPath) {
         setAudioNarrationUrl(audioData.audioUrl);
       }
 
@@ -3396,9 +3537,25 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           duration: s.endTime - s.startTime,
           promptQueueStatus: "idle"
         }));
-      } else {
-        // Generate scenes via text engine
-        createdScenes = await handleGenerateStoryboard(scriptToUse, style, referenceImage, selectedEngine) || [];
+      } else if (text && text.trim()) {
+        const textGeneratedScenes = await handleGenerateStoryboard(scriptToUse, style, referenceImage, selectedEngine);
+        if (!textGeneratedScenes || textGeneratedScenes.length === 0) {
+          // Failure in text storyboard generation, error is already set by handleGenerateStoryboard
+          return;
+        }
+        createdScenes = textGeneratedScenes;
+      } else if (audioData.scenes && Array.isArray(audioData.scenes) && audioData.scenes.length > 0) {
+        createdScenes = audioData.scenes.map((s: any, idx: number) => ({
+          id: `scene-audio-${Date.now()}-${idx}`,
+          text: s.text || "",
+          description: "Cena extraída da narração em áudio.",
+          prompt: `Cinematic landscape or scenery: ${s.text || "narration"}, 16:9 aspect ratio`,
+          sceneNumber: String(idx + 1),
+          startTime: s.startTime,
+          endTime: s.endTime,
+          duration: s.endTime - s.startTime,
+          promptQueueStatus: "idle"
+        }));
       }
 
       // Robust fallback: if createdScenes is empty, split scriptToUse into scenes locally
@@ -3471,6 +3628,45 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     } catch (err: any) {
       console.error("Mid-project audio fail:", err);
       setError(`Erro ao alinhar áudio: ${err.message || err}`);
+    }
+  };
+
+  // Handle mid-project audio link (NLE Mode)
+  const handleMidProjectBrowseAudioFile = async () => {
+    try {
+      const response = await fetch("/api/storyboard/browse-audio-file", { method: "POST" });
+      const data = await response.json();
+      if (data.success && data.filePath) {
+        const streamUrl = `/api/storyboard/stream-local-audio?path=${encodeURIComponent(data.filePath)}`;
+        
+        // NLE Check: Validate duration before applying
+        const tempAudio = new Audio(streamUrl);
+        tempAudio.onloadedmetadata = () => {
+          const newDuration = tempAudio.duration;
+          let maxSceneEnd = 0;
+          if (scenes && scenes.length > 0) {
+            maxSceneEnd = Math.max(...scenes.map(s => s.endTime ?? 0));
+          }
+          
+          if (maxSceneEnd > 0 && Math.abs(newDuration - maxSceneEnd) > 5) {
+            const confirmed = window.confirm(`⚠️ Atenção (Modo NLE) ⚠️\n\nO arquivo de áudio selecionado tem duração de ${newDuration.toFixed(1)}s, mas o seu projeto atual termina em ${maxSceneEnd.toFixed(1)}s.\n\nSubstituir o áudio por um com duração muito diferente pode desalinhar as falas com os timecodes atuais.\n\nTem certeza que deseja substituir o arquivo de áudio?`);
+            if (!confirmed) {
+              setNotification("Ação cancelada pelo usuário.");
+              return;
+            }
+          }
+          
+          setAudioNarrationUrl(streamUrl);
+          setNotification("✓ Arquivo de áudio (NLE) vinculado e substituído com sucesso! (Nenhuma re-transcrição foi feita).");
+        };
+        
+        tempAudio.onerror = () => {
+          setError("Erro ao carregar os metadados do arquivo de áudio. Verifique se o formato é suportado.");
+        };
+      }
+    } catch (err: any) {
+      console.error("Erro ao abrir seletor nativo de áudio (Mid-project):", err);
+      setError(`Erro ao linkar áudio NLE: ${err.message || err}`);
     }
   };
 
@@ -3712,7 +3908,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         scriptText,
         selectedStyle,
         stylePreference,
-        isLightweight: exportModeOption === "lightweight"
+        isLightweight: exportModeOption === "lightweight",
+        audioNarrationUrl
       };
 
       zip.file("project.json", JSON.stringify(projectData, null, 2));
@@ -3845,6 +4042,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             if (data.scriptText !== undefined) setScriptText(data.scriptText);
             if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
             if (data.stylePreference !== undefined) setStylePreference(data.stylePreference);
+            if (data.audioNarrationUrl !== undefined) setAudioNarrationUrl(data.audioNarrationUrl);
             
             if (data.diaryDate !== undefined) {
               setDiaryDate(data.diaryDate);
@@ -4293,7 +4491,9 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 <button
                   type="button"
                   onClick={() => {
-                    setNewProjectDate(new Date().toLocaleDateString("sv-SE"));
+                    const todayYmd = getTodayDateYmd();
+                    setNewProjectDate(todayYmd);
+                    setProjectFolder(deriveFolderFromDate(todayYmd));
                     setNewProjectScript("");
                     setNewProjectStyle("auto");
                     setNewProjectStyleRefImage(undefined);
@@ -4382,6 +4582,14 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                     placeholder="nome-da-pasta"
                     title="Pasta física no servidor"
                   />
+                  <button
+                    type="button"
+                    onClick={handleBrowseFolder}
+                    className="p-0.5 text-zinc-400 hover:text-[#D4AF37] transition-colors cursor-pointer"
+                    title="Escolher diretório no Windows Explorer"
+                  >
+                    <FolderOpen size={11} />
+                  </button>
                 </div>
 
                 <span className="text-zinc-700">|</span>
@@ -5639,101 +5847,152 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
             {/* Right Hand: Storage, Backups and Project Info Section */}
             <div className="md:col-span-6 space-y-6">
+              {/* Gerenciamento de Caches Panel */}
+              <div className="bg-[#161616] border border-[#333] rounded-lg p-5 space-y-4">
                 <div className="flex items-center gap-2 border-b border-[#333] pb-2">
                   <HardDrive size={14} className="text-[#D4AF37]" />
                   <h3 className="text-xs font-mono font-bold tracking-widest uppercase text-[#D4AF37]">
-                    Armazenamento & Cache Local
+                    Gerenciamento & Estrutura de Caches
                   </h3>
                 </div>
-                
+
                 <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Gerencie onde e como suas imagens geradas são guardadas localmente para manter o aplicativo rápido e sem travamentos ao digitar.
+                  O <strong>DiarioMaker</strong> opera com dois níveis independentes de cache para garantir carregamento instantâneo de imagens e renderização fluida, assim como no Adobe Premiere:
                 </p>
 
-                <div className="space-y-3.5">
-                  {/* IndexedDB Toggle */}
-                  <div className="flex items-start gap-3 bg-[#0a0a0a] p-3 rounded border border-[#333]/60">
-                    <input
-                      type="checkbox"
-                      id="enable-local-cache"
-                      checked={localCacheEnabled}
-                      onChange={(e) => setLocalCacheEnabled(e.target.checked)}
-                      className="mt-0.5 rounded border-[#333] text-[#D4AF37] focus:ring-[#D4AF37] bg-black cursor-pointer"
-                    />
-                    <div className="space-y-1">
-                      <label htmlFor="enable-local-cache" className="text-xs font-bold text-white cursor-pointer hover:text-[#D4AF37] transition-colors">
-                        Ativar Cache em IndexedDB
-                      </label>
-                      <p className="text-[10px] text-slate-400 leading-normal">
-                        Salva as imagens de forma assíncrona no banco de dados do seu navegador para evitar sobrecarregar a memória e eliminar lentidão na escrita.
-                      </p>
+                <div className="space-y-4">
+                  {/* CACHE TIPO 1: Cache Físico do Projeto no Disco */}
+                  <div className="bg-[#0a0a0a] border border-zinc-800 p-3.5 rounded-lg space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FolderOpen size={14} className="text-amber-400" />
+                        <span className="text-xs font-bold text-white font-mono uppercase tracking-wide">
+                          1. Cache Físico do Projeto (<code className="text-[#D4AF37]">projects/{projectFolder}/cache</code>)
+                        </span>
+                      </div>
+                      <span className="text-[9px] font-mono text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
+                        Disco do PC
+                      </span>
+                    </div>
+
+                    <p className="text-[10.5px] text-slate-400 leading-relaxed">
+                      Pasta física isolada no seu computador. Armazena temporários de áudio transcodificados (16kHz), arquivos intermediários NLE e thumbnails gerados durante a edição do projeto. <em>Limpar este cache libera espaço em disco e não apaga suas fotos finais nem a narração.</em>
+                    </p>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-zinc-900">
+                      <span className="text-[9.5px] font-mono text-slate-500">
+                        Caminho: <code className="text-stone-300">projects/{projectFolder}/cache/</code>
+                      </span>
+                      {!showConfirmClearProjectCache ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmClearProjectCache(true)}
+                          className="px-2.5 py-1 bg-amber-950/30 hover:bg-amber-900 border border-amber-800/60 text-amber-300 text-[9.5px] font-mono font-bold uppercase tracking-wider rounded transition-all cursor-pointer"
+                        >
+                          Limpar Temporários do Projeto
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-[9px] font-mono">
+                          <span className="text-amber-300">Limpar pasta cache do projeto?</span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await fetch("/api/storyboard/projects/clear-cache", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ folder: projectFolder })
+                                });
+                                setNotification(`✓ Pasta cache/ do projeto '${projectFolder}' foi esvaziada!`);
+                                setShowConfirmClearProjectCache(false);
+                              } catch (err: any) {
+                                setError(`Erro ao limpar cache do projeto: ${err.message}`);
+                                setShowConfirmClearProjectCache(false);
+                              }
+                            }}
+                            className="px-2 py-0.5 bg-amber-900 text-white font-bold rounded cursor-pointer uppercase font-bold"
+                          >
+                            Sim
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmClearProjectCache(false)}
+                            className="px-2 py-0.5 bg-zinc-800 text-slate-300 rounded cursor-pointer uppercase"
+                          >
+                            Não
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Cache Size Info & Clear */}
-                  <div className="bg-black/40 border border-[#222] p-2.5 rounded text-[11px] font-mono space-y-2">
+                  {/* CACHE TIPO 2: Cache em Banco de Dados do Navegador (IndexedDB) */}
+                  <div className="bg-[#0a0a0a] border border-zinc-800 p-3.5 rounded-lg space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <span className="text-slate-500 text-[9px] uppercase tracking-wider block">Espaço Usado em Disco</span>
-                        <span className="text-[#D4AF37] font-bold text-xs">
-                          {isHydrating ? "Calculando..." : `${cacheSizeMB.toFixed(2)} MB`}
+                      <div className="flex items-center gap-2">
+                        <Cpu size={14} className="text-sky-400" />
+                        <span className="text-xs font-bold text-white font-mono uppercase tracking-wide">
+                          2. Cache de Memória do Navegador (IndexedDB)
                         </span>
                       </div>
+                      <span className="text-[9.5px] font-mono text-[#D4AF37] font-bold">
+                        {isHydrating ? "Calculando..." : `${cacheSizeMB.toFixed(2)} MB Usados`}
+                      </span>
+                    </div>
+
+                    <p className="text-[10.5px] text-slate-400 leading-relaxed">
+                      Guarda cópias das imagens pesadas na memória interna do seu navegador web. Garante exibição instantânea sem piscadas e impede travamentos enquanto você digita no roteiro.
+                    </p>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-zinc-900">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="enable-local-cache"
+                          checked={localCacheEnabled}
+                          onChange={(e) => setLocalCacheEnabled(e.target.checked)}
+                          className="rounded border-[#333] text-[#D4AF37] focus:ring-[#D4AF37] bg-black cursor-pointer"
+                        />
+                        <label htmlFor="enable-local-cache" className="text-[10px] font-mono font-bold text-slate-300 cursor-pointer hover:text-white">
+                          Manter Cache IndexedDB Ativo
+                        </label>
+                      </div>
+
                       {!showConfirmClearCache ? (
                         <button
                           type="button"
                           onClick={() => setShowConfirmClearCache(true)}
-                          className="px-2.5 py-1.5 border border-rose-950/40 bg-rose-950/10 hover:bg-rose-950/30 text-rose-400 text-[10px] uppercase tracking-wider font-mono rounded transition-all cursor-pointer"
+                          className="px-2.5 py-1 bg-rose-950/30 hover:bg-rose-900 border border-rose-800/60 text-rose-300 text-[9.5px] font-mono font-bold uppercase tracking-wider rounded transition-all cursor-pointer"
                         >
-                          Limpar Cache
+                          Esvaziar Cache do Navegador
                         </button>
                       ) : (
-                        <div className="flex flex-col gap-1.5 items-end text-right">
-                          <span className="text-[9px] text-rose-300 font-sans block">Apagar todas as imagens cacheadas?</span>
-                          <div className="flex gap-1">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  // Purge browser client cache
-                                  await clearCache();
-
-                                  // Purge server-side physical image directory files and legacy autosave JSONs
-                                  await fetch("/api/storyboard/projects/clear-cache", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ folder: projectFolder })
-                                  }).catch((err) => console.warn("Failed to clear physical server cache:", err));
-
-                                  const clearedScenes = scenes.map(s => ({
-                                    ...s,
-                                    generatedImageUrl: undefined,
-                                    imageVersions: []
-                                  }));
-                                  setScenes(clearedScenes);
-                                  setSessionImageArchive([]);
-                                  setLocalStorageItemSafely("ethos_storyboard_scenes", JSON.stringify(clearedScenes));
-                                  localStorage.removeItem("ethos_storyboard_image_archive");
-                                  setCacheSizeMB(0);
-                                  setNotification("✓ Cache físico local e temporários excluídos com êxito!");
-                                  setShowConfirmClearCache(false);
-                                } catch (err: any) {
-                                  setError(`Erro ao limpar cache: ${err.message}`);
-                                  setShowConfirmClearCache(false);
-                                }
-                              }}
-                              className="px-2 py-0.5 bg-rose-900 hover:bg-rose-800 text-rose-100 text-[9px] font-mono rounded cursor-pointer uppercase font-bold"
-                            >
-                              Sim
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setShowConfirmClearCache(false)}
-                              className="px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-[9px] font-mono rounded cursor-pointer uppercase"
-                            >
-                              Não
-                            </button>
-                          </div>
+                        <div className="flex items-center gap-1.5 text-[9px] font-mono">
+                          <span className="text-rose-300">Esvaziar IndexedDB?</span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await clearCache();
+                                setCacheSizeMB(0);
+                                setNotification("✓ Cache do navegador (IndexedDB) esvaziado com sucesso!");
+                                setShowConfirmClearCache(false);
+                              } catch (err: any) {
+                                setError(`Erro ao esvaziar IndexedDB: ${err.message}`);
+                                setShowConfirmClearCache(false);
+                              }
+                            }}
+                            className="px-2 py-0.5 bg-rose-900 text-white font-bold rounded cursor-pointer uppercase font-bold"
+                          >
+                            Sim
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmClearCache(false)}
+                            className="px-2 py-0.5 bg-zinc-800 text-slate-300 rounded cursor-pointer uppercase"
+                          >
+                            Não
+                          </button>
                         </div>
                       )}
                     </div>
@@ -5782,6 +6041,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                     </div>
                   </div>
                 </div>
+              </div>
 
               {/* Backups de Segurança e Auto-Save Panel */}
               <div className="bg-[#161616] border border-[#333] rounded-lg p-5 space-y-4">
@@ -5988,10 +6248,20 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                           type="button"
                           onClick={() => midProjectAudioInputRef.current?.click()}
                           className="flex-1 py-2 bg-[#222] hover:bg-[#333] border border-[#D4AF37]/40 hover:border-[#D4AF37] text-[#D4AF37] text-[10px] uppercase tracking-widest font-mono font-bold rounded transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
-                          title="Anexar ou alinhar arquivo de narração em áudio para calcular timecodes exatos"
+                          title="Fazer upload via navegador de arquivo de narração"
                         >
                           <Mic size={12} />
-                          <span>{audioNarrationUrl ? "🎙️ Substituir Áudio" : "🎙️ Anexar Narração"}</span>
+                          <span>Upload</span>
+                        </button>
+                        
+                        <button
+                          type="button"
+                          onClick={handleMidProjectBrowseAudioFile}
+                          className="flex-1 py-2 bg-emerald-900/40 hover:bg-emerald-600 border border-emerald-500/60 text-emerald-400 hover:text-white text-[10px] uppercase tracking-widest font-mono font-bold rounded transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+                          title="Modo NLE: Vincular arquivo de áudio direto do HD sem upload para calcular timecodes exatos"
+                        >
+                          <FileText size={12} />
+                          <span>{audioNarrationUrl ? "Linkar Áudio" : "Linkar Áudio"}</span>
                         </button>
 
                         {audioNarrationUrl && (
@@ -6275,25 +6545,32 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               </div>
             ) : (
               /* Pristine empty placeholder */
-              <div className="border border-dashed border-[#333] rounded-lg p-12 text-center my-auto flex flex-col items-center justify-center max-w-xl mx-auto py-24 bg-[#161616]/20 mt-12">
-                <div className="w-16 h-16 rounded-full bg-[#111] border border-[#D4AF37]/20 flex items-center justify-center text-[#D4AF37]/75 mb-6 shadow-radial">
+              <div className="border border-dashed border-[#333] rounded-lg p-12 text-center my-auto flex flex-col items-center justify-center max-w-xl mx-auto py-20 bg-[#161616]/20 mt-12">
+                <div className="w-16 h-16 rounded-full bg-[#111] border border-[#D4AF37]/20 flex items-center justify-center text-[#D4AF37]/75 mb-5 shadow-radial">
                   <Film size={26} />
                 </div>
                 <h3 className="text-lg font-serif italic text-white mb-2">Aguardando Direção de Filme</h3>
-                <p className="text-xs text-slate-500 max-w-sm leading-relaxed mb-6 font-sans">
-                  Seu storyboard ainda não foi projetado. Abra o painel de <strong className="text-[#D4AF37] font-semibold">Roteiro e Configurações</strong> no topo para colar seu texto e começar!
+                <p className="text-xs text-slate-500 max-w-md leading-relaxed mb-6 font-sans">
+                  Seu storyboard ainda não possui cenas geradas. Utilize os botões abaixo para definir o roteiro/narração do projeto ou ajustar as configurações do aplicativo:
                 </p>
-                <button
-                  onClick={() => setActiveView("config")}
-                  className="px-6 py-3 bg-[#D4AF37] text-black font-bold uppercase tracking-wider text-xs rounded-md hover:bg-white transition-colors duration-200 cursor-pointer mb-6"
-                >
-                  📝 Abrir Roteiro e Configurações
-                </button>
-                
-                <div className="flex flex-wrap justify-center gap-2 text-[10px] font-mono text-[#D4AF37]/70 uppercase tracking-widest bg-black/40 px-4 py-2 border border-[#333] rounded">
-                  <span>Barroco ou</span>
-                  <span>• Cotidiano Brasileiro •</span>
-                  <span>Proporção 16:9</span>
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowScriptModal(true)}
+                    className="px-5 py-2.5 bg-[#D4AF37] text-black font-bold uppercase tracking-wider text-xs rounded-md hover:bg-white transition-colors duration-200 cursor-pointer flex items-center gap-2 font-mono shadow"
+                  >
+                    <FileText size={14} />
+                    <span>📝 Abrir Roteiro</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveView("config")}
+                    className="px-5 py-2.5 bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 text-stone-200 font-bold uppercase tracking-wider text-xs rounded-md transition-colors duration-200 cursor-pointer flex items-center gap-2 font-mono shadow"
+                  >
+                    <Settings size={14} />
+                    <span>⚙️ Configurações</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -6355,14 +6632,16 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               // format: DEMB_AAMMDD_V01
               const formatDiaryDate = (dateStr: string): string => {
                 if (!dateStr) return "";
-                const parts = dateStr.split("-");
+                const clean = dateStr.replace(/\//g, "-");
+                const parts = clean.split("-");
                 if (parts.length === 3) {
                   const year = parts[0].slice(-2);
-                  const month = parts[1];
-                  const day = parts[2];
+                  const month = parts[1].padStart(2, "0");
+                  const day = parts[2].padStart(2, "0");
                   return `${year}${month}${day}`;
                 }
-                return "";
+                const digits = dateStr.replace(/[^0-9]/g, "");
+                return digits.slice(-6);
               };
               
               const formattedDate = formatDiaryDate(newProjectDate);
@@ -6433,17 +6712,34 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               {/* Date Input */}
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 font-mono block">
-                  Data do Diário (Obrigatório)
+                  Data do Diário (Obrigatório - YYYY/MM/DD)
                 </label>
-                <input
-                  type="date"
-                  value={newProjectDate}
-                  onChange={(e) => setNewProjectDate(e.target.value)}
-                  required
-                  className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-xs font-mono text-white focus:border-[#D4AF37] focus:outline-none transition-all cursor-pointer"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={newProjectDate}
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/[^0-9/]/g, "");
+                      const digits = val.replace(/[^0-9]/g, "");
+                      if (digits.length >= 4 && digits.length <= 6 && !val.includes("/")) {
+                        val = `${digits.slice(0, 4)}/${digits.slice(4)}`;
+                      } else if (digits.length > 6 && (val.match(/\//g) || []).length < 2) {
+                        val = `${digits.slice(0, 4)}/${digits.slice(4, 6)}/${digits.slice(6, 8)}`;
+                      }
+                      setNewProjectDate(val);
+                      const derived = deriveFolderFromDate(val);
+                      if (derived && derived !== "meu-projeto") {
+                        setProjectFolder(derived);
+                      }
+                    }}
+                    placeholder="YYYY/MM/DD (ex: 2026/08/07)"
+                    maxLength={10}
+                    required
+                    className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-xs font-mono text-white placeholder-zinc-700 focus:border-[#D4AF37] focus:outline-none transition-all cursor-text tracking-wider font-bold"
+                  />
+                </div>
                 <p className="text-[10px] text-zinc-500 font-sans leading-relaxed">
-                  A data informada definirá automaticamente o nome do arquivo compactado ao salvar (ex: <code className="text-stone-300">DEMB_YYMMDD_V01.dmaker</code>).
+                  Preenchido automaticamente com o dia atual: <code className="text-[#D4AF37] font-mono">{getTodayDateYmd()}</code> (YYYY/MM/DD). Usado no nome do arquivo (ex: <code className="text-stone-300">DEMB_260807_V01</code>).
                 </p>
               </div>
 
@@ -6510,12 +6806,12 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               {/* Script Input */}
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 font-mono block">
-                  Roteiro / Instruções iniciais {newProjectAudioFileName ? "(Opcional se houver áudio)" : ""}
+                  Roteiro / Instruções iniciais - Opcional
                 </label>
                 <textarea
                   value={newProjectScript}
                   onChange={(e) => setNewProjectScript(e.target.value)}
-                  placeholder={newProjectAudioFileName ? "Deixe em branco para transcrição 100% automática do áudio..." : "Cole aqui o roteiro de meditação ou instruções cotidianas do diário..."}
+                  placeholder={newProjectAudioFileName ? "Deixe em branco para transcrição 100% automática do áudio..." : "Cole aqui o roteiro de meditação ou instruções cotidianas do diário (opcional)..."}
                   rows={4}
                   className="w-full bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-xs text-white placeholder-zinc-700 focus:border-[#D4AF37] focus:outline-none transition-all leading-relaxed resize-y font-sans"
                 />
@@ -6537,87 +6833,110 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 </select>
               </div>
 
-              {/* AI Engine Selector for Segmenter */}
+              {/* Directory selection in Explorer */}
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 font-mono block">
-                  Motor de IA para Segmentação do Roteiro
+                  Diretório do Projeto no Disco
                 </label>
-                <div className="grid grid-cols-2 gap-2 bg-[#0A0A0A] p-1 border border-[#333] rounded">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 flex items-center bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-xs font-mono text-stone-200">
+                    <span className="text-zinc-500 mr-1 select-none">projects/</span>
+                    <input
+                      type="text"
+                      value={projectFolder}
+                      onChange={(e) => setProjectFolder(e.target.value.replace(/[^a-zA-Z0-9_-]/g, "_"))}
+                      className="bg-transparent border-none text-stone-200 focus:outline-none flex-1 font-mono text-xs"
+                      placeholder="nome-da-pasta"
+                    />
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setNewProjectEngine("gemini")}
-                    className={`text-[10px] py-2 px-1 rounded uppercase tracking-wider font-semibold transition-all cursor-pointer text-center ${
-                      newProjectEngine === "gemini"
-                        ? "bg-[#D4AF37]/20 border border-[#D4AF37] text-[#D4AF37] shadow-sm"
-                        : "text-slate-400 hover:text-white hover:bg-[#161616]"
-                    }`}
+                    onClick={handleBrowseFolder}
+                    className="px-3 py-2 bg-[#222] hover:bg-[#333] border border-[#444] hover:border-[#D4AF37] text-[#D4AF37] text-[10px] uppercase font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow"
+                    title="Abrir o seletor comum do Windows Explorer para escolher onde salvar"
                   >
-                    Gemini 3.5 Flash (Recomendado)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewProjectEngine("openai")}
-                    className={`text-[10px] py-2 px-1 rounded uppercase tracking-wider font-semibold transition-all cursor-pointer text-center ${
-                      newProjectEngine === "openai"
-                        ? "bg-[#D4AF37]/20 border border-[#D4AF37] text-[#D4AF37] shadow-sm"
-                        : "text-slate-400 hover:text-white hover:bg-[#161616]"
-                    }`}
-                  >
-                    ChatGPT (Requer OpenAI Key)
+                    <FolderOpen size={13} />
+                    <span>Explorer...</span>
                   </button>
                 </div>
-                {newProjectEngine === "openai" && !openAiKey && (
-                  <p className="text-[9px] text-rose-400 font-mono">
-                    ⚠️ Chave OpenAI ausente em Conexões! Configure a chave nas configurações de conexões primeiro ou use o Gemini.
-                  </p>
-                )}
               </div>
 
-              {/* Shortcut scripts presets */}
-              <div className="space-y-2 border-t border-zinc-850 pt-3">
-                <span className="text-[9px] uppercase tracking-wider text-slate-500 font-mono block">
-                  Modelos de Exemplo (Clique para preencher)
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {SAMPLE_SCRIPTS.map((sample, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        setNewProjectScript(sample.text);
-                        // Map category to StylePreference
-                        const styleMap: Record<string, StylePreference> = {
-                          "biblical": "caravaggio",
-                          "modern": "urban_realism"
-                        };
-                        setNewProjectStyle(styleMap[sample.category] || "auto");
-                        setNotification(`Exemplo "${sample.title}" carregado no formulário!`);
-                      }}
-                      className="text-left p-2.5 bg-black/40 border border-[#222] hover:border-[#D4AF37]/40 rounded hover:bg-black/60 transition-all cursor-pointer"
-                    >
-                      <div className="text-[11px] font-bold text-[#D4AF37] truncate mb-0.5">{sample.title}</div>
-                      <div className="text-[9px] text-slate-400 truncate uppercase font-mono">{sample.styleLabel}</div>
-                    </button>
-                  ))}
+              {/* Dynamic AI Prompt & Transcription Model Selector */}
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 font-mono block">
+                  Motor & Modelo de IA para Transcrição e Roteiro
+                </label>
+                <div className="flex flex-col gap-1.5 bg-[#0a0a0a] p-2 border border-[#333] rounded">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {enabledPromptModels.map((m) => {
+                      const lower = m.toLowerCase();
+                      const isOpenAi = lower.startsWith("gpt-") || lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("openai:");
+                      if (isOpenAi && !openAiKey) return null;
+
+                      const isSelected = newProjectEngine === m;
+                      let badge = "♊ Google";
+                      let display = m;
+                      if (lower.startsWith("ollama:") || lower.includes("ollama")) {
+                        const raw = m.replace(/^ollama:/i, "").split(":")[0];
+                        display = raw.split("/").pop() || raw;
+                        badge = "🦙 Ollama";
+                      } else if (isOpenAi) {
+                        display = m.replace(/^openai:/i, "");
+                        badge = "🎨 OpenAI";
+                      }
+
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setNewProjectEngine(m)}
+                          className={`px-2.5 py-1 text-[9.5px] font-mono rounded transition-all cursor-pointer flex items-center gap-1 border select-none ${
+                            isSelected
+                              ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37] shadow-sm"
+                              : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                          }`}
+                          title={`Usar modelo ${m} para transcrição e segmentação`}
+                        >
+                          <span className="opacity-90">{badge}</span>
+                          <span>({display})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
               {/* Footer Buttons */}
-              <div className="flex justify-end gap-3 border-t border-zinc-850 pt-4 mt-2">
+              <div className="flex items-center justify-between border-t border-zinc-850 pt-4 mt-2">
                 <button
                   type="button"
-                  onClick={() => setShowNewProjectModal(false)}
-                  className="px-4 py-2 border border-[#333] bg-transparent hover:bg-zinc-900 text-slate-400 hover:text-white text-[10px] uppercase tracking-wider font-mono rounded transition-all cursor-pointer"
+                  onClick={() => {
+                    setShowNewProjectModal(false);
+                    setActiveView("config");
+                  }}
+                  className="px-3 py-2 bg-[#1c1c1c] hover:bg-[#2a2a2a] border border-[#444] text-[#D4AF37] hover:border-[#D4AF37] text-[10px] uppercase font-mono font-bold rounded transition-all cursor-pointer flex items-center gap-1.5 shadow"
+                  title="Abrir o painel completo de configurações do sistema"
                 >
-                  Cancelar
+                  <Settings size={13} />
+                  <span>Configurações</span>
                 </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#D4AF37] text-black hover:bg-white text-[10px] uppercase tracking-wider font-mono font-bold rounded transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <Film size={11} />
-                  <span>Criar Novo Projeto</span>
-                </button>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewProjectModal(false)}
+                    className="px-4 py-2 border border-[#333] bg-transparent hover:bg-zinc-900 text-slate-400 hover:text-white text-[10px] uppercase tracking-wider font-mono rounded transition-all cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-[#D4AF37] text-black hover:bg-white text-[10px] uppercase tracking-wider font-mono font-bold rounded transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Film size={11} />
+                    <span>Criar Novo Projeto</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>

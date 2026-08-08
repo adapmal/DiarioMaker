@@ -7,7 +7,7 @@ import { Mic, Volume2 } from "lucide-react";
 
 interface ScriptInputAreaProps {
   onGenerate: (text: string, style: StylePreference, referenceImage?: string, selectedEngine?: "gemini" | "openai" | "ollama") => void;
-  onGenerateWithAudio?: (params: { text: string; style: StylePreference; referenceImage?: string; selectedEngine?: "gemini" | "openai" | "ollama"; audioBase64?: string; audioMimeType?: string; audioFileName?: string }) => void;
+  onGenerateWithAudio?: (params: { text: string; style: StylePreference; referenceImage?: string; selectedEngine?: "gemini" | "openai" | "ollama"; audioFile?: File | null; audioBase64?: string; audioMimeType?: string; audioFileName?: string; audioPath?: string }) => void;
   isGenerating: boolean;
   scriptText: string;
   setScriptText: (text: string) => void;
@@ -44,9 +44,11 @@ export default function ScriptInputArea({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const audioInputRef = React.useRef<HTMLInputElement>(null);
 
+  const [audioFile, setAudioFile] = React.useState<File | null>(null);
   const [audioBase64, setAudioBase64] = React.useState<string | undefined>();
   const [audioMimeType, setAudioMimeType] = React.useState<string | undefined>();
   const [audioFileName, setAudioFileName] = React.useState<string | undefined>();
+  const [audioPath, setAudioPath] = React.useState<string | undefined>();
 
   const [selectedEngine, setSelectedEngine] = React.useState<"gemini" | "openai" | "ollama">("gemini");
 
@@ -123,64 +125,97 @@ export default function ScriptInputArea({
   const handleAudioFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      setAudioFile(file);
       setAudioFileName(file.name);
       setAudioMimeType(file.type || "audio/mp3");
+      setAudioPath(undefined);
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setAudioBase64(event.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
+      // Only convert small audio files (<5MB) to data URL for inline preview, avoid memory crash on large WAVs
+      if (file.size < 5 * 1024 * 1024) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            setAudioBase64(event.target.result as string);
+          }
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setAudioBase64(undefined);
+      }
+    }
+  };
+
+  const handleBrowseAudioFile = async () => {
+    try {
+      const response = await fetch("/api/storyboard/browse-audio-file", { method: "POST" });
+      const data = await response.json();
+      if (data.success && data.filePath) {
+        setAudioPath(data.filePath);
+        setAudioFileName(data.fileName);
+        setAudioFile(null);
+        setAudioBase64(undefined);
+        const ext = data.fileName.toLowerCase();
+        if (ext.endsWith(".wav")) setAudioMimeType("audio/wav");
+        else if (ext.endsWith(".mp3")) setAudioMimeType("audio/mp3");
+        else if (ext.endsWith(".m4a")) setAudioMimeType("audio/mp4");
+        else setAudioMimeType("audio/mp3");
+      }
+    } catch (err) {
+      console.error("Erro ao abrir seletor nativo de áudio:", err);
     }
   };
 
   const handleClearAudio = () => {
+    setAudioFile(null);
     setAudioBase64(undefined);
     setAudioMimeType(undefined);
     setAudioFileName(undefined);
+    setAudioPath(undefined);
     if (audioInputRef.current) audioInputRef.current.value = "";
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (hasScenes) {
-      setShowConfirmReset(true);
-      return;
-    }
-
-    if (onGenerateWithAudio && (audioBase64 || localScriptText.trim())) {
+  const executeGeneration = () => {
+    const hasAudio = !!(audioFile || audioBase64 || audioFileName || audioPath);
+    if (onGenerateWithAudio && hasAudio) {
       onGenerateWithAudio({
         text: localScriptText.trim(),
         style: selectedStyle,
         referenceImage: scriptReferenceImage,
         selectedEngine,
+        audioFile,
         audioBase64,
         audioMimeType,
-        audioFileName
+        audioFileName,
+        audioPath
       });
     } else {
       onGenerate(localScriptText.trim(), selectedStyle, scriptReferenceImage, selectedEngine);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const hasAudio = !!(audioFile || audioBase64 || audioFileName);
+    const hasText = !!localScriptText.trim();
+
+    if (!hasAudio && !hasText) return;
+
+    if (hasScenes) {
+      setShowConfirmReset(true);
+      const modalEl = document.getElementById("script-input-section");
+      if (modalEl) {
+        modalEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      return;
+    }
+
+    executeGeneration();
   };
 
   const handleConfirmNewProject = () => {
     setShowConfirmReset(false);
     setShowNewProjectForm(false);
-    if (onGenerateWithAudio && (audioBase64 || localScriptText.trim())) {
-      onGenerateWithAudio({
-        text: localScriptText.trim(),
-        style: selectedStyle,
-        referenceImage: scriptReferenceImage,
-        selectedEngine,
-        audioBase64,
-        audioMimeType,
-        audioFileName
-      });
-    } else {
-      onGenerate(localScriptText.trim(), selectedStyle, scriptReferenceImage, selectedEngine);
-    }
+    executeGeneration();
   };
 
   // 1. Read-only view for active projects (scenes present)
@@ -225,6 +260,57 @@ export default function ScriptInputArea({
               </div>
             </div>
           )}
+
+          {/* Motor de IA Selecionado (Transcrição & Segmentação) */}
+          <div className="bg-[#0a0a0a] border border-[#222] p-3.5 rounded-lg space-y-2">
+            <label className="block text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.2em] font-mono flex items-center gap-1.5">
+              <Sparkles size={12} className="text-[#D4AF37]" />
+              <span>Motor de IA (Transcrição & Segmentação)</span>
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono">
+              <button
+                type="button"
+                onClick={() => setSelectedEngine("gemini")}
+                className={`py-2 px-2 rounded text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                  selectedEngine === "gemini"
+                    ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
+                    : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
+                }`}
+                title="Usar Gemini (Google AI Studio) para transcrição e segmentação"
+              >
+                <span>♊ Gemini</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedEngine("openai")}
+                className={`py-2 px-2 rounded text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                  selectedEngine === "openai"
+                    ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
+                    : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
+                }`}
+                title="Usar ChatGPT / Whisper (OpenAI) para transcrição e segmentação"
+              >
+                <span>🎨 ChatGPT / Whisper</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedEngine("ollama")}
+                className={`py-2 px-2 rounded text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                  selectedEngine === "ollama"
+                    ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
+                    : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
+                }`}
+                title="Usar Ollama Local offline para processar o roteiro"
+              >
+                <span>🦙 Ollama Local</span>
+              </button>
+            </div>
+            {selectedEngine === "openai" && !openAiKey && (
+              <p className="text-[9.5px] text-rose-400 font-mono mt-1">
+                ⚠️ Chave OpenAI ausente em Conexões! Configure sua key no painel de Configurações.
+              </p>
+            )}
+          </div>
 
           <div className="pt-2 border-t border-[#222] grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
@@ -347,14 +433,26 @@ export default function ScriptInputArea({
                   <span>Remover Áudio</span>
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => audioInputRef.current?.click()}
-                  className="px-3.5 py-2 rounded bg-[#222] hover:bg-[#333] border border-[#444] text-[#D4AF37] hover:border-[#D4AF37] text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
-                >
-                  <Upload size={12} />
-                  <span>Subir Áudio</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => audioInputRef.current?.click()}
+                    className="px-3.5 py-2 rounded bg-[#222] hover:bg-[#333] border border-[#444] text-[#D4AF37] hover:border-[#D4AF37] text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
+                    title="Fazer upload de um arquivo de áudio via navegador"
+                  >
+                    <Upload size={12} />
+                    <span>Upload</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBrowseAudioFile}
+                    className="px-3.5 py-2 rounded bg-emerald-900/40 hover:bg-emerald-600 border border-emerald-500/60 text-emerald-400 hover:text-white text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
+                    title="Modo NLE: Vincular arquivo de áudio direto do HD sem upload"
+                  >
+                    <FileText size={12} />
+                    <span>Linkar Áudio (NLE)</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -466,7 +564,7 @@ export default function ScriptInputArea({
           <div>
             <button
               type="submit"
-              disabled={isGenerating || !localScriptText.trim()}
+              disabled={isGenerating || (!localScriptText.trim() && !audioFile && !audioFileName && !audioBase64)}
               id="generate-storyboard-submit"
               className={`w-full py-3.5 px-4 rounded font-bold uppercase tracking-[0.2em] text-xs transition-all flex items-center justify-center gap-2 relative shadow-2xl ${
                 isGenerating

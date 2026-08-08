@@ -71,6 +71,8 @@ export interface StoryboardProject {
   promptTargetTool?: string;
   audioNarrationUrl?: string;
   audioNarrationPath?: string;
+  originalAudioPath?: string;
+  isAudioOffline?: boolean;
   totalAudioDuration?: number;
   fps?: number;
   updatedAt?: string;

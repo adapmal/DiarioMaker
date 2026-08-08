@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { StoryboardScene, StylePreference, ConnectionGroup } from "../types";
 import { getCachedImage } from "../lib/cacheStore";
 import { downloadSingleImageFile } from "../lib/imageUtils";
-import { secondsToSMPTE, formatDuration } from "../lib/timecodeUtils";
+import { secondsToSMPTE, formatDuration, formatShortTimecode, parseShortTimecode } from "../lib/timecodeUtils";
 import { 
   Scissors, 
   ChevronUp, 
@@ -200,32 +200,44 @@ function StoryboardCardComponent({
     audioPlayerRef.current = audio;
     setIsPlayingAudio(true);
 
+    let rafId: number;
     let hasStarted = false;
-    const startSnippet = () => {
-      if (hasStarted) return;
-      hasStarted = true;
 
-      try {
-        audio.currentTime = playStart;
-      } catch (_) {}
-
-      audio.play().catch(err => {
-        console.error("Erro ao reproduzir áudio:", err);
-        setIsPlayingAudio(false);
-      });
-    };
-
-    audio.ontimeupdate = () => {
+    const checkTime = () => {
+      if (!audioPlayerRef.current) return; // Component unmounted or stopped
+      
       if (audio.currentTime >= playEnd) {
         audio.pause();
-        audio.ontimeupdate = null;
         setIsPlayingAudio(false);
         audioPlayerRef.current = null;
         if ((window as any)._currentStoryboardAudio === audio) {
           (window as any)._currentStoryboardAudio = null;
         }
+        cancelAnimationFrame(rafId);
+        return;
       }
+      rafId = requestAnimationFrame(checkTime);
     };
+
+    const applyStartAndPlay = () => {
+      if (hasStarted) return;
+      hasStarted = true;
+      try {
+        audio.currentTime = playStart;
+      } catch (err) {
+        console.warn("Audio seek error:", err);
+      }
+      audio.play().then(() => {
+        rafId = requestAnimationFrame(checkTime);
+      }).catch(err => {
+        console.error("Erro ao reproduzir áudio:", err);
+        setIsPlayingAudio(false);
+      });
+    };
+
+    audio.oncanplay = () => applyStartAndPlay();
+    audio.onloadeddata = () => applyStartAndPlay();
+    audio.onloadedmetadata = () => applyStartAndPlay();
 
     audio.onended = () => {
       setIsPlayingAudio(false);
@@ -235,12 +247,8 @@ function StoryboardCardComponent({
       }
     };
 
-    if (audio.readyState >= 1) {
-      startSnippet();
-    } else {
-      audio.onloadedmetadata = () => {
-        startSnippet();
-      };
+    if (audio.readyState >= 2) {
+      applyStartAndPlay();
     }
   };
 
@@ -374,6 +382,9 @@ function StoryboardCardComponent({
   const [selectedModel, setSelectedModel] = useState<"nano_banana" | "nano_banana_pro" | "nano_banana_2" | "chatgpt_dalle3">("nano_banana");
   const [isStudioGenerating, setIsStudioGenerating] = useState(false);
   const [studioPrompt, setStudioPrompt] = useState(scene.prompt);
+  const [studioDescription, setStudioDescription] = useState(scene.description);
+  const [editingTcIn, setEditingTcIn] = useState<string | null>(null);
+  const [editingTcOut, setEditingTcOut] = useState<string | null>(null);
   const [studioResultUrl, setStudioResultUrl] = useState<string | undefined>(scene.generatedImageUrl);
   const [renderMetadata, setRenderMetadata] = useState<{ engineName?: string; renderTimeSeconds?: number; creativeShader?: string } | null>(null);
   const [studioError, setStudioError] = useState<string | null>(null);
@@ -1053,8 +1064,8 @@ ${userPromptText}`;
           </div>
         )}
         {/* Side Action Bar / Drag and Move handles */}
-        <div className="bg-[#222] w-full md:w-16 flex md:flex-col items-center justify-between p-3 border-b md:border-b-0 md:border-r border-[#333] gap-2 select-none shrink-0">
-          <div className="flex md:flex-col items-center gap-1">
+        <div className="bg-[#222] w-full md:w-24 flex md:flex-col items-center justify-between p-2.5 border-b md:border-b-0 md:border-r border-[#333] gap-2 select-none shrink-0">
+          <div className="flex md:flex-col items-center gap-1 w-full">
             <button
               type="button"
               onClick={() => onMoveUp(index)}
@@ -1075,29 +1086,64 @@ ${userPromptText}`;
             </div>
 
             {(scene.startTime !== undefined || audioNarrationUrl) && (
-              <div className="flex flex-col items-center my-1 font-mono">
-                {scene.startTime !== undefined && (
-                  <>
-                    <span className="text-[8px] text-[#D4AF37] font-bold tracking-wider">
-                      {secondsToSMPTE(scene.startTime, fps || 24)}
-                    </span>
-                    <span className="text-[7px] text-zinc-500 font-sans">
-                      {formatDuration(scene.duration || (scene.endTime ? scene.endTime - scene.startTime : 3))}
-                    </span>
-                  </>
-                )}
+              <div className="flex flex-col items-center my-1 font-mono space-y-1.5 bg-[#141414] p-1.5 rounded border border-zinc-800/80 w-full">
+                <div className="flex flex-col gap-1.5 w-full">
+                  <div className="flex flex-col w-full text-left">
+                    <span className="text-[7.5px] text-[#D4AF37] font-bold tracking-wider uppercase font-sans mb-0.5">IN</span>
+                    <input
+                      type="text"
+                      value={editingTcIn !== null ? editingTcIn : formatShortTimecode(scene.startTime ?? 0)}
+                      onFocus={() => setEditingTcIn(formatShortTimecode(scene.startTime ?? 0))}
+                      onChange={(e) => setEditingTcIn(e.target.value)}
+                      onBlur={() => {
+                        if (editingTcIn !== null) {
+                          const parsed = parseShortTimecode(editingTcIn);
+                          const currentEnd = scene.endTime ?? ((scene.startTime ?? 0) + (scene.duration || 3));
+                          const newEnd = Math.max(parsed + 0.5, currentEnd);
+                          onUpdate(scene.id, { startTime: parsed, endTime: newEnd, duration: Number((newEnd - parsed).toFixed(2)) });
+                          setEditingTcIn(null);
+                        }
+                      }}
+                      className="w-full bg-black border border-zinc-700 focus:border-[#D4AF37] text-[11px] text-[#D4AF37] font-mono text-center rounded py-1.5 font-bold shadow-inner"
+                      title="TC de Entrada (Clique para editar tempo inicial)"
+                    />
+                  </div>
+
+                  <div className="flex flex-col w-full text-left">
+                    <span className="text-[7.5px] text-[#D4AF37] font-bold tracking-wider uppercase font-sans mb-0.5">OUT</span>
+                    <input
+                      type="text"
+                      value={editingTcOut !== null ? editingTcOut : formatShortTimecode(scene.endTime ?? ((scene.startTime ?? 0) + (scene.duration || 3)))}
+                      onFocus={() => setEditingTcOut(formatShortTimecode(scene.endTime ?? ((scene.startTime ?? 0) + (scene.duration || 3))))}
+                      onChange={(e) => setEditingTcOut(e.target.value)}
+                      onBlur={() => {
+                        if (editingTcOut !== null) {
+                          const parsed = parseShortTimecode(editingTcOut);
+                          const currentStart = scene.startTime ?? 0;
+                          const validEnd = Math.max(currentStart + 0.5, parsed);
+                          onUpdate(scene.id, { endTime: validEnd, duration: Number((validEnd - currentStart).toFixed(2)) });
+                          setEditingTcOut(null);
+                        }
+                      }}
+                      className="w-full bg-black border border-zinc-700 focus:border-[#D4AF37] text-[11px] text-[#D4AF37] font-mono text-center rounded py-1.5 font-bold shadow-inner"
+                      title="TC de Saída (Clique para editar tempo final)"
+                    />
+                  </div>
+                </div>
+
                 {audioNarrationUrl && (
                   <button
                     type="button"
                     onClick={handlePlayAudioSnippet}
-                    className={`mt-1.5 p-1.5 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                    className={`mt-1 w-full py-1 rounded border transition-all cursor-pointer flex items-center justify-center gap-1 ${
                       isPlayingAudio
                         ? "bg-[#D4AF37] text-black border-[#D4AF37] animate-pulse"
                         : "bg-[#111] text-[#D4AF37] border-[#D4AF37]/40 hover:border-[#D4AF37] hover:bg-[#222]"
                     }`}
                     title="Ouvir trecho da narração para esta cena"
                   >
-                    {isPlayingAudio ? <Pause size={10} /> : <Play size={10} className="ml-0.5" />}
+                    {isPlayingAudio ? <Pause size={9} /> : <Play size={9} />}
+                    <span className="text-[7.5px] uppercase font-bold font-sans">{isPlayingAudio ? "Pausar" : "Ouvir"}</span>
                   </button>
                 )}
               </div>

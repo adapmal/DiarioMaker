@@ -38,6 +38,41 @@ export function formatDuration(seconds: number): string {
   return `${seconds.toFixed(1)}s`;
 }
 
+/**
+ * Format timestamp in MM:SS.s format without hours (e.g. 01:14.5)
+ */
+export function formatShortTimecode(totalSeconds: number): string {
+  if (isNaN(totalSeconds) || totalSeconds < 0) totalSeconds = 0;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const mm = String(minutes).padStart(2, "0");
+  const ss = seconds.toFixed(1).padStart(4, "0");
+  return `${mm}:${ss}`;
+}
+
+/**
+ * Parse MM:SS.s, MM:SS or decimal string back into total seconds
+ */
+export function parseShortTimecode(str: string): number {
+  if (!str || typeof str !== "string") return 0;
+  const clean = str.trim();
+  if (clean.includes(":")) {
+    const parts = clean.split(":");
+    if (parts.length === 2) {
+      const mins = parseFloat(parts[0]) || 0;
+      const secs = parseFloat(parts[1]) || 0;
+      return Math.max(0, Number((mins * 60 + secs).toFixed(2)));
+    } else if (parts.length === 3) {
+      const hrs = parseFloat(parts[0]) || 0;
+      const mins = parseFloat(parts[1]) || 0;
+      const secs = parseFloat(parts[2]) || 0;
+      return Math.max(0, Number((hrs * 3600 + mins * 60 + secs).toFixed(2)));
+    }
+  }
+  const directSecs = parseFloat(clean);
+  return isNaN(directSecs) ? 0 : Math.max(0, Number(directSecs.toFixed(2)));
+}
+
 export interface TimedWord {
   word: string;
   start: number;
