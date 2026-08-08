@@ -600,9 +600,16 @@ export default function App() {
   });
   const [openAiDalleModel, setOpenAiDalleModel] = useState(() => {
     try {
-      return localStorage.getItem("openai_dalle_model") || "dall-e-3";
+      return localStorage.getItem("ethos_openai_dalle_model") || "dall-e-3";
     } catch {
       return "dall-e-3";
+    }
+  });
+  const [openAiAudioModel, setOpenAiAudioModel] = useState(() => {
+    try {
+      return localStorage.getItem("ethos_openai_audio_model") || "whisper-1";
+    } catch {
+      return "whisper-1";
     }
   });
   const [showOpenAiKey, setShowOpenAiKey] = useState(false);
@@ -628,16 +635,18 @@ export default function App() {
     }
   });
   const [availableModels, setAvailableModels] = useState<{
-    gemini: { text: string[]; image: string[] };
-    openai: { text: string[]; image: string[] };
+    gemini: { text: string[]; image: string[]; audio: string[] };
+    openai: { text: string[]; image: string[]; audio: string[] };
   }>({
     gemini: {
       text: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-pro", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"],
-      image: ["imagen-3.0-generate-002", "imagen-3.0-fast-001"]
+      image: ["imagen-3.0-generate-002", "imagen-3.0-fast-001"],
+      audio: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-pro", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"]
     },
     openai: {
       text: ["gpt-4o-mini", "gpt-4o", "gpt-4.5-preview", "o1-mini", "o3-mini"],
-      image: ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3", "dall-e-2"]
+      image: ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3", "dall-e-2"],
+      audio: ["whisper-1"]
     }
   });
 
@@ -661,24 +670,32 @@ export default function App() {
         if (data && (data.gemini || data.openai)) {
           const rawOpenAiText = data.openai?.text || [];
           const rawOpenAiImage = data.openai?.image || [];
-          const allOpenAi = Array.from(new Set([...rawOpenAiText, ...rawOpenAiImage]));
+          const rawOpenAiAudio = data.openai?.audio || [];
+          
+          const allOpenAi = Array.from(new Set([...rawOpenAiText, ...rawOpenAiImage, ...rawOpenAiAudio]));
 
-          const cleanOpenAiText = allOpenAi.filter(m => !m.includes("image") && !m.startsWith("dall-e"));
+          const cleanOpenAiText = allOpenAi.filter(m => !m.includes("image") && !m.startsWith("dall-e") && !m.includes("whisper") && !m.includes("transcribe"));
           const cleanOpenAiImage = allOpenAi.filter(m => m.includes("image") || m.startsWith("dall-e"));
+          const cleanOpenAiAudio = allOpenAi.filter(m => m.includes("whisper") || m.includes("transcribe"));
 
           const finalGeminiText = sortByPrice(data.gemini?.text || []);
           const finalGeminiImage = sortByPrice(data.gemini?.image || []);
+          const finalGeminiAudio = sortByPrice(data.gemini?.audio || []);
+          
           const finalOpenAiText = sortByPrice(cleanOpenAiText.length > 0 ? cleanOpenAiText : ["gpt-4o-mini", "gpt-4o", "gpt-4.5-preview", "o1-mini", "o3-mini"]);
           const finalOpenAiImage = sortByPrice(cleanOpenAiImage.length > 0 ? cleanOpenAiImage : ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini", "dall-e-3", "dall-e-2"]);
+          const finalOpenAiAudio = sortByPrice(cleanOpenAiAudio.length > 0 ? cleanOpenAiAudio : ["whisper-1"]);
 
           setAvailableModels({
             gemini: {
               text: finalGeminiText,
-              image: finalGeminiImage
+              image: finalGeminiImage,
+              audio: finalGeminiAudio
             },
             openai: {
               text: finalOpenAiText,
-              image: finalOpenAiImage
+              image: finalOpenAiImage,
+              audio: finalOpenAiAudio
             }
           });
           if (isGemini) {
@@ -903,6 +920,19 @@ export default function App() {
   });
   const [batchSelectedImageModel, setBatchSelectedImageModel] = useState<string>(() => {
     return localStorage.getItem("ethos_batch_image_model") || "gemini-2.5-flash-image";
+  });
+  
+  const [batchSelectedPromptTargetTool, setBatchSelectedPromptTargetTool] = useState<string>(() => {
+    return localStorage.getItem("ethos_batch_target_tool") || "Nano Banana";
+  });
+  const [batchGeneralInstructions, setBatchGeneralInstructions] = useState<string>(() => {
+    return localStorage.getItem("ethos_batch_instructions") || "Sem letreiros";
+  });
+  const [batchForceGeneratePrompts, setBatchForceGeneratePrompts] = useState<boolean>(() => {
+    return localStorage.getItem("ethos_batch_force_prompts") === "true";
+  });
+  const [batchForceGenerateImages, setBatchForceGenerateImages] = useState<boolean>(() => {
+    return localStorage.getItem("ethos_batch_force_images") === "true";
   });
 
   const updateBatchPromptModel = (model: string) => {
@@ -2334,7 +2364,8 @@ Output MUST be valid JSON only, matching this schema exactly:
 
     handleUpdateScene(targetScene.id, {
       promptQueueStatus: "queued",
-      generateImageAfterPrompt: !!andGenerateImage
+      generateImageAfterPrompt: !!andGenerateImage,
+      ...(andGenerateImage ? { disableImageStatus: false } : {})
     });
     setShowQueuePanel(true);
   };
@@ -2895,26 +2926,30 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
   // Add all scenes without images to the render queue with optional explicit image model selection
   const handleQueueAllPendingImages = (selectedModel?: string) => {
-    const pendingCount = scenes.filter(s => !s.generatedImageUrl).length;
+    let pendingCount = 0;
+    const newScenes = scenes.map((s) => {
+      const needsImage = !s.generatedImageUrl || s.disableImageStatus || batchForceGenerateImages;
+      if (needsImage) {
+        pendingCount++;
+        return { 
+          ...s, 
+          renderStatus: "queued", 
+          renderError: undefined,
+          ...(selectedModel ? { selectedModel: selectedModel, promptTargetTool: batchSelectedPromptTargetTool } : {})
+        } as StoryboardScene;
+      }
+      return s;
+    });
+
     if (pendingCount === 0) {
       setNotification("Todas as cenas já possuem imagens geradas.");
       return;
     }
+    
     pushToHistory();
-    setScenes((prev) =>
-      prev.map((s) => {
-        if (!s.generatedImageUrl) {
-          return { 
-            ...s, 
-            renderStatus: "queued", 
-            renderError: undefined,
-            ...(selectedModel ? { selectedModel: selectedModel, promptTargetTool: selectedModel } : {})
-          };
-        }
-        return s;
-      })
-    );
-    setNotification(`${pendingCount} cenas sem imagem foram adicionadas à fila de renderização${selectedModel ? ` (Modelo: ${selectedModel})` : ""}!`);
+    setScenes(newScenes);
+    setNotification(`${pendingCount} cenas sem imagem foram adicionadas à fila de renderização (considerando configs de lote)!`);
+    setShowQueuePanel(true);
   };
 
   // Generate prompts for empty scenes AND auto-queue images once prompts complete
@@ -2922,34 +2957,38 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     pushToHistory();
     setScenes((prev) =>
       prev.map((s) => {
-        const needsPrompt = !s.prompt || 
+        const isPlaceholderPrompt = !s.prompt || 
           s.prompt.trim() === "" || 
           s.prompt.includes("Aguardando") || 
+          s.prompt.includes("Cinematic landscape or scenery:") ||
           s.description.includes("Aguardando") ||
+          s.description.includes("Cena extraída da narração em áudio") ||
           s.isPromptModified === false;
-        const needsImage = !s.generatedImageUrl;
+
+        const needsPrompt = isPlaceholderPrompt || batchForceGeneratePrompts;
+        const needsImage = !s.generatedImageUrl || s.disableImageStatus || batchForceGenerateImages;
 
         if (needsPrompt) {
           return {
             ...s,
             promptQueueStatus: "queued",
-            generateImageAfterPrompt: true,
-            renderStatus: needsImage ? "queued" : s.renderStatus,
+            generateImageAfterPrompt: needsImage, // Will queue image after prompt is done
+            generationGuidelines: batchGeneralInstructions || s.generationGuidelines,
             ...(promptModel ? { promptAiModel: promptModel } : {}),
-            ...(imageModel ? { selectedModel: imageModel, promptTargetTool: imageModel } : {})
+            ...(imageModel ? { selectedModel: imageModel, promptTargetTool: batchSelectedPromptTargetTool } : {})
           };
         } else if (needsImage) {
           return {
             ...s,
             renderStatus: "queued",
             renderError: undefined,
-            ...(imageModel ? { selectedModel: imageModel, promptTargetTool: imageModel } : {})
+            ...(imageModel ? { selectedModel: imageModel, promptTargetTool: batchSelectedPromptTargetTool } : {})
           };
         }
         return s;
       })
     );
-    setNotification("✓ Prompts + Imagens enfileirados para todas as cenas vazias e modificadas!");
+    setNotification("✓ Prompts + Imagens enfileirados para as cenas (considerando configurações de lote)!");
     setShowQueuePanel(true);
   };
 
@@ -2967,19 +3006,23 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           s.description.includes("Cena extraída da narração em áudio") ||
           s.isPromptModified === false;
 
-        if (isPlaceholderPrompt) {
+        const needsPrompt = isPlaceholderPrompt || batchForceGeneratePrompts;
+
+        if (needsPrompt) {
           count++;
           return {
             ...s,
             promptQueueStatus: "queued",
             generateImageAfterPrompt: false,
+            generationGuidelines: batchGeneralInstructions || s.generationGuidelines,
+            promptTargetTool: batchSelectedPromptTargetTool,
             ...(promptModel ? { promptAiModel: promptModel } : {})
           };
         }
         return s;
       })
     );
-    setNotification(`✓ Direção de Arte (Prompts) enfileirada para ${count} cenas!`);
+    setNotification(`✓ Direção de Arte (Prompts) enfileirada para ${count} cenas (considerando configs)!`);
     setShowQueuePanel(true);
   };
 
@@ -2990,7 +3033,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     const imageName = batchSelectedImageModel === "gpt-image-2" ? "OpenAI GPT-Image 2" : batchSelectedImageModel === "imagen-3.0-generate-002" ? "Google Imagen 3" : batchSelectedImageModel === "imagen-3.0-fast-generate-001" ? "Google Fast Imagen 3" : "Google Nano Banana";
 
     const confirmApply = window.confirm(
-      `Tem certeza que deseja aplicar estes modelos como padrão para TODAS as ${scenes.length} cartelas do projeto?\n\n• Modelo de Prompt: ${promptName}\n• Modelo de Imagem: ${imageName}`
+      `Tem certeza que deseja aplicar estas configurações como padrão para TODAS as ${scenes.length} cartelas do projeto?\n\n• Modelo de Prompt: ${promptName}\n• Modelo de Imagem: ${imageName}\n• Ferramenta de Destino: ${batchSelectedPromptTargetTool}\n• Instruções: ${batchGeneralInstructions ? "Aplicadas" : "Nenhuma"}`
     );
     if (!confirmApply) return;
 
@@ -3000,10 +3043,11 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         ...s,
         promptAiModel: batchSelectedPromptModel,
         selectedModel: batchSelectedImageModel,
-        promptTargetTool: batchSelectedImageModel
+        promptTargetTool: batchSelectedPromptTargetTool,
+        ...(batchGeneralInstructions ? { generationGuidelines: batchGeneralInstructions } : {})
       }))
     );
-    setNotification(`✓ Modelos (${promptName} / ${imageName}) aplicados a todas as ${scenes.length} cartelas do projeto!`);
+    setNotification(`✓ Configurações de Modelos, Ferramentas e Instruções aplicadas a todas as ${scenes.length} cartelas do projeto!`);
   };
 
   // Add all modified scenes or scenes needing rerun to the render queue
@@ -3479,7 +3523,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             ...(isOpenAiEngine && openAiKey ? {
               "x-use-openai": "true",
               "x-openai-key": openAiKey,
-              "x-openai-model": openAiModel
+              "x-openai-model": openAiModel,
+              "x-openai-audio-model": openAiAudioModel
             } : {})
           },
           body: formData
@@ -3496,7 +3541,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             ...(isOpenAiEngine && openAiKey ? {
               "x-use-openai": "true",
               "x-openai-key": openAiKey,
-              "x-openai-model": openAiModel
+              "x-openai-model": openAiModel,
+              "x-openai-audio-model": openAiAudioModel
             } : {})
           },
           body: JSON.stringify({
@@ -4745,7 +4791,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
                 {/* Clean Radio Selection Dropdown Panel */}
                 {showEmptyScenesSubMenu && (
-                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-[#161616] border border-[#D4AF37]/50 rounded-lg p-3.5 shadow-2xl flex flex-col gap-3 min-w-[290px] sm:min-w-[330px] animate-fadeIn text-left">
+                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-[#161616] border border-[#D4AF37]/50 rounded-lg p-3.5 shadow-2xl flex flex-col gap-3 min-w-[290px] sm:min-w-[330px] animate-fadeIn text-left no-super-scroll">
                     <div className="flex items-center justify-between border-b border-zinc-800 pb-1.5">
                       <span className="text-[10px] font-mono uppercase tracking-widest text-[#D4AF37] font-bold flex items-center gap-1.5">
                         <Sparkles size={12} />
@@ -4839,6 +4885,76 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                             </label>
                           );
                         })}
+                      </div>
+                    </div>
+
+                    {/* Feature 2: Target Tool Selection */}
+                    <div className="space-y-1.5 bg-[#111] p-2 rounded border border-zinc-800">
+                      <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 font-bold block">
+                        3. Ferramenta de Destino (Para onde enviar?):
+                      </span>
+                      <select
+                        value={batchSelectedPromptTargetTool}
+                        onChange={(e) => {
+                          setBatchSelectedPromptTargetTool(e.target.value);
+                          setLocalStorageItemSafely("ethos_batch_target_tool", e.target.value);
+                        }}
+                        className="w-full bg-[#181818] border border-zinc-800 text-zinc-300 text-[10px] font-mono rounded px-2 py-1.5 focus:border-[#D4AF37] focus:outline-none cursor-pointer"
+                      >
+                        <option value="Nano Banana">Nano Banana</option>
+                        <option value="Flux.2">Flux.2</option>
+                        <option value="Flux.1">Flux.1</option>
+                        <option value="ChatGPT">ChatGPT (Dall-E 3)</option>
+                      </select>
+                    </div>
+
+                    {/* Feature 3: General Instructions */}
+                    <div className="space-y-1.5 bg-[#111] p-2 rounded border border-zinc-800">
+                      <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 font-bold block">
+                        4. Instruções Globais para Geração:
+                      </span>
+                      <textarea
+                        value={batchGeneralInstructions}
+                        onChange={(e) => {
+                          setBatchGeneralInstructions(e.target.value);
+                          setLocalStorageItemSafely("ethos_batch_instructions", e.target.value);
+                        }}
+                        placeholder="Ex: Sem letreiros, estilo realista..."
+                        rows={2}
+                        className="w-full bg-[#181818] border border-zinc-800 text-zinc-300 text-[10px] font-sans rounded px-2 py-1.5 focus:border-[#D4AF37] focus:outline-none resize-y"
+                      />
+                    </div>
+
+                    {/* Feature 4: Overwrite Options */}
+                    <div className="space-y-1.5 bg-[#111] p-2 rounded border border-zinc-800">
+                      <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 font-bold block">
+                        5. Sobrescrever Cenas Cheias (Ignorar Vazio):
+                      </span>
+                      <div className="flex items-center gap-4 text-[9px] font-mono text-zinc-300">
+                        <label className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={batchForceGeneratePrompts}
+                            onChange={(e) => {
+                              setBatchForceGeneratePrompts(e.target.checked);
+                              setLocalStorageItemSafely("ethos_batch_force_prompts", e.target.checked ? "true" : "false");
+                            }}
+                            className="accent-[#D4AF37]"
+                          />
+                          <span>Gerar Prompts</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={batchForceGenerateImages}
+                            onChange={(e) => {
+                              setBatchForceGenerateImages(e.target.checked);
+                              setLocalStorageItemSafely("ethos_batch_force_images", e.target.checked ? "true" : "false");
+                            }}
+                            className="accent-[#D4AF37]"
+                          />
+                          <span>Gerar Imagens</span>
+                        </label>
                       </div>
                     </div>
 
@@ -5600,6 +5716,35 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                                       title={`💰 Valor: ${priceInfo.priceLabel} | 📅 Atualizado em: ${priceInfo.updatedAt}\n${isEnabled ? "Clique para desabilitar nas cartelas" : "Clique para habilitar nas cartelas"}`}
                                     >
                                       {isEnabled ? "✓ " : ""}OpenAI ({m})
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <div className="space-y-1 pt-2 border-t border-[#222]">
+                              <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Áudio (Modelo Padrão p/ Transcrição):</span>
+                              <div className="flex flex-wrap gap-1">
+                                {sortByPrice(availableModels.openai?.audio && availableModels.openai.audio.length > 0 
+                                  ? availableModels.openai.audio 
+                                  : ["whisper-1"]
+                                ).map((m) => {
+                                  const isEnabled = openAiAudioModel === m;
+                                  return (
+                                    <button
+                                      key={m}
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenAiAudioModel(m);
+                                        localStorage.setItem("ethos_openai_audio_model", m);
+                                        setNotification(`✓ Modelo de Áudio OpenAI padrão alterado para: ${m}`);
+                                      }}
+                                      className={`px-2 py-0.5 text-[9px] rounded font-mono border transition-all cursor-pointer select-none ${
+                                        isEnabled
+                                          ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37]"
+                                          : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300"
+                                      }`}
+                                    >
+                                      {isEnabled ? "✓ " : ""}{m}
                                     </button>
                                   );
                                 })}
@@ -6864,45 +7009,52 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               {/* Dynamic AI Prompt & Transcription Model Selector */}
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 font-mono block">
-                  Motor & Modelo de IA para Transcrição e Roteiro
+                  Motor de IA para Transcrição e Roteiro
                 </label>
                 <div className="flex flex-col gap-1.5 bg-[#0a0a0a] p-2 border border-[#333] rounded">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {enabledPromptModels.map((m) => {
-                      const lower = m.toLowerCase();
-                      const isOpenAi = lower.startsWith("gpt-") || lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("openai:");
-                      if (isOpenAi && !openAiKey) return null;
-
-                      const isSelected = newProjectEngine === m;
-                      let badge = "♊ Google";
-                      let display = m;
-                      if (lower.startsWith("ollama:") || lower.includes("ollama")) {
-                        const raw = m.replace(/^ollama:/i, "").split(":")[0];
-                        display = raw.split("/").pop() || raw;
-                        badge = "🦙 Ollama";
-                      } else if (isOpenAi) {
-                        display = m.replace(/^openai:/i, "");
-                        badge = "🎨 OpenAI";
-                      }
-
-                      return (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setNewProjectEngine(m)}
-                          className={`px-2.5 py-1 text-[9.5px] font-mono rounded transition-all cursor-pointer flex items-center gap-1 border select-none ${
-                            isSelected
-                              ? "bg-[#D4AF37] text-black font-bold border-[#D4AF37] shadow-sm"
-                              : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
-                          }`}
-                          title={`Usar modelo ${m} para transcrição e segmentação`}
-                        >
-                          <span className="opacity-90">{badge}</span>
-                          <span>({display})</span>
-                        </button>
-                      );
-                    })}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono">
+                    <button
+                      type="button"
+                      onClick={() => setNewProjectEngine("gemini")}
+                      className={`py-2 px-2 rounded text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border select-none ${
+                        newProjectEngine === "gemini" || newProjectEngine?.includes("gemini")
+                          ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
+                          : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
+                      }`}
+                      title="Usar Gemini (Google AI Studio) para transcrição e segmentação"
+                    >
+                      <span>♊ Gemini</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewProjectEngine("openai")}
+                      className={`py-2 px-2 rounded text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border select-none ${
+                        newProjectEngine === "openai" || newProjectEngine?.includes("gpt") || newProjectEngine?.includes("o1") || newProjectEngine?.includes("whisper")
+                          ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
+                          : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
+                      }`}
+                      title="Usar ChatGPT / Whisper (OpenAI) para transcrição e segmentação"
+                    >
+                      <span>🎨 OpenAI (Whisper)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewProjectEngine("ollama")}
+                      className={`py-2 px-2 rounded text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border select-none ${
+                        newProjectEngine === "ollama" || newProjectEngine?.includes("ollama")
+                          ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
+                          : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
+                      }`}
+                      title="Usar Ollama Local offline para processar o roteiro"
+                    >
+                      <span>🦙 Ollama Local</span>
+                    </button>
                   </div>
+                  {(newProjectEngine === "openai" || newProjectEngine?.includes("gpt") || newProjectEngine?.includes("whisper")) && !openAiKey && (
+                    <p className="text-[9.5px] text-rose-400 font-mono mt-1 px-1">
+                      ⚠️ Chave OpenAI ausente em Conexões! Configure sua key no painel de Configurações.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -6946,7 +7098,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       {/* Complete Script Dialog / Modal Overlay */}
       {showScriptModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 sm:p-6 overflow-y-auto animate-fadeIn">
-          <div className="bg-[#121212] border border-[#D4AF37]/45 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative flex flex-col animate-scaleUp">
+          <div className="bg-[#121212] border border-[#D4AF37]/45 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative flex flex-col animate-scaleUp no-super-scroll">
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
               <div className="flex items-center gap-2.5">

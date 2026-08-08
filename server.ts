@@ -1520,8 +1520,10 @@ app.get("/api/storyboard/available-models", async (req, res) => {
 
   const geminiTextModels: string[] = [];
   const geminiImageModels: string[] = [];
+  const geminiAudioModels: string[] = [];
   const openAiTextModels: string[] = [];
   const openAiImageModels: string[] = [];
+  const openAiAudioModels: string[] = [];
 
   if (activeGeminiKey && activeGeminiKey.trim()) {
     try {
@@ -1531,9 +1533,10 @@ app.get("/api/storyboard/available-models", async (req, res) => {
         list.forEach((m: any) => {
           if (m.name) {
             const name = m.name.replace(/^models\//, "");
-            // Filter text generation models
+            // Filter text generation models (and audio for Gemini since they are multimodal)
             if (name.includes("gemini") && !name.includes("vision") && !name.includes("embed")) {
               geminiTextModels.push(name);
+              geminiAudioModels.push(name); // Gemini uses its text models for multimodal audio
             }
             // Filter image models
             if (name.includes("imagen")) {
@@ -1577,7 +1580,9 @@ app.get("/api/storyboard/available-models", async (req, res) => {
         if (data && Array.isArray(data.data)) {
           data.data.forEach((m: any) => {
             const id = m.id || "";
-            if (id.includes("image") || id.startsWith("dall-e")) {
+            if (id.includes("whisper") || id.includes("transcribe")) {
+              openAiAudioModels.push(id);
+            } else if (id.includes("image") || id.startsWith("dall-e")) {
               openAiImageModels.push(id);
             } else if (id.startsWith("gpt-") || id.startsWith("o1") || id.startsWith("o3") || id.startsWith("chatgpt")) {
               openAiTextModels.push(id);
@@ -1617,14 +1622,20 @@ app.get("/api/storyboard/available-models", async (req, res) => {
     );
   }
 
+  if (openAiAudioModels.length === 0) {
+    openAiAudioModels.push("whisper-1");
+  }
+
   res.json({
     gemini: {
       text: [...new Set(geminiTextModels)].sort(),
-      image: [...new Set(geminiImageModels)].sort()
+      image: [...new Set(geminiImageModels)].sort(),
+      audio: [...new Set(geminiAudioModels)].sort()
     },
     openai: {
       text: [...new Set(openAiTextModels)].sort(),
-      image: [...new Set(openAiImageModels)].sort()
+      image: [...new Set(openAiImageModels)].sort(),
+      audio: [...new Set(openAiAudioModels)].sort()
     }
   });
 });
@@ -1771,12 +1782,12 @@ function consolidateRawSegments(rawSegments: Array<{ text: string; startTime: nu
 }
 
 // Helper to transcribe audio using OpenAI Whisper API
-async function transcribeAudioOpenAi(apiKey: string, rawAudioBuffer: Buffer, filename: string): Promise<any> {
+async function transcribeAudioOpenAi(apiKey: string, rawAudioBuffer: Buffer, filename: string, audioModel: string = "whisper-1"): Promise<any> {
   const audioBuffer = clampAudioBufferForOpenAi(rawAudioBuffer);
   const fileBlob = new Blob([audioBuffer], { type: filename.endsWith(".wav") ? "audio/wav" : "audio/mp3" });
   const formData = new FormData();
   formData.append("file", fileBlob, filename || "narration.mp3");
-  formData.append("model", "whisper-1");
+  formData.append("model", audioModel);
   formData.append("response_format", "verbose_json");
   formData.append("timestamp_granularities[]", "word");
   formData.append("timestamp_granularities[]", "segment");
@@ -2008,11 +2019,13 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
 
     if (isUsingOpenAi) {
       const activeOpenAiKey = openAiKeyHeader || req.body?.openAiKey || (loadApiSecrets().customOpenAiKey) || process.env.OPENAI_API_KEY;
+      const audioModel = req.headers["x-openai-audio-model"] as string || req.body?.openAiAudioModel || "whisper-1";
+
       if (!activeOpenAiKey || !activeOpenAiKey.trim()) {
         throw new Error("Chave de API OpenAI não encontrada. Por favor, insira sua OpenAI Key no painel Conexões para usar a transcrição via ChatGPT/Whisper.");
       }
-      console.log("[Audio Engine] Transcribing audio via OpenAI Whisper API...");
-      const whisperResult = await transcribeAudioOpenAi(activeOpenAiKey, audioBuffer, req.file?.originalname || "narration.mp3");
+      console.log(`[Audio Engine] Transcribing audio via OpenAI (${audioModel})...`);
+      const whisperResult = await transcribeAudioOpenAi(activeOpenAiKey, audioBuffer, req.file?.originalname || "narration.mp3", audioModel);
 
       let audioUrl = "";
       if (projectName && typeof projectName === "string" && projectName.trim()) {

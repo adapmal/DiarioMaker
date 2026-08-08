@@ -56,6 +56,8 @@ export interface StoryboardScene {
   wordStartIndex?: number;
   wordEndIndex?: number;
   timedWords?: { word: string; start: number; end: number }[];
+  disableImageStatus?: boolean;
+  disablePromptStatus?: boolean;
 }
 
 export type Scene = StoryboardScene;
