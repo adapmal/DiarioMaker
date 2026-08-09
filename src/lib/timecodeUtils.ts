@@ -74,7 +74,8 @@ export function alignAudioToExistingScenes(scenes: Scene[], timedWords: TimedWor
         timedWords[scene.wordStartIndex] && timedWords[scene.wordEndIndex]) {
       const startWord = timedWords[scene.wordStartIndex];
       const endWord = timedWords[scene.wordEndIndex];
-      const startTime = (startWord && typeof startWord.start === "number") ? startWord.start : (scene.startTime ?? 0);
+      const startTimeRaw = (startWord && typeof startWord.start === "number") ? startWord.start : (scene.startTime ?? 0);
+      const startTime = Math.max(0, startTimeRaw - 0.2);
       const endTime = (endWord && typeof endWord.end === "number") ? endWord.end : (scene.endTime ?? startTime + 3.0);
       const duration = Math.max(0.5, Number((endTime - startTime).toFixed(2)));
       lastMatchedIdx = Math.min(Math.max(0, scene.wordEndIndex + 1), Math.max(0, wordTokens.length - 1));
@@ -152,7 +153,8 @@ export function alignAudioToExistingScenes(scenes: Scene[], timedWords: TimedWor
     const sceneStartWord = timedWords[startIdx];
     const sceneEndWord = timedWords[endIdx] || sceneStartWord;
 
-    const startTime = (sceneStartWord && typeof sceneStartWord.start === "number") ? sceneStartWord.start : (scene.startTime ?? 0);
+    const startTimeRaw = (sceneStartWord && typeof sceneStartWord.start === "number") ? sceneStartWord.start : (scene.startTime ?? 0);
+    const startTime = Math.max(0, startTimeRaw - 0.2);
     const endTime = (sceneEndWord && typeof sceneEndWord.end === "number") ? sceneEndWord.end : (scene.endTime ?? startTime + 3.0);
     const duration = Math.max(0.5, Number((endTime - startTime).toFixed(2)));
 

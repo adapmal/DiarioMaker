@@ -634,17 +634,20 @@ function StoryboardCardComponent({
     });
   };
 
-  // Clear image handler (Limpar Imagem)
+  // Clear image handler (Apagar Imagem ativa)
   const handleClearImage = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const currentUrl = scene.generatedImageUrl;
     const remainingVersions = (scene.imageVersions || []).filter(v => v.url !== currentUrl);
     
+    // Fallback to the most recent remaining version, if any
+    const fallbackImage = remainingVersions.length > 0 ? remainingVersions[0] : undefined;
+
     onUpdate(scene.id, {
-      generatedImageUrl: undefined,
+      generatedImageUrl: fallbackImage ? fallbackImage.url : undefined,
       imageVersions: remainingVersions,
-      engineName: undefined,
-      renderTimeSeconds: undefined,
+      engineName: fallbackImage ? fallbackImage.engineName : undefined,
+      renderTimeSeconds: fallbackImage ? fallbackImage.renderTimeSeconds : undefined,
       renderStatus: "idle",
       renderError: undefined,
       isPromptModified: false
@@ -1367,10 +1370,10 @@ ${userPromptText}`;
                     type="button"
                     onClick={handleClearImage}
                     className="px-2 py-1 text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 border border-rose-900/40 hover:border-rose-800 rounded transition-all flex items-center gap-1 cursor-pointer text-[9px] uppercase font-mono font-bold"
-                    title="Limpar imagem deste quadro de cena"
+                    title="Apagar imagem atual deste quadro de cena"
                   >
                     <Trash2 size={9} />
-                    <span>Limpar</span>
+                    <span>Apagar</span>
                   </button>
                 </div>
               )}

@@ -3074,11 +3074,22 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     if (originalScene.timedWords && originalScene.timedWords.length > 0) {
       const part1Words = part1.trim().split(/\s+/).filter(Boolean);
       if (part1Words.length > 0 && part1Words.length < originalScene.timedWords.length) {
-        const lastWordOfPart1 = originalScene.timedWords[part1Words.length - 1];
-        if (lastWordOfPart1) {
-          splitTime = Number(lastWordOfPart1.end.toFixed(2));
+        const firstWordOfPart2 = originalScene.timedWords[part1Words.length];
+        if (firstWordOfPart2) {
+          splitTime = Number(firstWordOfPart2.start.toFixed(2));
+        } else {
+          const lastWordOfPart1 = originalScene.timedWords[part1Words.length - 1];
+          if (lastWordOfPart1) {
+            splitTime = Number(lastWordOfPart1.end.toFixed(2));
+          }
         }
       }
+    }
+
+    // Apply a 0.2s padding so the new IN point is slightly earlier, making playback start smoothly before the first word
+    if (splitTime !== undefined) {
+      splitTime = Math.max((originalScene.startTime || 0), splitTime - 0.2);
+      splitTime = Number(splitTime.toFixed(2));
     }
 
     const startWIdx = originalScene.wordStartIndex;
@@ -3101,10 +3112,10 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       sceneStylePreference: originalScene.sceneStylePreference || "auto",
       promptAiModel: originalScene.promptAiModel || "gemini-3.5-flash",
       promptTargetTool: originalScene.promptTargetTool || "Nano Banana",
-      generatedImageUrl: undefined,
+      generatedImageUrl: originalScene.generatedImageUrl,
       imageVersions: originalScene.imageVersions || [],
-      renderStatus: "idle",
-      renderError: undefined,
+      renderStatus: originalScene.renderStatus || "idle",
+      renderError: originalScene.renderError,
       selectedModel: originalScene.selectedModel,
       engineName: originalScene.engineName,
       renderTimeSeconds: originalScene.renderTimeSeconds,
@@ -3164,7 +3175,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     const num1 = current.sceneNumber || String(index + 1);
     const num2 = next.sceneNumber || String(index + 2);
 
-    const start = current.startTime;
+    const start = current.startTime !== undefined ? Math.max(0, current.startTime - 0.2) : undefined;
     const end = next.endTime ?? (next.startTime !== undefined ? next.startTime + (next.duration || 3) : undefined);
     const duration = (start !== undefined && end !== undefined) ? Math.max(0.5, Number((end - start).toFixed(2))) : undefined;
 
@@ -3178,7 +3189,13 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       sceneStylePreference: current.sceneStylePreference || next.sceneStylePreference || "auto",
       promptAiModel: current.promptAiModel || next.promptAiModel || "gemini-3.5-flash",
       promptTargetTool: current.promptTargetTool || next.promptTargetTool || "Nano Banana",
-      generatedImageUrl: undefined,
+      generatedImageUrl: current.generatedImageUrl,
+      imageVersions: current.imageVersions || [],
+      renderStatus: current.renderStatus || "idle",
+      renderError: current.renderError,
+      selectedModel: current.selectedModel,
+      engineName: current.engineName,
+      renderTimeSeconds: current.renderTimeSeconds,
       isPromptModified: false,
       startTime: start,
       endTime: end,
@@ -7007,69 +7024,75 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                         </span>
 
                         {/* Hover action sheet */}
-                        <div className="absolute inset-0 bg-black/95 opacity-0 group-hover:opacity-100 flex flex-col justify-between p-2.5 transition-all duration-200">
-                          {/* Details */}
-                          <div className="text-[9px] font-mono text-slate-400 space-y-0.5 leading-normal">
-                            <div className="text-slate-300 flex justify-between">
-                              <span>IA: {img.model || "Flux"}</span>
-                              <span className="text-slate-500">{img.timestamp}</span>
-                            </div>
-                            <div className="line-clamp-2 text-[8px] text-slate-400 italic">
-                              {img.prompt}
-                            </div>
-                            <div className="line-clamp-2 text-[8px] text-slate-500 italic mt-1 border-t border-zinc-800/60 pt-1">
-                              Ref: "{img.text}"
+                        <div className="absolute inset-0 bg-black/95 opacity-0 group-hover:opacity-100 flex flex-col p-2 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 transition-all duration-200">
+                          {/* Details (Simplified to 1 line to save space) */}
+                          <div 
+                            className="text-[9px] font-mono text-slate-400 mb-auto"
+                            title={`IA: ${img.model || "Flux"}\nRef: "${img.text}"\nPrompt: ${img.prompt}`}
+                          >
+                            <div className="line-clamp-1 italic text-slate-300">
+                              {img.prompt || "Sem prompt"}
                             </div>
                           </div>
 
                           {/* Actions */}
-                          <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-[#222]">
+                          <div className="flex flex-col gap-1 pt-1.5 mt-1 border-t border-[#222]">
                             <button
                               type="button"
                               onClick={() => handleRestoreAsNewScene(img)}
-                              className="col-span-2 py-1 bg-emerald-950/20 hover:bg-emerald-800 border border-emerald-900/40 text-emerald-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all text-center"
+                              className="w-full py-1 bg-emerald-950/20 hover:bg-emerald-800 border border-emerald-900/40 text-emerald-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all text-center"
                               title="Criar nova cena no storyboard com esta foto e narração"
                             >
-                              Restaurar como Nova Cena
+                              Restaurar Cena
                             </button>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const cleanTitle = (img.text || "")
-                                  .toLowerCase()
-                                  .normalize("NFD")
-                                  .replace(/[\u0300-\u036f]/g, "")
-                                  .replace(/[^a-z0-9]/g, "-")
-                                  .replace(/-+/g, "-")
-                                  .substring(0, 24)
-                                  .replace(/^-|-$/g, "");
-                                const num = img.originalSceneNumber || "X";
-                                const letter = img.letter || "A";
-                                const filename = `cena-${num}_${letter}${cleanTitle ? `-${cleanTitle}` : ""}.png`;
-                                handleDownloadArchiveImage(img.url, filename);
-                              }}
-                              className="py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all text-center"
-                            >
-                              Baixar
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(img.prompt);
-                                setNotification("✓ Prompt copiado para a área de transferência!");
-                              }}
-                              className="py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all flex items-center justify-center gap-1"
-                            >
-                              <Copy size={8} />
-                              <span>Prompt</span>
-                            </button>
+                            <div className="grid grid-cols-3 gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setZoomedImageUrl(img.url)}
+                                className="py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 flex items-center justify-center rounded cursor-pointer transition-all"
+                                title="Ampliar em tela cheia"
+                              >
+                                🔍
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cleanTitle = (img.text || "")
+                                    .toLowerCase()
+                                    .normalize("NFD")
+                                    .replace(/[\u0300-\u036f]/g, "")
+                                    .replace(/[^a-z0-9]/g, "-")
+                                    .replace(/-+/g, "-")
+                                    .substring(0, 24)
+                                    .replace(/^-|-$/g, "");
+                                  const num = img.originalSceneNumber || "X";
+                                  const letter = img.letter || "A";
+                                  const filename = `cena-${num}_${letter}${cleanTitle ? `-${cleanTitle}` : ""}.png`;
+                                  handleDownloadArchiveImage(img.url, filename);
+                                }}
+                                className="py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 flex items-center justify-center rounded cursor-pointer transition-all"
+                                title="Baixar imagem"
+                              >
+                                💾
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(img.prompt);
+                                  setNotification("✓ Prompt copiado para a área de transferência!");
+                                }}
+                                className="py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 flex items-center justify-center rounded cursor-pointer transition-all"
+                                title="Copiar Prompt"
+                              >
+                                <Copy size={10} />
+                              </button>
+                            </div>
 
                             <button
                               type="button"
                               onClick={() => handleDeleteArchiveImage(img.url)}
-                              className="col-span-2 py-1 bg-rose-950/25 hover:bg-rose-900 border border-rose-900/30 hover:border-rose-700 text-rose-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all flex items-center justify-center gap-1"
+                              className="w-full py-1 bg-rose-950/25 hover:bg-rose-900 border border-rose-900/30 hover:border-rose-700 text-rose-300 text-[8px] uppercase tracking-wider font-mono font-bold rounded cursor-pointer transition-all flex items-center justify-center gap-1"
                             >
                               <Trash2 size={8} />
                               <span>Remover</span>
