@@ -4,6 +4,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import fs from "fs";
 import multer from "multer";
+import { execSync } from "child_process";
 
 dotenv.config();
 
@@ -791,9 +792,10 @@ function formatGeminiError(error: any): string {
     errStr.includes("429") ||
     errStr.toLowerCase().includes("quota") ||
     errStr.toLowerCase().includes("resource_exhausted") ||
+    errStr.toLowerCase().includes("prepayment credits are depleted") ||
     error?.status === 429
   ) {
-    return "Você excedeu temporariamente a cota de uso gratuita do Gemini (Erro 429 - Limite atingido). Aguarde alguns segundos para tentar novamente, ou insira sua própria chave no painel de Chave de API abaixo para rodar com sua cota pessoal sem limites compartilhados.";
+    return "Seus créditos de pré-pagamento na conta do Google AI Studio foram esgotados (Erro 429 - RESOURCE_EXHAUSTED).\n\n💡 Sugestão: Acesse https://ai.studio/projects para gerenciar os créditos da sua chave API no Google AI Studio, insira uma chave pessoal no painel Conexões / Configurações do DiarioMaker, ou alterne manualmente o Motor de IA para OpenAI (ChatGPT/Whisper) ou Ollama Local.";
   }
   if (
     errStr.includes("503") ||
@@ -814,8 +816,16 @@ function formatGeminiError(error: any): string {
 
 // Helper to map fictional or deprecated model names to real, current Gemini model names
 function mapModelName(name: string): string {
-  if (!name) return "gemini-flash-latest";
+  if (!name) return "gemini-2.5-flash";
   const lower = name.toLowerCase();
+  if (
+    lower.includes("gemini-1.5-flash") ||
+    lower.includes("gemini-2.0-flash-lite") ||
+    lower.includes("gemini-3.1-flash-lite") ||
+    lower.includes("gemini-flash-latest")
+  ) {
+    return "gemini-2.5-flash";
+  }
   if (lower === "gemini-3.1-pro-preview" || lower === "gemini-3.1-pro") {
     return "gemini-2.5-pro";
   }
@@ -1459,7 +1469,7 @@ ${rawText}
           required: ["scenes"]
         }
       }
-    }), "gemini-3.6-flash", ["gemini-3.1-flash-lite", "gemini-flash-latest"], 1000, req);
+    }), "gemini-2.5-flash", ["gemini-3.5-flash", "gemini-2.5-pro"], 1000, req);
 
     const textOutput = response.text;
     if (!textOutput) {
@@ -1510,8 +1520,10 @@ app.get("/api/storyboard/available-models", async (req, res) => {
 
   const geminiTextModels: string[] = [];
   const geminiImageModels: string[] = [];
+  const geminiAudioModels: string[] = [];
   const openAiTextModels: string[] = [];
   const openAiImageModels: string[] = [];
+  const openAiAudioModels: string[] = [];
 
   if (activeGeminiKey && activeGeminiKey.trim()) {
     try {
@@ -1521,9 +1533,10 @@ app.get("/api/storyboard/available-models", async (req, res) => {
         list.forEach((m: any) => {
           if (m.name) {
             const name = m.name.replace(/^models\//, "");
-            // Filter text generation models
+            // Filter text generation models (and audio for Gemini since they are multimodal)
             if (name.includes("gemini") && !name.includes("vision") && !name.includes("embed")) {
               geminiTextModels.push(name);
+              geminiAudioModels.push(name); // Gemini uses its text models for multimodal audio
             }
             // Filter image models
             if (name.includes("imagen")) {
@@ -1567,7 +1580,9 @@ app.get("/api/storyboard/available-models", async (req, res) => {
         if (data && Array.isArray(data.data)) {
           data.data.forEach((m: any) => {
             const id = m.id || "";
-            if (id.includes("image") || id.startsWith("dall-e")) {
+            if (id.includes("whisper") || id.includes("transcribe")) {
+              openAiAudioModels.push(id);
+            } else if (id.includes("image") || id.startsWith("dall-e")) {
               openAiImageModels.push(id);
             } else if (id.startsWith("gpt-") || id.startsWith("o1") || id.startsWith("o3") || id.startsWith("chatgpt")) {
               openAiTextModels.push(id);
@@ -1607,14 +1622,20 @@ app.get("/api/storyboard/available-models", async (req, res) => {
     );
   }
 
+  if (openAiAudioModels.length === 0) {
+    openAiAudioModels.push("whisper-1");
+  }
+
   res.json({
     gemini: {
       text: [...new Set(geminiTextModels)].sort(),
-      image: [...new Set(geminiImageModels)].sort()
+      image: [...new Set(geminiImageModels)].sort(),
+      audio: [...new Set(geminiAudioModels)].sort()
     },
     openai: {
       text: [...new Set(openAiTextModels)].sort(),
-      image: [...new Set(openAiImageModels)].sort()
+      image: [...new Set(openAiImageModels)].sort(),
+      audio: [...new Set(openAiAudioModels)].sort()
     }
   });
 });
@@ -1625,7 +1646,318 @@ function sanitizeProjectName(name?: string): string {
   return clean || "meu-projeto";
 }
 
-// Audio Narration Transcription & Alignment Endpoint using Gemini Multimodal Audio API
+function clampAudioBufferForOpenAi(buffer: Buffer, maxBytes: number = 22 * 1024 * 1024): Buffer {
+  if (!buffer || buffer.length <= maxBytes) return buffer;
+
+  const isWav = buffer.length > 44 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WAVE";
+  if (!isWav) return buffer;
+
+  try {
+    const numChannels = buffer.readUInt16LE(22);
+    let sampleRate = buffer.readUInt32LE(24);
+    let bitsPerSample = buffer.readUInt16LE(34);
+
+    let pcmData = buffer.subarray(44);
+    let totalSamples = Math.floor(pcmData.length / (numChannels * (bitsPerSample / 8)));
+
+    // 1. Convert to Mono if Stereo
+    if (numChannels > 1) {
+      const monoBuffer = Buffer.alloc(totalSamples * (bitsPerSample / 8));
+      for (let i = 0; i < totalSamples; i++) {
+        let sum = 0;
+        for (let c = 0; c < numChannels; c++) {
+          if (bitsPerSample === 16) sum += pcmData.readInt16LE((i * numChannels + c) * 2);
+          else if (bitsPerSample === 8) sum += pcmData.readUInt8(i * numChannels + c) - 128;
+        }
+        const avg = sum / numChannels;
+        if (bitsPerSample === 16) monoBuffer.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(avg))), i * 2);
+        else monoBuffer.writeUInt8(Math.max(0, Math.min(255, Math.round(avg) + 128)), i);
+      }
+      pcmData = monoBuffer;
+    }
+
+    // 2. Convert 16-bit to 8-bit if it helps reduce size (halves the size without touching sample rate)
+    if (bitsPerSample === 16 && pcmData.length > maxBytes) {
+      const buffer8bit = Buffer.alloc(totalSamples);
+      for (let i = 0; i < totalSamples; i++) {
+        const val16 = pcmData.readInt16LE(i * 2);
+        buffer8bit.writeUInt8(Math.max(0, Math.min(255, Math.floor((val16 + 32768) / 256))), i);
+      }
+      pcmData = buffer8bit;
+      bitsPerSample = 8;
+    }
+
+    // 3. Decimate sample rate accurately to preserve exact duration
+    let decimateRatio = 1;
+    if (pcmData.length > maxBytes) {
+      decimateRatio = Math.ceil(pcmData.length / maxBytes);
+    }
+
+    let newSampleRate = Math.floor(sampleRate / decimateRatio);
+    let newTotalSamples = Math.floor(totalSamples / decimateRatio);
+    
+    if (decimateRatio > 1) {
+      const newPcmBuffer = Buffer.alloc(newTotalSamples * (bitsPerSample / 8));
+      for (let i = 0; i < newTotalSamples; i++) {
+        const origIdx = i * decimateRatio;
+        if (bitsPerSample === 16) newPcmBuffer.writeInt16LE(pcmData.readInt16LE(origIdx * 2), i * 2);
+        else newPcmBuffer.writeUInt8(pcmData.readUInt8(origIdx), i);
+      }
+      pcmData = newPcmBuffer;
+      sampleRate = newSampleRate;
+    }
+
+    // Write header
+    const header = Buffer.alloc(44);
+    header.write("RIFF", 0);
+    header.writeUInt32LE(36 + pcmData.length, 4);
+    header.write("WAVE", 8);
+    header.write("fmt ", 12);
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20); // PCM
+    header.writeUInt16LE(1, 22); // Mono
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(sampleRate * (bitsPerSample / 8), 28); // Byte rate
+    header.writeUInt16LE(bitsPerSample / 8, 32); // Block align
+    header.writeUInt16LE(bitsPerSample, 34); // Bits per sample
+    header.write("data", 36);
+    header.writeUInt32LE(pcmData.length, 40);
+
+    const result = Buffer.concat([header, pcmData]);
+    console.log(`[Audio Transcoder Server] Downsampled oversized WAV buffer from ${(buffer.length / 1024 / 1024).toFixed(2)}MB down to ${(result.length / 1024 / 1024).toFixed(2)}MB (New SampleRate: ${sampleRate}Hz)`);
+    return result;
+  } catch (err) {
+    console.warn("[Audio Transcoder Server] WAV downsampling failed, keeping original:", err);
+    return buffer;
+  }
+}
+
+function consolidateRawSegments(rawSegments: Array<{ text: string; startTime: number; endTime: number }>) {
+  if (!rawSegments || rawSegments.length === 0) return [];
+
+  const consolidated: Array<{ sceneNumber: string; text: string; startTime: number; endTime: number }> = [];
+
+  let currentText = "";
+  let currentStart = rawSegments[0].startTime;
+  let currentEnd = rawSegments[0].endTime;
+
+  for (let i = 0; i < rawSegments.length; i++) {
+    const seg = rawSegments[i];
+    const segText = String(seg.text || "").trim();
+    if (!segText) continue;
+
+    const gap = seg.startTime - currentEnd;
+    const currentDuration = currentEnd - currentStart;
+    const textHasPunctuation = /[.!?]$/.test(currentText.trim());
+
+    // Consolidate into 35-60 scenes target (8-16s per scene)
+    const shouldSplit = (gap >= 2.8) || (textHasPunctuation && currentDuration >= 8.0) || (currentDuration >= 18.0);
+
+    if (currentText.length > 0 && shouldSplit) {
+      consolidated.push({
+        sceneNumber: String(consolidated.length + 1),
+        text: currentText.trim(),
+        startTime: Number(currentStart.toFixed(2)),
+        endTime: Number(currentEnd.toFixed(2))
+      });
+      currentText = segText;
+      currentStart = seg.startTime;
+      currentEnd = seg.endTime;
+    } else {
+      currentText = currentText ? `${currentText} ${segText}` : segText;
+      currentEnd = seg.endTime;
+    }
+  }
+
+  if (currentText.trim().length > 0) {
+    consolidated.push({
+      sceneNumber: String(consolidated.length + 1),
+      text: currentText.trim(),
+      startTime: Number(currentStart.toFixed(2)),
+      endTime: Number(currentEnd.toFixed(2))
+    });
+  }
+
+  return consolidated;
+}
+
+// Helper to transcribe audio using OpenAI Whisper API
+async function transcribeAudioOpenAi(apiKey: string, rawAudioBuffer: Buffer, filename: string, audioModel: string = "whisper-1"): Promise<any> {
+  const audioBuffer = clampAudioBufferForOpenAi(rawAudioBuffer);
+  const fileBlob = new Blob([audioBuffer], { type: filename.endsWith(".wav") ? "audio/wav" : "audio/mp3" });
+  const formData = new FormData();
+  formData.append("file", fileBlob, filename || "narration.mp3");
+  formData.append("model", audioModel);
+  formData.append("response_format", "verbose_json");
+  formData.append("timestamp_granularities[]", "word");
+  formData.append("timestamp_granularities[]", "segment");
+  formData.append("language", "pt");
+
+  const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey.trim()}`
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    let exactMsg = errText;
+    let suggestion = "";
+    try {
+      const parsed = JSON.parse(errText);
+      if (parsed?.error?.message) {
+        exactMsg = parsed.error.message;
+        if (exactMsg.includes("does not have access to model") || exactMsg.includes("whisper-1") || response.status === 403) {
+          suggestion = "\n\n💡 Sugestão: O seu projeto de API da OpenAI não possui permissão para usar o modelo 'whisper-1'. Habilite o modelo nas configurações do seu projeto na OpenAI ou alterne manualmente para o Gemini nas opções de transcrição.";
+        } else if (exactMsg.includes("credits are depleted") || exactMsg.includes("billing") || response.status === 429) {
+          suggestion = "\n\n💡 Sugestão: Seus créditos de pré-pagamento na OpenAI foram esgotados. Verifique seu saldo no painel da OpenAI ou alterne manualmente para o Gemini.";
+        } else if (exactMsg.includes("413") || exactMsg.includes("Maximum content size limit") || response.status === 413) {
+          suggestion = "\n\n💡 Sugestão: O tamanho do áudio excedeu o limite máximo de 25 MB imposto pela API da OpenAI. O DiarioMaker irá otimizar a amostragem na próxima tentativa.";
+        }
+      }
+    } catch (_) {}
+    throw new Error(`[OpenAI Whisper API Status ${response.status}] ${exactMsg}${suggestion}`);
+  }
+
+  const data: any = await response.json();
+  const fullScript = String(data.text || "").trim();
+  const segments = Array.isArray(data.segments) ? data.segments : [];
+
+  const rawScenes = segments.map((seg: any) => ({
+    text: String(seg.text || "").trim(),
+    startTime: typeof seg.start === "number" ? Math.round(seg.start * 100) / 100 : 0,
+    endTime: typeof seg.end === "number" ? Math.round(seg.end * 100) / 100 : 0
+  })).filter((s: any) => s.text.length > 0);
+
+  const scenes = consolidateRawSegments(rawScenes);
+
+  const timedWords: any[] = [];
+  if (Array.isArray(data.words)) {
+    data.words.forEach((w: any) => {
+      timedWords.push({
+        word: String(w.word || "").trim(),
+        start: typeof w.start === "number" ? Math.round(w.start * 100) / 100 : 0,
+        end: typeof w.end === "number" ? Math.round(w.end * 100) / 100 : 0
+      });
+    });
+  }
+
+  return {
+    fullScript,
+    timedWords,
+    scenes: scenes.length > 0 ? scenes : [{ sceneNumber: "1", text: fullScript, startTime: 0, endTime: 10 }]
+  };
+}
+
+// Native Windows Folder Browser Dialog Endpoint
+app.post("/api/storyboard/browse-folder", (req, res) => {
+  try {
+    if (process.platform === "win32") {
+      const psScriptPath = path.join(process.cwd(), "browse_folder.ps1");
+      let command = `powershell -NoProfile -ExecutionPolicy Bypass -File "${psScriptPath}"`;
+      if (!fs.existsSync(psScriptPath)) {
+        const fallbackScript = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Selecione a pasta do projeto DiarioMaker'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }`;
+        const encoded = Buffer.from(fallbackScript, "utf16le").toString("base64");
+        command = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`;
+      }
+      const output = execSync(command, { encoding: "utf-8", timeout: 60000 }).trim();
+
+      if (output) {
+        const folderPath = output;
+        const folderName = path.basename(folderPath);
+        return res.json({ success: true, folderPath, folderName });
+      } else {
+        return res.json({ success: false, cancelled: true });
+      }
+    } else {
+      return res.status(400).json({ error: "O seletor nativo do Explorer é exclusivo para Windows." });
+    }
+  } catch (err: any) {
+    console.error("Error opening Windows folder picker:", err);
+    return res.status(500).json({ error: "Não foi possível abrir a janela do Explorer." });
+  }
+});
+
+// Native Windows File Browser Dialog for Audio (NLE Mode)
+app.post("/api/storyboard/browse-audio-file", (req, res) => {
+  try {
+    if (process.platform === "win32") {
+      const fallbackScript = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Filter = 'Arquivos de Áudio (*.wav, *.mp3, *.m4a)|*.wav;*.mp3;*.m4a|Todos os Arquivos (*.*)|*.*'; $f.Title = 'Selecione a narração (Modo NLE)'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.FileName }`;
+      const encoded = Buffer.from(fallbackScript, "utf16le").toString("base64");
+      const command = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`;
+      
+      const output = execSync(command, { encoding: "utf-8", timeout: 60000 }).trim();
+
+      if (output) {
+        const filePath = output;
+        const fileName = path.basename(filePath);
+        return res.json({ success: true, filePath, fileName });
+      } else {
+        return res.json({ success: false, cancelled: true });
+      }
+    } else {
+      return res.status(400).json({ error: "O seletor nativo é exclusivo para Windows." });
+    }
+  } catch (err: any) {
+    console.error("Error opening Windows file picker:", err);
+    return res.status(500).json({ error: "Falha ao abrir janela do Windows.", details: err.message });
+  }
+});
+
+// Stream Local Audio File (NLE Mode)
+app.get("/api/storyboard/stream-local-audio", (req, res) => {
+  try {
+    const audioPath = req.query.path as string;
+    console.log(`[Stream Local Audio] Solicitado: ${audioPath}`);
+    if (!audioPath || !fs.existsSync(audioPath)) {
+      console.warn(`[Stream Local Audio] ERRO: Arquivo não encontrado: ${audioPath}`);
+      return res.status(404).send("Arquivo não encontrado no caminho original.");
+    }
+    
+    const stat = fs.statSync(audioPath);
+    const total = stat.size;
+    const range = req.headers.range;
+
+    let contentType = "audio/wav";
+    const ext = audioPath.toLowerCase();
+    if (ext.endsWith(".mp3")) contentType = "audio/mpeg";
+    else if (ext.endsWith(".m4a")) contentType = "audio/mp4";
+    else if (ext.endsWith(".aac")) contentType = "audio/aac";
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const partialstart = parts[0];
+      const partialend = parts[1];
+
+      const start = parseInt(partialstart, 10);
+      const end = partialend ? parseInt(partialend, 10) : total - 1;
+      const chunksize = (end - start) + 1;
+      
+      const file = fs.createReadStream(audioPath, {start, end});
+      res.writeHead(206, {
+        "Content-Range": "bytes " + start + "-" + end + "/" + total,
+        "Accept-Ranges": "bytes",
+        "Content-Length": chunksize,
+        "Content-Type": contentType
+      });
+      file.pipe(res);
+    } else {
+      res.writeHead(200, {
+        "Content-Length": total,
+        "Content-Type": contentType,
+        "Accept-Ranges": "bytes"
+      });
+      fs.createReadStream(audioPath).pipe(res);
+    }
+  } catch (err: any) {
+    console.error("Erro no stream local audio:", err);
+    res.status(500).send("Erro interno ao ler arquivo.");
+  }
+});
+
+// Audio Narration Transcription & Alignment Endpoint supporting Gemini & OpenAI Whisper APIs
 app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req: any, res: any) => {
   if (req.setTimeout) req.setTimeout(600000);
   if (res.setTimeout) res.setTimeout(600000);
@@ -1637,14 +1969,22 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
     if (req.file) {
       audioBuffer = req.file.buffer;
       audioMimeType = req.file.mimetype || "audio/mp3";
-    } else if (req.body?.audioBase64) {
+    }
+
+    if (!audioBuffer && req.body?.audioBase64) {
       const cleanBase64 = req.body.audioBase64.includes(";base64,") ? req.body.audioBase64.split(";base64,")[1] : req.body.audioBase64;
       audioBuffer = Buffer.from(cleanBase64, "base64");
       if (req.body.audioMimeType) audioMimeType = req.body.audioMimeType;
-    } else if (projectName && typeof projectName === "string" && projectName.trim()) {
+    } else if (!audioBuffer && req.body?.audioPath && fs.existsSync(req.body.audioPath)) {
+      audioBuffer = fs.readFileSync(req.body.audioPath);
+      const ext = req.body.audioPath.toLowerCase();
+      if (ext.endsWith(".wav")) audioMimeType = "audio/wav";
+      else if (ext.endsWith(".mp3")) audioMimeType = "audio/mp3";
+      else if (ext.endsWith(".m4a")) audioMimeType = "audio/mp4";
+    } else if (!audioBuffer && projectName && typeof projectName === "string" && projectName.trim()) {
       const safeName = sanitizeProjectName(projectName);
       const projDir = path.join(PROJECTS_DIR, safeName);
-      const possibleFiles = ["narration.wav", "narration.mp3", "narration.m4a", "narration.ogg"];
+      const possibleFiles = ["narration_hd.wav", "narration_hd.mp3", "narration.wav", "narration.mp3", "narration.m4a"];
       for (const fname of possibleFiles) {
         const fpath = path.join(projDir, fname);
         if (fs.existsSync(fpath)) {
@@ -1659,7 +1999,7 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
       return res.status(400).json({ error: "Arquivo de áudio não encontrado no servidor para este projeto." });
     }
 
-    // Normalize audio MIME type for Gemini API
+    // Normalize audio MIME type
     let cleanMime = audioMimeType.toLowerCase();
     if (req.file?.originalname) {
       const origName = req.file.originalname.toLowerCase();
@@ -1671,6 +2011,37 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
     }
     if (cleanMime === "application/octet-stream" || cleanMime.includes("x-wav") || cleanMime.includes("wave")) {
       cleanMime = "audio/wav";
+    }
+
+    const openAiKeyHeader = req.headers["x-openai-key"] as string;
+    const requestedEngine = req.body?.engine || req.body?.selectedEngine || (req.headers["x-use-openai"] === "true" ? "openai" : "gemini");
+    const isUsingOpenAi = requestedEngine === "openai" || !!openAiKeyHeader;
+
+    if (isUsingOpenAi) {
+      const activeOpenAiKey = openAiKeyHeader || req.body?.openAiKey || (loadApiSecrets().customOpenAiKey) || process.env.OPENAI_API_KEY;
+      const audioModel = req.headers["x-openai-audio-model"] as string || req.body?.openAiAudioModel || "whisper-1";
+
+      if (!activeOpenAiKey || !activeOpenAiKey.trim()) {
+        throw new Error("Chave de API OpenAI não encontrada. Por favor, insira sua OpenAI Key no painel Conexões para usar a transcrição via ChatGPT/Whisper.");
+      }
+      console.log(`[Audio Engine] Transcribing audio via OpenAI (${audioModel})...`);
+      const whisperResult = await transcribeAudioOpenAi(activeOpenAiKey, audioBuffer, req.file?.originalname || "narration.mp3", audioModel);
+
+      let audioUrl = "";
+      if (projectName && typeof projectName === "string" && projectName.trim()) {
+        const safeName = sanitizeProjectName(projectName);
+        const projDir = path.join(PROJECTS_DIR, safeName);
+        if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
+        const ext = cleanMime.includes("wav") ? "wav" : "mp3";
+        const audioPath = path.join(projDir, `narration.${ext}`);
+        fs.writeFileSync(audioPath, audioBuffer);
+        audioUrl = `/api/projects/${safeName}/narration.${ext}`;
+      }
+
+      return res.json({
+        ...whisperResult,
+        audioUrl
+      });
     }
 
     if (projectName && audioBuffer) {
@@ -1746,7 +2117,7 @@ Return a JSON object containing:
           required: ["fullScript", "scenes"]
         }
       }
-    }), "gemini-flash-latest", ["gemini-3.1-flash-lite", "gemini-3.5-flash"], 1000, req);
+    }), "gemini-2.5-flash", ["gemini-3.5-flash", "gemini-2.5-pro"], 1000, req);
 
     const jsonText = response.text;
     if (!jsonText) throw new Error("A resposta da API de áudio retornou vazia.");
@@ -1772,7 +2143,7 @@ Return a JSON object containing:
     });
   } catch (err: any) {
     logErrorToFile("Audio Transcription Endpoint", err);
-    res.status(500).json({ error: `Erro na transcrição do áudio: ${err.message || err}` });
+    res.status(500).json({ error: `Erro na transcrição do áudio: ${formatGeminiError(err)}` });
   }
 });
 
@@ -2397,7 +2768,7 @@ app.post("/api/storyboard/generate-image", async (req, res) => {
         config: {
           maxOutputTokens: 15,
         }
-      }), "gemini-3.6-flash", ["gemini-3.1-flash-lite", "gemini-flash-latest"], 1000, req);
+      }), "gemini-2.5-flash", ["gemini-3.5-flash", "gemini-2.5-pro"], 1000, req);
       
       const keywordOutput = response.text?.trim().replace(/['"“”`]/g, "");
       if (keywordOutput && keywordOutput.length < 50 && !keywordOutput.includes("Error") && !keywordOutput.includes("Exception")) {

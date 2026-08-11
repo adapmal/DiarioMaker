@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { StoryboardScene, StylePreference, ConnectionGroup } from "../types";
 import { getCachedImage } from "../lib/cacheStore";
 import { downloadSingleImageFile } from "../lib/imageUtils";
-import { secondsToSMPTE, formatDuration } from "../lib/timecodeUtils";
+import { secondsToSMPTE, formatDuration, formatShortTimecode, parseShortTimecode } from "../lib/timecodeUtils";
 import { 
   Scissors, 
   ChevronUp, 
@@ -200,32 +200,44 @@ function StoryboardCardComponent({
     audioPlayerRef.current = audio;
     setIsPlayingAudio(true);
 
+    let rafId: number;
     let hasStarted = false;
-    const startSnippet = () => {
-      if (hasStarted) return;
-      hasStarted = true;
 
-      try {
-        audio.currentTime = playStart;
-      } catch (_) {}
-
-      audio.play().catch(err => {
-        console.error("Erro ao reproduzir áudio:", err);
-        setIsPlayingAudio(false);
-      });
-    };
-
-    audio.ontimeupdate = () => {
+    const checkTime = () => {
+      if (!audioPlayerRef.current) return; // Component unmounted or stopped
+      
       if (audio.currentTime >= playEnd) {
         audio.pause();
-        audio.ontimeupdate = null;
         setIsPlayingAudio(false);
         audioPlayerRef.current = null;
         if ((window as any)._currentStoryboardAudio === audio) {
           (window as any)._currentStoryboardAudio = null;
         }
+        cancelAnimationFrame(rafId);
+        return;
       }
+      rafId = requestAnimationFrame(checkTime);
     };
+
+    const applyStartAndPlay = () => {
+      if (hasStarted) return;
+      hasStarted = true;
+      try {
+        audio.currentTime = playStart;
+      } catch (err) {
+        console.warn("Audio seek error:", err);
+      }
+      audio.play().then(() => {
+        rafId = requestAnimationFrame(checkTime);
+      }).catch(err => {
+        console.error("Erro ao reproduzir áudio:", err);
+        setIsPlayingAudio(false);
+      });
+    };
+
+    audio.oncanplay = () => applyStartAndPlay();
+    audio.onloadeddata = () => applyStartAndPlay();
+    audio.onloadedmetadata = () => applyStartAndPlay();
 
     audio.onended = () => {
       setIsPlayingAudio(false);
@@ -235,12 +247,8 @@ function StoryboardCardComponent({
       }
     };
 
-    if (audio.readyState >= 1) {
-      startSnippet();
-    } else {
-      audio.onloadedmetadata = () => {
-        startSnippet();
-      };
+    if (audio.readyState >= 2) {
+      applyStartAndPlay();
     }
   };
 
@@ -374,6 +382,9 @@ function StoryboardCardComponent({
   const [selectedModel, setSelectedModel] = useState<"nano_banana" | "nano_banana_pro" | "nano_banana_2" | "chatgpt_dalle3">("nano_banana");
   const [isStudioGenerating, setIsStudioGenerating] = useState(false);
   const [studioPrompt, setStudioPrompt] = useState(scene.prompt);
+  const [studioDescription, setStudioDescription] = useState(scene.description);
+  const [editingTcIn, setEditingTcIn] = useState<string | null>(null);
+  const [editingTcOut, setEditingTcOut] = useState<string | null>(null);
   const [studioResultUrl, setStudioResultUrl] = useState<string | undefined>(scene.generatedImageUrl);
   const [renderMetadata, setRenderMetadata] = useState<{ engineName?: string; renderTimeSeconds?: number; creativeShader?: string } | null>(null);
   const [studioError, setStudioError] = useState<string | null>(null);
@@ -618,7 +629,8 @@ function StoryboardCardComponent({
         selectedModel: selectedModel,
         engineName: renderMetadata?.engineName,
         renderTimeSeconds: renderMetadata?.renderTimeSeconds,
-        prompt: studioPrompt
+        prompt: studioPrompt,
+        disableImageStatus: false
       });
       onCloseStudio?.();
     }
@@ -630,7 +642,8 @@ function StoryboardCardComponent({
       renderStatus: "queued", 
       selectedModel: model, 
       prompt: localPrompt || scene.prompt,
-      renderError: undefined 
+      renderError: undefined,
+      disableImageStatus: false
     });
   };
 
@@ -935,8 +948,8 @@ ${userPromptText}`;
 
       onUpdate(scene.id, {
         chatHistory: [...currentHistory, assistantMsg],
-        ...(imgResult.imageUrl ? { generatedImageUrl: imgResult.imageUrl } : {}),
-        ...(editResult.newPrompt ? { prompt: editResult.newPrompt } : {}),
+        ...(imgResult.imageUrl ? { generatedImageUrl: imgResult.imageUrl, disableImageStatus: false } : {}),
+        ...(editResult.newPrompt ? { prompt: editResult.newPrompt, disablePromptStatus: false } : {}),
         ...(editResult.newDescription ? { description: editResult.newDescription } : {}),
         imageVersions: updatedVersions,
         renderStatus: "completed"
@@ -966,7 +979,8 @@ ${userPromptText}`;
       generationGuidelines: localGuidelines,
       sceneStylePreference: localSceneStyle,
       promptAiModel: localAiModel,
-      promptTargetTool: localTargetTool
+      promptTargetTool: localTargetTool,
+      disablePromptStatus: false
     });
     setIsManualEditing(false);
   };
@@ -1056,8 +1070,8 @@ ${userPromptText}`;
           </div>
         )}
         {/* Side Action Bar / Drag and Move handles */}
-        <div className="bg-[#222] w-full md:w-16 flex md:flex-col items-center justify-between p-3 border-b md:border-b-0 md:border-r border-[#333] gap-2 select-none shrink-0">
-          <div className="flex md:flex-col items-center gap-1">
+        <div className="bg-[#222] w-full md:w-24 flex md:flex-col items-center justify-between p-2.5 border-b md:border-b-0 md:border-r border-[#333] gap-2 select-none shrink-0">
+          <div className="flex md:flex-col items-center gap-1 w-full">
             <button
               type="button"
               onClick={() => onMoveUp(index)}
@@ -1078,29 +1092,64 @@ ${userPromptText}`;
             </div>
 
             {(scene.startTime !== undefined || audioNarrationUrl) && (
-              <div className="flex flex-col items-center my-1 font-mono">
-                {scene.startTime !== undefined && (
-                  <>
-                    <span className="text-[8px] text-[#D4AF37] font-bold tracking-wider">
-                      {secondsToSMPTE(scene.startTime, fps || 24)}
-                    </span>
-                    <span className="text-[7px] text-zinc-500 font-sans">
-                      {formatDuration(scene.duration || (scene.endTime ? scene.endTime - scene.startTime : 3))}
-                    </span>
-                  </>
-                )}
+              <div className="flex flex-col items-center my-1 font-mono space-y-1.5 bg-[#141414] p-1.5 rounded border border-zinc-800/80 w-full">
+                <div className="flex flex-col gap-1.5 w-full">
+                  <div className="flex flex-col w-full text-left">
+                    <span className="text-[7.5px] text-[#D4AF37] font-bold tracking-wider uppercase font-sans mb-0.5">IN</span>
+                    <input
+                      type="text"
+                      value={editingTcIn !== null ? editingTcIn : formatShortTimecode(scene.startTime ?? 0)}
+                      onFocus={() => setEditingTcIn(formatShortTimecode(scene.startTime ?? 0))}
+                      onChange={(e) => setEditingTcIn(e.target.value)}
+                      onBlur={() => {
+                        if (editingTcIn !== null) {
+                          const parsed = parseShortTimecode(editingTcIn);
+                          const currentEnd = scene.endTime ?? ((scene.startTime ?? 0) + (scene.duration || 3));
+                          const newEnd = Math.max(parsed + 0.5, currentEnd);
+                          onUpdate(scene.id, { startTime: parsed, endTime: newEnd, duration: Number((newEnd - parsed).toFixed(2)) });
+                          setEditingTcIn(null);
+                        }
+                      }}
+                      className="w-full bg-black border border-zinc-700 focus:border-[#D4AF37] text-[11px] text-[#D4AF37] font-mono text-center rounded py-1.5 font-bold shadow-inner"
+                      title="TC de Entrada (Clique para editar tempo inicial)"
+                    />
+                  </div>
+
+                  <div className="flex flex-col w-full text-left">
+                    <span className="text-[7.5px] text-[#D4AF37] font-bold tracking-wider uppercase font-sans mb-0.5">OUT</span>
+                    <input
+                      type="text"
+                      value={editingTcOut !== null ? editingTcOut : formatShortTimecode(scene.endTime ?? ((scene.startTime ?? 0) + (scene.duration || 3)))}
+                      onFocus={() => setEditingTcOut(formatShortTimecode(scene.endTime ?? ((scene.startTime ?? 0) + (scene.duration || 3))))}
+                      onChange={(e) => setEditingTcOut(e.target.value)}
+                      onBlur={() => {
+                        if (editingTcOut !== null) {
+                          const parsed = parseShortTimecode(editingTcOut);
+                          const currentStart = scene.startTime ?? 0;
+                          const validEnd = Math.max(currentStart + 0.5, parsed);
+                          onUpdate(scene.id, { endTime: validEnd, duration: Number((validEnd - currentStart).toFixed(2)) });
+                          setEditingTcOut(null);
+                        }
+                      }}
+                      className="w-full bg-black border border-zinc-700 focus:border-[#D4AF37] text-[11px] text-[#D4AF37] font-mono text-center rounded py-1.5 font-bold shadow-inner"
+                      title="TC de Saída (Clique para editar tempo final)"
+                    />
+                  </div>
+                </div>
+
                 {audioNarrationUrl && (
                   <button
                     type="button"
                     onClick={handlePlayAudioSnippet}
-                    className={`mt-1.5 p-1.5 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                    className={`mt-1 w-full py-1 rounded border transition-all cursor-pointer flex items-center justify-center gap-1 ${
                       isPlayingAudio
                         ? "bg-[#D4AF37] text-black border-[#D4AF37] animate-pulse"
                         : "bg-[#111] text-[#D4AF37] border-[#D4AF37]/40 hover:border-[#D4AF37] hover:bg-[#222]"
                     }`}
                     title="Ouvir trecho da narração para esta cena"
                   >
-                    {isPlayingAudio ? <Pause size={10} /> : <Play size={10} className="ml-0.5" />}
+                    {isPlayingAudio ? <Pause size={9} /> : <Play size={9} />}
+                    <span className="text-[7.5px] uppercase font-bold font-sans">{isPlayingAudio ? "Pausar" : "Ouvir"}</span>
                   </button>
                 )}
               </div>
@@ -1276,6 +1325,69 @@ ${userPromptText}`;
 
           {/* Clean Dedicated AI Control Panel Docked Below Image (No Overlays or Dark Gradients over the Image) */}
           <div className="w-full bg-[#141414] border-t border-zinc-800/80 p-2.5 sm:p-3 text-left space-y-2 mt-auto">
+            {/* Context/Style badges moved to left pane */}
+            <div className="flex items-center justify-between gap-1.5 pb-1">
+              <div className="flex items-center gap-1.5 flex-1 overflow-hidden">
+                {/* Left: Modificado, Active Group */}
+                {scene.isPromptModified && scene.generatedImageUrl && (
+                  <span className="text-[9px] font-mono py-0.5 px-1.5 rounded bg-amber-950/30 text-amber-400 border border-amber-900/30 uppercase font-bold animate-pulse animate-fadeIn shrink-0" title="O prompt ou texto foi modificado desde a última renderização. Considere gerar novamente.">
+                    ⚠ Modificado
+                  </span>
+                )}
+                {activeGroup && (
+                  <span 
+                    className="text-[9px] font-mono py-0.5 px-2 rounded uppercase tracking-wider flex items-center gap-1 border font-bold animate-fadeIn shrink-0 truncate"
+                    style={{ 
+                      backgroundColor: `${activeGroup.color}15`, 
+                      color: activeGroup.color, 
+                      borderColor: `${activeGroup.color}45` 
+                    }}
+                    title={`Conectado ao grupo: ${activeGroup.name}`}
+                  >
+                    <Link size={8} className="shrink-0" /> {activeGroup.name}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-center shrink-0">
+                {/* Center: Imagem Renderizada Toggle */}
+                {scene.generatedImageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => onUpdate(scene.id, { disableImageStatus: !scene.disableImageStatus })}
+                    className={`text-[9px] font-mono py-0.5 px-1.5 rounded uppercase font-bold cursor-pointer transition-all flex items-center gap-1 ${
+                      scene.disableImageStatus
+                        ? "bg-zinc-900/50 text-zinc-600 border border-zinc-800 line-through"
+                        : "bg-emerald-950/30 text-emerald-400 border border-emerald-900/30"
+                    }`}
+                    title={scene.disableImageStatus ? "Imagem ignorada (será recriada no Gerar Cenas Vazias)" : "Imagem considerada ativa"}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 shrink-0"></span>
+                    Imagem Renderizada
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end flex-1 gap-1.5">
+                {/* Right: Style Tags */}
+                {isCaravaggio && (
+                  <span className="text-[9px] font-serif py-0.5 px-1.5 rounded bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 uppercase tracking-wider shrink-0">
+                    ✦ Caravaggio
+                  </span>
+                )}
+                {isUrbanRealism && (
+                  <span className="text-[9px] font-sans py-0.5 px-1.5 rounded bg-blue-950/40 text-blue-300 border border-blue-900/30 uppercase tracking-widest shrink-0">
+                    ❖ Realismo
+                  </span>
+                )}
+                {!isCaravaggio && !isUrbanRealism && (
+                  <span className="text-[9px] font-sans py-0.5 px-1.5 rounded bg-stone-900 text-stone-300 border border-[#333] uppercase shrink-0">
+                    ⚙ Auto IA
+                  </span>
+                )}
+              </div>
+            </div>
+
             {/* Line 1: Radio buttons selection for Image Generation Model + Right Aligned Renderizar Button */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">
@@ -1390,52 +1502,9 @@ ${userPromptText}`;
         </div>
 
         {/* Main Content Areas */}
-        <div className="flex-1 p-5 space-y-4 text-[#E0D8D0]">
+        <div className="flex-1 p-5 flex flex-col gap-4 text-[#E0D8D0]">
           
-          {/* Style Badges banner */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#333] pb-2.5">
-            <div className="flex items-center gap-2">
-              {isCaravaggio && (
-                <span className="text-[10px] font-serif py-0.5 px-2 rounded bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 uppercase tracking-wider">
-                  ✦ Caravaggio Chiaroscuro
-                </span>
-              )}
-              {isUrbanRealism && (
-                <span className="text-[10px] font-sans py-0.5 px-2 rounded bg-blue-950/40 text-blue-300 border border-blue-900/30 uppercase tracking-widest">
-                  ❖ Realismo Paulistano / Carioca
-                </span>
-              )}
-              {!isCaravaggio && !isUrbanRealism && (
-                <span className="text-[10px] font-sans py-0.5 px-2 rounded bg-stone-900 text-stone-300 border border-[#333] uppercase">
-                  ⚙ Sob Demanda (Auto IA)
-                </span>
-              )}
-              {scene.generatedImageUrl && (
-                <span className="text-[9px] font-mono py-0.5 px-1.5 rounded bg-emerald-950/30 text-emerald-400 border border-emerald-900/30 uppercase font-bold">
-                  ✓ Foto Renderizada
-                </span>
-              )}
-              {scene.isPromptModified && scene.generatedImageUrl && (
-                <span className="text-[9px] font-mono py-0.5 px-1.5 rounded bg-amber-950/30 text-amber-400 border border-amber-900/30 uppercase font-bold animate-pulse animate-fadeIn" title="O prompt ou texto foi modificado desde a última renderização. Considere gerar novamente.">
-                  ⚠ Modificado
-                </span>
-              )}
-              {activeGroup && (
-                <span 
-                  className="text-[9px] font-mono py-0.5 px-2 rounded uppercase tracking-wider flex items-center gap-1 border font-bold animate-fadeIn"
-                  style={{ 
-                    backgroundColor: `${activeGroup.color}15`, 
-                    color: activeGroup.color, 
-                    borderColor: `${activeGroup.color}45` 
-                  }}
-                  title="Esta cena está conectada e compartilha memórias/prompts com outras cenas no mesmo grupo para consistência visual."
-                >
-                  <LinkIcon size={10} />
-                  <span>Conexão: {activeGroup.name}</span>
-                </span>
-              )}
-            </div>
-
+          <div className="flex items-center justify-between border-b border-[#333] pb-2.5">
             <div className="flex items-center gap-2">
               {isManualEditing ? (
                 <>
@@ -1455,54 +1524,60 @@ ${userPromptText}`;
                   </button>
                 </>
               ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleCopyPromptInfo}
-                    className="text-[10px] text-slate-400 hover:text-[#D4AF37] uppercase tracking-wider transition flex items-center gap-1.5 px-2.5 py-1 bg-[#222]/35 hover:bg-[#222] border border-[#333]/50 rounded cursor-pointer"
-                    title="Copiar todas as instruções de geração que vão para a IA (incluindo texto, estilo, diretrizes e contexto)"
-                  >
-                    {promptInputCopied ? (
-                      <>
-                        <Check size={10} className="text-emerald-400" />
-                        <span>Instruções Copiadas!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy size={10} />
-                        <span>Copiar instruções</span>
-                      </>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsManualEditing(true)}
-                    className="text-[10px] text-slate-400 hover:text-[#D4AF37] uppercase tracking-wider transition flex items-center gap-1 px-2.5 py-1 bg-[#222]/35 hover:bg-[#222] border border-[#333]/50 rounded cursor-pointer"
-                  >
-                    <Edit3 size={10} /> Editar textos
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => setIsManualEditing(true)}
+                  className="text-[10px] text-slate-400 hover:text-[#D4AF37] uppercase tracking-wider transition flex items-center gap-1 px-2.5 py-1 bg-[#222]/35 hover:bg-[#222] border border-[#333]/50 rounded cursor-pointer"
+                >
+                  <Edit3 size={10} /> Editar
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!isManualEditing && (
+                <button
+                  type="button"
+                  onClick={handleCopyPromptInfo}
+                  className="text-[10px] text-slate-400 hover:text-[#D4AF37] uppercase tracking-wider transition flex items-center gap-1.5 px-2.5 py-1 bg-[#222]/35 hover:bg-[#222] border border-[#333]/50 rounded cursor-pointer"
+                  title="Copiar todas as instruções de geração que vão para a IA (incluindo texto, estilo, diretrizes e contexto)"
+                >
+                  {promptInputCopied ? (
+                    <>
+                      <span>Instruções Copiadas!</span>
+                      <Check size={10} className="text-emerald-400" />
+                    </>
+                  ) : (
+                    <>
+                      <span>Instruções</span>
+                      <Copy size={10} />
+                    </>
+                  )}
+                </button>
               )}
             </div>
           </div>
 
-          {/* Narrative & Split row - Isolated at the top for full horizontal space */}
-          <div className="space-y-1">
-            <label className="text-[9px] uppercase tracking-widest text-[#D4AF37]/75 font-mono block">
-              Narração/Texto original
-            </label>
-            {isManualEditing ? (
-              <textarea
-                ref={narrationRef}
-                value={localText}
-                onChange={(e) => setLocalText(e.target.value)}
-                className="w-full h-24 bg-[#0a0a0a] border border-[#333] rounded p-3 text-xs text-[#E0D8D0] focus:outline-[#D4AF37]/40 resize-none leading-relaxed"
-              />
-            ) : (
-              <div className="min-h-[80px] max-h-24 bg-transparent border-l-2 border-[#D4AF37]/50 pl-3.5 py-1 text-xs text-[#E0D8D0] italic leading-relaxed overflow-y-auto font-serif select-text">
-                "{scene.text}"
-              </div>
-            )}
+
+          {/* Container wrapper fixed height to constrain vertical expansion - 280px */}
+          <div className="flex flex-col h-[280px] gap-4 shrink-0">
+            {/* Narrative & Split row */}
+            <div className="space-y-1 shrink-0">
+              <label className="text-[9px] uppercase tracking-widest text-[#D4AF37]/75 font-mono block">
+                Narração/Texto original
+              </label>
+              {isManualEditing ? (
+                <textarea
+                  ref={narrationRef}
+                  value={localText}
+                  onChange={(e) => setLocalText(e.target.value)}
+                  className="w-full min-h-[40px] max-h-32 bg-[#0a0a0a] border border-[#333] rounded p-3 text-xs text-[#E0D8D0] focus:outline-[#D4AF37]/40 resize-y leading-relaxed"
+                />
+              ) : (
+                <div className="bg-transparent border-l-2 border-[#D4AF37]/50 pl-3.5 py-1 text-xs text-[#E0D8D0] italic leading-relaxed font-serif select-text break-words overflow-y-auto max-h-[120px]">
+                  "{scene.text}"
+                </div>
+              )}
             {isManualEditing && (
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 animate-fadeIn">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1563,93 +1638,113 @@ ${userPromptText}`;
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Prompts Layout - Dividing the space of the former "Prompt Gerado" */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            
-            {/* Prompt Amigável (IA) */}
-            <div className="bg-[#0a0a0a] border border-[#333] rounded p-3.5 space-y-2 relative flex flex-col justify-between min-h-[140px]">
-              <div className="space-y-2 w-full">
-                <span className="text-[9px] font-mono tracking-widest text-[#D4AF37]/85 uppercase flex items-center gap-1.5 font-semibold">
-                  <Sparkles size={10} className="text-[#D4AF37]/85" />
-                  Prompt Amigável (IA)
-                </span>
-                {isManualEditing ? (
-                  <textarea
-                    value={localDescription}
-                    onChange={(e) => setLocalDescription(e.target.value)}
-                    className="w-full h-24 bg-[#050505] border border-[#333] rounded p-2 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 resize-none leading-relaxed"
-                  />
-                ) : (
-                  <div className="min-h-[80px] max-h-24 pl-1 text-[11px] text-slate-400 leading-normal overflow-y-auto select-text font-sans">
-                    {scene.description || "Aguardando diretrizes visuais. Clique em 'Regerar Prompt' para acionar o Diretor de Arte AI."}
-                  </div>
-                )}
-              </div>
             </div>
 
-            {/* Prompt Real (IA) with Icon-Only Copy Button */}
-            <div id={`prompt-section-${scene.id}`} className="bg-[#0a0a0a] border border-[#333] rounded p-3.5 space-y-2 relative flex flex-col justify-between min-h-[140px]">
-              <div className="space-y-2 w-full">
-                <div className="flex items-center justify-between gap-2 pb-0.5">
-                  <span className="text-[9px] font-mono tracking-widest text-[#D4AF37] uppercase flex items-center gap-1.5 font-semibold">
-                    <Sparkles size={10} className="text-[#D4AF37]" />
-                    Prompt Real (IA)
+            {/* Prompts Layout - Dividing the space of the former "Prompt Gerado" */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0">
+              
+              {/* Prompt Amigável (IA) */}
+              <div className="bg-[#0a0a0a] border border-[#333] rounded p-3.5 space-y-2 relative flex flex-col justify-between min-h-[140px] flex-1">
+                <div className="space-y-2 w-full flex-1 flex flex-col min-h-0">
+                  <span className="text-[9px] font-mono tracking-widest text-[#D4AF37]/85 uppercase flex items-center gap-1.5 font-semibold shrink-0">
+                    <Sparkles size={10} className="text-[#D4AF37]/85" />
+                    Prompt Amigável (IA)
                   </span>
-                  
-                  <div className="flex items-center gap-1.5">
-                    {modelIndicator && (
-                      <span
-                        className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${modelIndicator.colorClass}`}
-                        title={modelIndicator.tooltip}
-                      >
-                        {modelIndicator.label}
-                      </span>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleCopyPrompt}
-                      className="p-1.5 text-[#D4AF37] hover:text-[#fff] hover:bg-[#141414] border border-[#333] rounded cursor-pointer transition-all shadow-md flex items-center justify-center"
-                      title="Copiar prompt"
+                  {isManualEditing ? (
+                    <textarea
+                      value={localDescription}
+                      onChange={(e) => setLocalDescription(e.target.value)}
+                      className="w-full flex-1 min-h-[60px] bg-[#050505] border border-[#333] rounded p-2 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 resize-y leading-relaxed"
+                    />
+                  ) : (
+                    <div 
+                      className="flex-1 min-h-[60px] pl-1 text-[11px] text-slate-400 leading-normal overflow-y-auto select-text font-sans"
+                      title={scene.description || "Aguardando diretrizes visuais."}
                     >
-                      {copied ? (
-                        <Check size={11} className="text-emerald-400" />
-                      ) : (
-                        <Copy size={11} />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Prompt Generation Error Notification */}
-                {(scene.promptQueueStatus === "failed" || scene.promptError) && (
-                  <div className="p-2 bg-rose-950/40 border border-rose-800/60 rounded text-[10px] text-rose-300 font-mono space-y-1 animate-fadeIn">
-                    <div className="font-bold flex items-center gap-1 text-rose-400">
-                      <AlertTriangle size={12} className="shrink-0" />
-                      <span>⚠️ FALHA NA GERAÇÃO DO PROMPT NO MODELO SELECIONADO</span>
+                      {scene.description || "Aguardando diretrizes visuais. Clique em 'Regerar Prompt' para acionar o Diretor de Arte AI."}
                     </div>
-                    <p className="text-[9px] leading-relaxed text-rose-200">
-                      {scene.promptError || "O modelo de IA selecionado não pôde concluir a geração do prompt."}
-                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Prompt Real (IA) with Icon-Only Copy Button and Trash Can */}
+              <div id={`prompt-section-${scene.id}`} className="bg-[#0a0a0a] border border-[#333] rounded p-3.5 space-y-2 relative flex flex-col justify-between min-h-[140px] flex-1">
+                <div className="space-y-2 w-full flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between gap-2 pb-0.5 shrink-0">
+                    <span className="text-[9px] font-mono tracking-widest text-[#D4AF37] uppercase flex items-center gap-1.5 font-semibold">
+                      <Sparkles size={10} className="text-[#D4AF37]" />
+                      Prompt Real (IA)
+                    </span>
+                    
+                    <div className="flex items-center gap-1.5">
+                      {modelIndicator && (
+                        <span
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${modelIndicator.colorClass}`}
+                          title={modelIndicator.tooltip}
+                        >
+                          {modelIndicator.label}
+                        </span>
+                      )}
+
+                      {scene.prompt && 
+                       scene.prompt.trim() !== "" && 
+                       !scene.prompt.includes("Aguardando") && 
+                       !scene.description?.includes("Cena extraída da narração em áudio") && (
+                        <button
+                          type="button"
+                          onClick={() => onUpdate(scene.id, { prompt: "", description: "" })}
+                          className="p-1.5 text-rose-400 hover:text-white hover:bg-rose-950/30 border border-rose-900/40 hover:border-rose-800 rounded cursor-pointer transition-all shadow-md flex items-center justify-center"
+                          title="Limpar prompt (Marcar como vazio para regeração em lote)"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleCopyPrompt}
+                        className="p-1.5 text-[#D4AF37] hover:text-[#fff] hover:bg-[#141414] border border-[#333] rounded cursor-pointer transition-all shadow-md flex items-center justify-center"
+                        title="Copiar prompt"
+                      >
+                        {copied ? (
+                          <Check size={11} className="text-emerald-400" />
+                        ) : (
+                          <Copy size={11} />
+                        )}
+                      </button>
+                    </div>
                   </div>
-                )}
-                
-                {isManualEditing ? (
-                  <textarea
-                    value={localPrompt}
-                    onChange={(e) => setLocalPrompt(e.target.value)}
-                    className="w-full h-24 bg-[#050505] border border-[#333] rounded p-2 text-[11px] text-stone-300 font-mono focus:outline-none focus:border-[#D4AF37]/50 resize-none leading-relaxed"
-                  />
-                ) : (
-                  <div className="min-h-[80px] max-h-24 pl-1 text-[11px] text-stone-300 font-mono leading-relaxed overflow-y-auto select-all">
-                    {scene.prompt || "Configure ou gere seu prompt de cena..."}
-                  </div>
-                )}
+
+                  {/* Prompt Generation Error Notification */}
+                  {(scene.promptQueueStatus === "failed" || scene.promptError) && (
+                    <div className="p-2 bg-rose-950/40 border border-rose-800/60 rounded text-[10px] text-rose-300 font-mono space-y-1 animate-fadeIn shrink-0">
+                      <div className="font-bold flex items-center gap-1 text-rose-400">
+                        <AlertTriangle size={12} className="shrink-0" />
+                        <span>⚠️ FALHA NA GERAÇÃO DO PROMPT NO MODELO SELECIONADO</span>
+                      </div>
+                      <p className="text-[9px] leading-relaxed text-rose-200">
+                        {scene.promptError || "O modelo de IA selecionado não pôde concluir a geração do prompt."}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {isManualEditing ? (
+                    <textarea
+                      value={localPrompt}
+                      onChange={(e) => setLocalPrompt(e.target.value)}
+                      className="w-full flex-1 min-h-[60px] bg-[#050505] border border-[#333] rounded p-2 text-[11px] text-stone-300 font-mono focus:outline-none focus:border-[#D4AF37]/50 resize-y leading-relaxed"
+                    />
+                  ) : (
+                    <div 
+                      className="flex-1 min-h-[60px] pl-1 text-[11px] text-stone-300 font-mono leading-relaxed overflow-y-auto select-all"
+                      title={scene.prompt || "Aguardando prompt de cena."}
+                    >
+                      {scene.prompt || "Configure ou gere seu prompt de cena..."}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-
           </div>
 
           {/* New Generation Guidelines & Setup Area */}
