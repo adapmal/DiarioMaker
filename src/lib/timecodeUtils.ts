@@ -20,6 +20,34 @@ export function secondsToSMPTE(totalSeconds: number, fps: number = 24): string {
 }
 
 /**
+ * Generate a consistent, predictable filename for a scene based on its properties.
+ */
+export function getSceneFilename(scene: any, idx: number, consecutiveNumbering: boolean = false, overrideLetter?: string): string {
+  const cleanTitle = (scene.text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "-")
+    .replace(/-+/g, "-")
+    .substring(0, 24)
+    .replace(/^-|-$/g, "");
+    
+  const num = consecutiveNumbering 
+    ? String(idx + 1).padStart(2, "0") 
+    : (scene.sceneNumber || String(idx + 1));
+    
+  let letter = overrideLetter || "A";
+  if (!overrideLetter && scene.imageVersions && scene.generatedImageUrl) {
+    const active = scene.imageVersions.find((v: any) => v.url === scene.generatedImageUrl);
+    if (active && active.letter) {
+      letter = active.letter;
+    }
+  }
+
+  return `cena-${num}_${letter}${cleanTitle ? `-${cleanTitle}` : ""}.png`;
+}
+
+/**
  * Convert SMPTE Timecode HH:MM:SS:FF to seconds
  */
 export function smpteToSeconds(smpte: string, fps: number = 24): number {
@@ -240,7 +268,7 @@ export function generateFCPXML(
     const endFrame = Math.round(endSec * timebase);
     const durationFrames = Math.max(1, endFrame - startFrame);
 
-    const imageName = `Cena_${String(idx + 1).padStart(2, "0")}.png`;
+    const imageName = getSceneFilename(scene, idx);
     const imageAssetUrl = scene.generatedImageUrl || "";
 
     return `
@@ -280,8 +308,8 @@ export function generateFCPXML(
   }).join("\n");
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE xmeml PUBLIC "-//Apple Computer//DTD XMEML 3.0//EN" "http://www.apple.com/DTDs/XMEML-3.0.dtd">
-<xmeml version="3">
+<!DOCTYPE xmeml PUBLIC "-//Apple Computer//DTD XMEML 5.0//EN" "http://www.apple.com/DTDs/XMEML-5.0.dtd">
+<xmeml version="5">
   <sequence id="sequence-1">
     <name>${projectName.replace(/["&<>]/g, "")}</name>
     <duration>${totalFrames}</duration>
@@ -379,10 +407,11 @@ export function generateEDL(
     currentRecInFrames += clipFrames;
     const recOutSMPTE = secondsToSMPTE(currentRecInFrames / fps, fps);
 
-    const clipName = `CENA_${String(idx + 1).padStart(2, "0")}`;
+    const fullClipName = getSceneFilename(scene, idx);
+    const reelName = fullClipName.substring(0, 8).toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-    edl += `${editNum}  AX       V     C        ${srcInSMPTE} ${srcOutSMPTE} ${recInSMPTE} ${recOutSMPTE}\n`;
-    edl += `* FROM CLIP: ${clipName}\n`;
+    edl += `${editNum}  ${reelName.padEnd(8, " ")} V     C        ${srcInSMPTE} ${srcOutSMPTE} ${recInSMPTE} ${recOutSMPTE}\n`;
+    edl += `* FROM CLIP: ${fullClipName}\n`;
     edl += `* COMMENT: ${(scene.description || "").replace(/\n/g, " ").substring(0, 60)}\n\n`;
   });
 

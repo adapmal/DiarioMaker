@@ -3595,7 +3595,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
   const handleExportXML = () => {
     if (scenes.length === 0) return;
     const projName = projectName || "meu-projeto";
-    const xmlStr = generateFCPXML(scenes, "narration.mp3", 24, projName);
+    const audioName = audioNarrationUrl ? (audioNarrationUrl.split("/").pop()?.split("?")[0] || "narration.mp3") : "narration.mp3";
+    const xmlStr = generateFCPXML(scenes, audioName, 24, projName);
     const blob = new Blob([xmlStr], { type: "application/xml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -3612,7 +3613,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
   const handleExportEDL = () => {
     if (scenes.length === 0) return;
     const projName = projectName || "meu-projeto";
-    const edlStr = generateEDL(scenes, "narration.mp3", 24, projName);
+    const audioName = audioNarrationUrl ? (audioNarrationUrl.split("/").pop()?.split("?")[0] || "narration.mp3") : "narration.mp3";
+    const edlStr = generateEDL(scenes, audioName, 24, projName);
     const blob = new Blob([edlStr], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
