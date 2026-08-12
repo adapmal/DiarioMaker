@@ -296,15 +296,376 @@ export function generateFCPXML(
 
   const totalFrames = Math.round(maxEndTime * timebase);
 
-  const videoClipsXml = scenes.map((scene, idx) => {
-    const startSec = scene.startTime ?? idx * 4;
-    const endSec = scene.endTime ?? (idx + 1) * 4;
-    const startFrame = Math.round(startSec * timebase);
-    const endFrame = Math.round(endSec * timebase);
-    const durationFrames = Math.max(1, endFrame - startFrame);
+  // 1. Pre-calculate bridged timecodes
+  const bridgedScenes = scenes.map((scene, idx) => {
+    let adjStartSec = scene.startTime ?? idx * 4;
+    let adjEndSec = scene.endTime ?? (idx + 1) * 4;
+    let hasCrossfade = false;
 
+    // Look back
+    if (idx > 0) {
+      const prev = scenes[idx - 1];
+      const prevOriginalEnd = prev.endTime ?? idx * 4;
+      const gap = adjStartSec - prevOriginalEnd;
+      if (gap >= 0 && gap <= 6.0) {
+        adjStartSec = prevOriginalEnd + gap / 2;
+      }
+    }
+    
+    // Look forward
+    if (idx < scenes.length - 1) {
+      const next = scenes[idx + 1];
+      const nextOriginalStart = next.startTime ?? (idx + 1) * 4;
+      const gap = nextOriginalStart - adjEndSec;
+      if (gap >= 0 && gap <= 6.0) {
+        adjEndSec = adjEndSec + gap / 2;
+        hasCrossfade = true;
+      }
+    }
+    
+    return { scene, idx, adjStartSec, adjEndSec, hasCrossfade };
+  });
+
+  // Build V1 and V2 tracks with 24-frame sequence overlap and Opacity keyframes for cross dissolve
+  const v1Clips: string[] = [];
+  const v2Clips: string[] = [];
+
+  bridgedScenes.forEach((b, idx) => {
+    const { scene, adjStartSec, adjEndSec, hasCrossfade } = b;
+    let startFrame = Math.round(adjStartSec * timebase);
+    let endFrame = Math.round(adjEndSec * timebase);
+
+    // If this clip crossfades to the next clip, extend its end by 12 frames
+    if (hasCrossfade) {
+      endFrame += 12;
+    }
+
+    // If the PREVIOUS clip crossfaded into this clip, recede this clip's start by 12 frames
+    const prevHasCrossfade = idx > 0 && bridgedScenes[idx - 1].hasCrossfade;
+    if (prevHasCrossfade) {
+      startFrame = Math.max(0, startFrame - 12);
+    }
+
+    const durationFrames = Math.max(1, endFrame - startFrame);
     const imageName = getSceneFilename(scene, idx);
-    const imageAssetUrl = scene.generatedImageUrl || "";
+
+    // Determine track: even index -> V1 (track 1), odd index -> V2 (track 2)
+    const isV2 = idx % 2 === 1;
+
+    // Opacity filter for V2 (top track):
+    // If V2 is transitioning IN from V1: Fade IN 0% -> 100% over first 24 frames
+    // If V2 is transitioning OUT to V1: Fade OUT 100% -> 0% over last 24 frames
+    let opacityFilterXml = "";
+    if (isV2 && (prevHasCrossfade || hasCrossfade)) {
+      const fadeInXml = prevHasCrossfade ? `
+                <keyframe>
+                  <when>24</when>
+                  <value>0</value>
+                </keyframe>
+                <keyframe>
+                  <when>48</when>
+                  <value>100</value>
+                </keyframe>` : `
+                <keyframe>
+                  <when>24</when>
+                  <value>100</value>
+                </keyframe>`;
+
+      const fadeOutXml = hasCrossfade ? `
+                <keyframe>
+                  <when>${24 + durationFrames - 24}</when>
+                  <value>100</value>
+                </keyframe>
+                <keyframe>
+                  <when>${24 + durationFrames}</when>
+                  <value>0</value>
+                </keyframe>` : "";
+
+      opacityFilterXml = `
+          <filter>
+            <effect>
+              <name>Opacity</name>
+              <effectid>opacity</effectid>
+              <effectcategory>opacity</effectcategory>
+              <effecttype>opacity</effecttype>
+              <mediatype>video</mediatype>
+              <parameter>
+                <parameterid>opacity</parameterid>
+                <name>Opacity</name>
+                <valuemin>0</valuemin>
+                <valuemax>100</valuemax>${fadeInXml}${fadeOutXml}
+              </parameter>
+            </effect>
+          </filter>`;
+    }
+
+    // Focal Point Center Keyframes (Smart Zoom)
+    let centerParameterXml = "";
+    if (scene.focalPoint) {
+      centerParameterXml = `
+              <parameter>
+                <parameterid>center</parameterid>
+                <name>Center</name>
+                <keyframe>
+                  <when>24</when>
+                  <value>
+                    <horiz>0</horiz>
+                    <vert>0</vert>
+                  </value>
+                </keyframe>
+                <keyframe>
+                  <when>${24 + durationFrames}</when>
+                  <value>
+                    <horiz>${scene.focalPoint.x}</horiz>
+                    <vert>${scene.focalPoint.y}</vert>
+                  </value>
+                </keyframe>
+              </parameter>`;
+    }
+
+    const clipXml = `
+        <clipitem id="clipitem-video-${idx + 1}">
+          <name>${imageName}</name>
+          <enabled>TRUE</enabled>
+          <duration>${durationFrames + 48}</duration>
+          <rate>
+            <timebase>${timebase}</timebase>
+            <ntsc>FALSE</ntsc>
+          </rate>
+          <start>${startFrame}</start>
+          <end>${endFrame}</end>
+          <in>24</in>
+          <out>${24 + durationFrames}</out>
+          <file id="file-image-${idx + 1}">
+            <name>${imageName}</name>
+            <pathurl>${imageName}</pathurl>
+            <rate>
+              <timebase>${timebase}</timebase>
+              <ntsc>FALSE</ntsc>
+            </rate>
+            <media>
+              <video>
+                <samplecharacteristics>
+                  <width>1920</width>
+                  <height>1080</height>
+                </samplecharacteristics>
+              </video>
+            </media>
+          </file>
+          <filter>
+            <effect>
+              <name>Basic Motion</name>
+              <effectid>basic</effectid>
+              <effectcategory>motion</effectcategory>
+              <effecttype>motion</effecttype>
+              <mediatype>video</mediatype>
+              <parameter>
+                <parameterid>scale</parameterid>
+                <name>Scale</name>
+                <valuemin>0</valuemin>
+                <valuemax>1000</valuemax>
+                <keyframe>
+                  <when>24</when>
+                  <value>100</value>
+                </keyframe>
+                <keyframe>
+                  <when>${24 + durationFrames}</when>
+                  <value>127</value>
+                </keyframe>
+              </parameter>${centerParameterXml}
+            </effect>
+          </filter>${opacityFilterXml}
+          <logginginfo>
+            <scene>${idx + 1}</scene>
+            <description>${(scene.description || "").replace(/["&<>]/g, "")}</description>
+          </logginginfo>
+        </clipitem>`;
+
+    if (isV2) {
+      v2Clips.push(clipXml);
+    } else {
+      v1Clips.push(clipXml);
+    }
+  });
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<xmeml version="5">
+  <sequence id="sequence-1">
+    <name>${projectName.replace(/["&<>]/g, "")}</name>
+    <duration>${totalFrames}</duration>
+    <rate>
+      <timebase>${timebase}</timebase>
+      <ntsc>FALSE</ntsc>
+    </rate>
+    <timecode>
+      <rate>
+        <timebase>${timebase}</timebase>
+        <ntsc>FALSE</ntsc>
+      </rate>
+      <string>00:00:00:00</string>
+      <frame>0</frame>
+      <displayformat>NDF</displayformat>
+    </timecode>
+    <media>
+      <video>
+        <format>
+          <samplecharacteristics>
+            <width>1920</width>
+            <height>1080</height>
+            <pixelaspectratio>square</pixelaspectratio>
+            <rate>
+              <timebase>${timebase}</timebase>
+              <ntsc>FALSE</ntsc>
+            </rate>
+          </samplecharacteristics>
+        </format>
+        <track>
+          ${v1Clips.join("\n")}
+        </track>
+        <track>
+          ${v2Clips.join("\n")}
+        </track>
+      </video>
+      <audio>
+        <numOutputChannels>2</numOutputChannels>
+        <format>
+          <samplecharacteristics>
+            <depth>16</depth>
+            <samplerate>48000</samplerate>
+          </samplecharacteristics>
+        </format>
+        <track>
+          <clipitem id="clipitem-audio-narration-1">
+            <name>${audioFileName}</name>
+            <enabled>TRUE</enabled>
+            <duration>${totalFrames}</duration>
+            <rate>
+              <timebase>${timebase}</timebase>
+              <ntsc>FALSE</ntsc>
+            </rate>
+            <start>0</start>
+            <end>${totalFrames}</end>
+            <in>0</in>
+            <out>${totalFrames}</out>
+            <file id="file-audio-narration">
+              <name>${audioFileName}</name>
+              <pathurl>${audioFileName}</pathurl>
+              <rate>
+                <timebase>${timebase}</timebase>
+                <ntsc>FALSE</ntsc>
+              </rate>
+              <media>
+                <audio>
+                  <samplecharacteristics>
+                    <depth>16</depth>
+                    <samplerate>48000</samplerate>
+                  </samplecharacteristics>
+                  <channelcount>2</channelcount>
+                </audio>
+              </media>
+            </file>
+            <sourcetrack>
+              <mediatype>audio</mediatype>
+              <trackindex>1</trackindex>
+            </sourcetrack>
+          </clipitem>
+        </track>
+        <track>
+          <clipitem id="clipitem-audio-narration-2">
+            <name>${audioFileName}</name>
+            <enabled>TRUE</enabled>
+            <duration>${totalFrames}</duration>
+            <rate>
+              <timebase>${timebase}</timebase>
+              <ntsc>FALSE</ntsc>
+            </rate>
+            <start>0</start>
+            <end>${totalFrames}</end>
+            <in>0</in>
+            <out>${totalFrames}</out>
+            <file id="file-audio-narration" />
+            <sourcetrack>
+              <mediatype>audio</mediatype>
+              <trackindex>2</trackindex>
+            </sourcetrack>
+          </clipitem>
+        </track>
+      </audio>
+    </media>
+  </sequence>
+</xmeml>`;
+
+  return xml;
+}
+
+/**
+ * Generate VEGAS Pro Compatible XML (.xml)
+ * Clean single-track XML optimized specifically for VEGAS Pro's Fcp7Importer script.
+ */
+export function generateVegasXML(
+  scenes: Scene[],
+  audioFileName: string = "narration.mp3",
+  fps: number = 24,
+  projectName: string = "DiarioMaker Storyboard"
+): string {
+  const timebase = Math.round(fps);
+  
+  let maxEndTime = 0;
+  scenes.forEach(s => {
+    if (s.endTime && s.endTime > maxEndTime) maxEndTime = s.endTime;
+  });
+  if (maxEndTime === 0) maxEndTime = scenes.length * 4;
+
+  const totalFrames = Math.round(maxEndTime * timebase);
+
+  // 1. Pre-calculate bridged timecodes
+  const bridgedScenes = scenes.map((scene, idx) => {
+    let adjStartSec = scene.startTime ?? idx * 4;
+    let adjEndSec = scene.endTime ?? (idx + 1) * 4;
+    let hasCrossfade = false;
+
+    // Look back
+    if (idx > 0) {
+      const prev = scenes[idx - 1];
+      const prevOriginalEnd = prev.endTime ?? idx * 4;
+      const gap = adjStartSec - prevOriginalEnd;
+      if (gap >= 0 && gap <= 6.0) {
+        adjStartSec = prevOriginalEnd + gap / 2;
+      }
+    }
+    
+    // Look forward
+    if (idx < scenes.length - 1) {
+      const next = scenes[idx + 1];
+      const nextOriginalStart = next.startTime ?? (idx + 1) * 4;
+      const gap = nextOriginalStart - adjEndSec;
+      if (gap >= 0 && gap <= 6.0) {
+        adjEndSec = adjEndSec + gap / 2;
+        hasCrossfade = true;
+      }
+    }
+    
+    return { scene, idx, adjStartSec, adjEndSec, hasCrossfade };
+  });
+
+  const videoClipsXml = bridgedScenes.map((b, idx) => {
+    const { scene, adjStartSec, adjEndSec, hasCrossfade } = b;
+    let startFrame = Math.round(adjStartSec * timebase);
+    let endFrame = Math.round(adjEndSec * timebase);
+
+    // Extend end by 12 frames if crossfading forward
+    if (hasCrossfade) {
+      endFrame += 12;
+    }
+
+    // Recede start by 12 frames if crossfading from previous clip
+    const prevHasCrossfade = idx > 0 && bridgedScenes[idx - 1].hasCrossfade;
+    if (prevHasCrossfade) {
+      startFrame = Math.max(0, startFrame - 12);
+    }
+
+    const durationFrames = Math.max(1, endFrame - startFrame);
+    const imageName = getSceneFilename(scene, idx);
 
     return `
         <clipitem id="clipitem-video-${idx + 1}">
@@ -321,7 +682,7 @@ export function generateFCPXML(
           <out>${durationFrames}</out>
           <file id="file-image-${idx + 1}">
             <name>${imageName}</name>
-            <pathurl>${imageAssetUrl || imageName}</pathurl>
+            <pathurl>${imageName}</pathurl>
             <rate>
               <timebase>${timebase}</timebase>
               <ntsc>FALSE</ntsc>
@@ -335,6 +696,27 @@ export function generateFCPXML(
               </video>
             </media>
           </file>
+          <effect>
+            <name>Basic Motion</name>
+            <effectid>basic</effectid>
+            <effectcategory>motion</effectcategory>
+            <effecttype>motion</effecttype>
+            <mediatype>video</mediatype>
+            <parameter>
+              <parameterid>scale</parameterid>
+              <name>Scale</name>
+              <valuemin>0</valuemin>
+              <valuemax>1000</valuemax>
+              <keyframe>
+                <when>0</when>
+                <value>100</value>
+              </keyframe>
+              <keyframe>
+                <when>${durationFrames}</when>
+                <value>127</value>
+              </keyframe>
+            </parameter>
+          </effect>
           <logginginfo>
             <scene>${idx + 1}</scene>
             <description>${(scene.description || "").replace(/["&<>]/g, "")}</description>
@@ -343,7 +725,6 @@ export function generateFCPXML(
   }).join("\n");
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE xmeml PUBLIC "-//Apple Computer//DTD XMEML 5.0//EN" "http://www.apple.com/DTDs/XMEML-5.0.dtd">
 <xmeml version="5">
   <sequence id="sequence-1">
     <name>${projectName.replace(/["&<>]/g, "")}</name>
@@ -379,6 +760,13 @@ export function generateFCPXML(
         </track>
       </video>
       <audio>
+        <numOutputChannels>2</numOutputChannels>
+        <format>
+          <samplecharacteristics>
+            <depth>16</depth>
+            <samplerate>48000</samplerate>
+          </samplecharacteristics>
+        </format>
         <track>
           <clipitem id="clipitem-audio-narration">
             <name>${audioFileName}</name>
@@ -395,15 +783,34 @@ export function generateFCPXML(
             <file id="file-audio-narration">
               <name>${audioFileName}</name>
               <pathurl>${audioFileName}</pathurl>
+              <rate>
+                <timebase>${timebase}</timebase>
+                <ntsc>FALSE</ntsc>
+              </rate>
               <media>
                 <audio>
                   <samplecharacteristics>
                     <depth>16</depth>
                     <samplerate>48000</samplerate>
                   </samplecharacteristics>
+                  <channelcount>2</channelcount>
                 </audio>
               </media>
             </file>
+            <effect>
+              <name>Audio Levels</name>
+              <effectid>audiolevels</effectid>
+              <effectcategory>audiolevels</effectcategory>
+              <effecttype>audiolevels</effecttype>
+              <mediatype>audio</mediatype>
+              <parameter>
+                <parameterid>level</parameterid>
+                <name>Level</name>
+                <valuemin>0</valuemin>
+                <valuemax>3.98109</valuemax>
+                <value>1</value>
+              </parameter>
+            </effect>
           </clipitem>
         </track>
       </audio>
@@ -428,15 +835,41 @@ export function generateEDL(
 
   let currentRecInFrames = 0;
 
-  scenes.forEach((scene, idx) => {
+  const bridgedScenes = scenes.map((scene, idx) => {
+    let adjStartSec = scene.startTime ?? idx * 4;
+    let adjEndSec = scene.endTime ?? (idx + 1) * 4;
+    let hasCrossfade = false;
+
+    if (idx > 0) {
+      const prev = scenes[idx - 1];
+      const prevOriginalEnd = prev.endTime ?? idx * 4;
+      const gap = adjStartSec - prevOriginalEnd;
+      if (gap >= 0 && gap <= 6.0) {
+        adjStartSec = prevOriginalEnd + gap / 2;
+      }
+    }
+    
+    if (idx < scenes.length - 1) {
+      const next = scenes[idx + 1];
+      const nextOriginalStart = next.startTime ?? (idx + 1) * 4;
+      const gap = nextOriginalStart - adjEndSec;
+      if (gap >= 0 && gap <= 6.0) {
+        adjEndSec = adjEndSec + gap / 2;
+        hasCrossfade = true;
+      }
+    }
+    
+    return { scene, idx, adjStartSec, adjEndSec, hasCrossfade };
+  });
+
+  bridgedScenes.forEach((b) => {
+    const { scene, idx, adjStartSec, adjEndSec } = b;
     const editNum = String(idx + 1).padStart(3, "0");
-    const startSec = scene.startTime ?? idx * 4;
-    const endSec = scene.endTime ?? (idx + 1) * 4;
-    const clipDurationSec = Math.max(0.1, endSec - startSec);
+    const clipDurationSec = Math.max(0.1, adjEndSec - adjStartSec);
     const clipFrames = Math.round(clipDurationSec * fps);
 
-    const srcInSMPTE = "00:00:00:00";
-    const srcOutSMPTE = secondsToSMPTE(clipDurationSec, fps);
+    const srcInSMPTE = secondsToSMPTE(1.0, fps); // Start at 1.0s to give handles
+    const srcOutSMPTE = secondsToSMPTE(1.0 + clipDurationSec, fps);
 
     const recInSMPTE = secondsToSMPTE(currentRecInFrames / fps, fps);
     currentRecInFrames += clipFrames;
@@ -445,7 +878,15 @@ export function generateEDL(
     const fullClipName = getSceneFilename(scene, idx);
     const reelName = fullClipName.substring(0, 8).toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-    edl += `${editNum}  ${reelName.padEnd(8, " ")} V     C        ${srcInSMPTE} ${srcOutSMPTE} ${recInSMPTE} ${recOutSMPTE}\n`;
+    const typeC = "C       ";
+    edl += `${editNum}  ${reelName.padEnd(8, " ")} V     ${typeC} ${srcInSMPTE} ${srcOutSMPTE} ${recInSMPTE} ${recOutSMPTE}\n`;
+    
+    // If the PREVIOUS clip had a crossfade, we append the D line for THIS clip (standard EDL syntax)
+    if (idx > 0 && bridgedScenes[idx - 1].hasCrossfade) {
+       const typeD = "D    024";
+       edl += `${editNum}  ${reelName.padEnd(8, " ")} V     ${typeD} ${srcInSMPTE} ${srcOutSMPTE} ${recInSMPTE} ${recOutSMPTE}\n`;
+    }
+
     edl += `* FROM CLIP: ${fullClipName}\n`;
     edl += `* COMMENT: ${(scene.description || "").replace(/\n/g, " ").substring(0, 60)}\n\n`;
   });

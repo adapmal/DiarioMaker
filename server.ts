@@ -622,11 +622,15 @@ app.post("/api/storyboard/projects/save-image", async (req, res) => {
     let buffer: Buffer;
 
     if (imageUrl.startsWith("data:")) {
-      const matches = imageUrl.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+      const matches = imageUrl.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
       if (!matches || matches.length !== 3) {
         return res.status(400).json({ error: "Formato de imagem Base64 inválido." });
       }
-      ext = `.${matches[1] === "jpeg" ? "jpg" : matches[1]}`;
+      const rawMime = matches[1].toLowerCase();
+      if (rawMime === "jpeg" || rawMime === "jpg") ext = ".jpg";
+      else if (rawMime.includes("svg")) ext = ".svg";
+      else if (rawMime.includes("webp")) ext = ".webp";
+      else ext = ".png";
       buffer = Buffer.from(matches[2], "base64");
     } else {
       // É uma URL externa (ex: Unsplash ou proxy). Vamos baixá-la

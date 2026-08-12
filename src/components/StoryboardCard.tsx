@@ -34,6 +34,8 @@ import {
   Play,
   Pause,
   Send,
+  Link,
+  RotateCcw,
   Link as LinkIcon,
   Unlink
 } from "lucide-react";

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import JSZip from "jszip";
-import { StoryboardScene, StylePreference, ArchivedImage, ConnectionGroup, ArtisticStyle } from "./types";
+import { StoryboardScene, StylePreference, ArchivedImage, ConnectionGroup, ArtisticStyle, ImageVersion } from "./types";
 import ScriptInputArea from "./components/ScriptInputArea";
 import StoryboardCard from "./components/StoryboardCard";
 import { SAMPLE_SCRIPTS } from "./data/samples";
-import { generateFCPXML, generateEDL, alignAudioToExistingScenes } from "./lib/timecodeUtils";
+import { generateFCPXML, generateVegasXML, generateEDL, alignAudioToExistingScenes, getSceneFilename } from "./lib/timecodeUtils";
+import { detectFaceFocalPoint } from "./lib/faceDetector";
 import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, Plus, Info, Key, Eye, EyeOff, Lock, Check, CheckCircle2, Loader2, FileText, Save, Upload, Undo, Redo, Settings, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu, Mic, Edit3, FolderOpen, Folder } from "lucide-react";
 import { getCachedImage, setCachedImage, getCacheSizeMB, clearCache } from "./lib/cacheStore";
 import { prepareImageBlobForDownload } from "./lib/imageUtils";
@@ -3252,6 +3253,49 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     const end = next.endTime ?? (next.startTime !== undefined ? next.startTime + (next.duration || 3) : undefined);
     const duration = (start !== undefined && end !== undefined) ? Math.max(0.5, Number((end - start).toFixed(2))) : undefined;
 
+    // Combine image versions from both current and next scene
+    const currentVersions = current.imageVersions && current.imageVersions.length > 0
+      ? current.imageVersions
+      : (current.generatedImageUrl ? [{
+          id: `v-curr-${Date.now()}`,
+          url: current.generatedImageUrl,
+          timestamp: new Date().toLocaleTimeString(),
+          prompt: current.prompt,
+          description: current.description,
+          engineName: current.engineName,
+          renderTimeSeconds: current.renderTimeSeconds
+        }] : []);
+
+    const nextVersions = next.imageVersions && next.imageVersions.length > 0
+      ? next.imageVersions
+      : (next.generatedImageUrl ? [{
+          id: `v-next-${Date.now()}`,
+          url: next.generatedImageUrl,
+          timestamp: new Date().toLocaleTimeString(),
+          prompt: next.prompt,
+          description: next.description,
+          engineName: next.engineName,
+          renderTimeSeconds: next.renderTimeSeconds
+        }] : []);
+
+    const combinedVersions: ImageVersion[] = [];
+    const urlSet = new Set<string>();
+
+    [...currentVersions, ...nextVersions].forEach((v) => {
+      if (v && v.url && !urlSet.has(v.url)) {
+        urlSet.add(v.url);
+        combinedVersions.push(v);
+      }
+    });
+
+    const letterMap = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+    const finalVersions = combinedVersions.map((v, vIdx) => ({
+      ...v,
+      letter: letterMap[vIdx] || String.fromCharCode(65 + (vIdx % 26))
+    }));
+
+    const activeImageUrl = current.generatedImageUrl || next.generatedImageUrl;
+
     const mergedScene: StoryboardScene = {
       id: `scene-merge-${Date.now()}`,
       text: mergedText,
@@ -3262,13 +3306,13 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       sceneStylePreference: current.sceneStylePreference || next.sceneStylePreference || "auto",
       promptAiModel: current.promptAiModel || next.promptAiModel || "gemini-3.5-flash",
       promptTargetTool: current.promptTargetTool || next.promptTargetTool || "Nano Banana",
-      generatedImageUrl: current.generatedImageUrl,
-      imageVersions: current.imageVersions || [],
-      renderStatus: current.renderStatus || "idle",
-      renderError: current.renderError,
-      selectedModel: current.selectedModel,
-      engineName: current.engineName,
-      renderTimeSeconds: current.renderTimeSeconds,
+      generatedImageUrl: activeImageUrl,
+      imageVersions: finalVersions,
+      renderStatus: current.renderStatus || next.renderStatus || "idle",
+      renderError: current.renderError || next.renderError,
+      selectedModel: current.selectedModel || next.selectedModel,
+      engineName: current.engineName || next.engineName,
+      renderTimeSeconds: current.renderTimeSeconds || next.renderTimeSeconds,
       isPromptModified: false,
       startTime: start,
       endTime: end,
@@ -3834,16 +3878,43 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
   };
 
   // Export FCPXML / Premiere XML
-  const handleExportXML = () => {
+  const handleExportXML = async () => {
     if (scenes.length === 0) return;
     const projName = projectName || "meu-projeto";
-    const audioName = audioNarrationUrl ? (audioNarrationUrl.split("/").pop()?.split("?")[0] || "narration.mp3") : "narration.mp3";
-    const xmlStr = generateFCPXML(scenes, audioName, 24, projName);
+    
+    setNotification("🔍 Analisando focos faciais para Ken Burns inteligente...");
+
+    // Enrich scenes with face detection focal points
+    const enrichedScenes = await Promise.all(
+      scenes.map(async (scene) => {
+        if (scene.generatedImageUrl && !scene.focalPoint) {
+          const focal = await detectFaceFocalPoint(scene.generatedImageUrl);
+          if (focal) {
+            return { ...scene, focalPoint: focal };
+          }
+        }
+        return scene;
+      })
+    );
+
+    let audioName = "narration.mp3";
+    if (audioNarrationUrl) {
+      if (audioNarrationUrl.includes("path=")) {
+        const match = audioNarrationUrl.match(/[?&]path=([^&]+)/);
+        if (match && match[1]) {
+          audioName = decodeURIComponent(match[1]).split(/[\\/]/).pop() || "narration.mp3";
+        }
+      } else {
+        audioName = audioNarrationUrl.split("/").pop()?.split("?")[0] || "narration.mp3";
+      }
+    }
+
+    const xmlStr = generateFCPXML(enrichedScenes, audioName, 24, projName);
     const blob = new Blob([xmlStr], { type: "application/xml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${projName.replace(/\s+/g, "_")}_timeline.xml`;
+    a.download = `${projName.replace(/\s+/g, "_")}_premiere_davinci.xml`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -3851,11 +3922,84 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     setNotification("✓ Timeline XML (Premiere / DaVinci) exportada com sucesso!");
   };
 
+  // Export VEGAS Pro XML
+  const handleExportVegasXML = async () => {
+    if (scenes.length === 0) return;
+    const projName = projectName || "meu-projeto";
+    
+    let audioName = "narration.mp3";
+    if (audioNarrationUrl) {
+      if (audioNarrationUrl.includes("path=")) {
+        const match = audioNarrationUrl.match(/[?&]path=([^&]+)/);
+        if (match && match[1]) {
+          audioName = decodeURIComponent(match[1]).split(/[\\/]/).pop() || "narration.mp3";
+        }
+      } else {
+        audioName = audioNarrationUrl.split("/").pop()?.split("?")[0] || "narration.mp3";
+      }
+    }
+
+    const xmlStr = generateVegasXML(scenes, audioName, 24, projName);
+    const unrenderedScenes = scenes.filter(s => !s.generatedImageUrl);
+
+    if (unrenderedScenes.length > 0) {
+      setNotification("📦 Criando pacote VEGAS Pro (XML + Placeholders para mídias ausentes)...");
+      const zip = new JSZip();
+      
+      // 1. Add XML file
+      zip.file(`${projName.replace(/\s+/g, "_")}_vegas.xml`, xmlStr);
+      
+      // 2. Add 1-pixel transparent PNG placeholders (68 bytes each) for unrendered scenes
+      const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+      scenes.forEach((scene, idx) => {
+        if (!scene.generatedImageUrl) {
+          const fname = getSceneFilename(scene, idx);
+          zip.file(fname, TINY_PNG, { base64: true });
+        }
+      });
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${projName.replace(/\s+/g, "_")}_vegas_pack.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setNotification("✓ Pacote VEGAS Pro (.zip com XML + Placeholders) exportado com sucesso!");
+    } else {
+      // All scenes rendered: download XML directly
+      const blob = new Blob([xmlStr], { type: "application/xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${projName.replace(/\s+/g, "_")}_vegas.xml`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setNotification("✓ Timeline XML (VEGAS Pro) exportada com sucesso!");
+    }
+  };
+
   // Export CMX 3600 EDL
   const handleExportEDL = () => {
     if (scenes.length === 0) return;
     const projName = projectName || "meu-projeto";
-    const audioName = audioNarrationUrl ? (audioNarrationUrl.split("/").pop()?.split("?")[0] || "narration.mp3") : "narration.mp3";
+    
+    let audioName = "narration.mp3";
+    if (audioNarrationUrl) {
+      if (audioNarrationUrl.includes("path=")) {
+        const match = audioNarrationUrl.match(/[?&]path=([^&]+)/);
+        if (match && match[1]) {
+          audioName = decodeURIComponent(match[1]).split(/[\\/]/).pop() || "narration.mp3";
+        }
+      } else {
+        audioName = audioNarrationUrl.split("/").pop()?.split("?")[0] || "narration.mp3";
+      }
+    }
+
     const edlStr = generateEDL(scenes, audioName, 24, projName);
     const blob = new Blob([edlStr], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -6441,20 +6585,29 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                         )}
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <button
                           type="button"
                           onClick={handleExportXML}
-                          className="py-2 border border-[#D4AF37]/50 text-[10px] uppercase tracking-widest text-[#D4AF37] bg-neutral-900/60 hover:bg-[#D4AF37] hover:text-black cursor-pointer font-mono font-bold rounded transition-all flex items-center justify-center gap-1"
-                          title="Exportar timeline XML para Premiere, DaVinci Resolve ou Final Cut Pro"
+                          className="py-2 border border-[#D4AF37]/50 text-[9px] uppercase tracking-wider text-[#D4AF37] bg-neutral-900/60 hover:bg-[#D4AF37] hover:text-black cursor-pointer font-mono font-bold rounded transition-all flex items-center justify-center text-center"
+                          title="Exportar timeline XML completa com Zoom e Transições para Premiere Pro e DaVinci Resolve"
                         >
-                          <span>FCP / Premiere XML</span>
+                          <span>Premiere / DaVinci</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleExportVegasXML}
+                          className="py-2 border border-[#D4AF37]/50 text-[9px] uppercase tracking-wider text-[#D4AF37] bg-neutral-900/60 hover:bg-[#D4AF37] hover:text-black cursor-pointer font-mono font-bold rounded transition-all flex items-center justify-center text-center"
+                          title="Exportar timeline XML limpa e compatível especificamente para o VEGAS Pro"
+                        >
+                          <span>VEGAS Pro XML</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={handleExportEDL}
-                          className="py-2 border border-[#D4AF37]/50 text-[10px] uppercase tracking-widest text-[#D4AF37] bg-neutral-900/60 hover:bg-[#D4AF37] hover:text-black cursor-pointer font-mono font-bold rounded transition-all flex items-center justify-center gap-1"
+                          className="py-2 border border-[#D4AF37]/50 text-[9px] uppercase tracking-wider text-[#D4AF37] bg-neutral-900/60 hover:bg-[#D4AF37] hover:text-black cursor-pointer font-mono font-bold rounded transition-all flex items-center justify-center text-center"
                           title="Exportar Edit Decision List (.edl) padrão CMX 3600"
                         >
                           <span>Timeline EDL</span>

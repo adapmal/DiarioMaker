@@ -58,6 +58,7 @@ export interface StoryboardScene {
   timedWords?: { word: string; start: number; end: number }[];
   disableImageStatus?: boolean;
   disablePromptStatus?: boolean;
+  focalPoint?: { x: number; y: number };
 }
 
 export type Scene = StoryboardScene;
