@@ -20,6 +20,7 @@ export interface ImageVersion {
   engineName?: string;
   renderTimeSeconds?: number;
   letter?: string;
+  chatHistory?: StudioChatMessage[];
 }
 
 export interface StoryboardScene {

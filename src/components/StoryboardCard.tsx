@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { StoryboardScene, StylePreference, ConnectionGroup } from "../types";
+import { StoryboardScene, StylePreference, ConnectionGroup, ArtisticStyle } from "../types";
 import { getCachedImage } from "../lib/cacheStore";
 import { downloadSingleImageFile } from "../lib/imageUtils";
 import { secondsToSMPTE, formatDuration, formatShortTimecode, parseShortTimecode } from "../lib/timecodeUtils";
@@ -91,6 +91,7 @@ interface StoryboardCardProps {
   enabledPromptModels?: string[];
   enabledImageModels?: string[];
   audioNarrationUrl?: string;
+  artisticStyles?: ArtisticStyle[];
   fps?: number;
 }
 
@@ -164,6 +165,7 @@ function StoryboardCardComponent({
   enabledPromptModels = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro", "gpt-4o-mini", "gpt-4o"],
   enabledImageModels = ["nano_banana", "nano_banana_pro", "nano_banana_2", "chatgpt_dalle3"],
   audioNarrationUrl,
+  artisticStyles = [],
   fps = 24
 }: StoryboardCardProps) {
   const narrationRef = useRef<HTMLTextAreaElement>(null);
@@ -420,6 +422,14 @@ function StoryboardCardComponent({
   // Conversational chat edit states
   const [chatInputText, setChatInputText] = useState("");
   const [isChatGenerating, setIsChatGenerating] = useState(false);
+  const [chatVisualInstructionImage, setChatVisualInstructionImage] = useState<string | undefined>(undefined);
+
+  // Reset chat reference image whenever Studio opens
+  React.useEffect(() => {
+    if (isStudioOpen) {
+      setChatVisualInstructionImage(undefined);
+    }
+  }, [isStudioOpen]);
   const [selectedChatModel, setSelectedChatModel] = useState<string>(() => {
     return enabledImageModels.includes("nano_banana") 
       ? "nano_banana" 
@@ -434,6 +444,14 @@ function StoryboardCardComponent({
 
   const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Identify the active image version for per-image Conversational Studio chat memory
+  const activeImageVersion = (scene.imageVersions || []).find(v => v.url === scene.generatedImageUrl);
+  const activeChatHistory = (activeImageVersion && activeImageVersion.chatHistory && activeImageVersion.chatHistory.length > 0)
+    ? activeImageVersion.chatHistory
+    : (scene.chatHistory && scene.chatHistory.length > 0 && activeImageVersion && activeImageVersion.url === scene.generatedImageUrl && !activeImageVersion.chatHistory)
+      ? scene.chatHistory
+      : undefined;
 
   useEffect(() => {
     if (!enabledImageModels.includes(selectedChatModel) && enabledImageModels.length > 0) {
@@ -511,6 +529,23 @@ function StoryboardCardComponent({
         console.error("Erro ao processar imagem de instrução visual:", err);
       }
     }
+  };
+
+  const processChatVisualInstructionFile = async (file: File) => {
+    if (file && file.type.startsWith("image/")) {
+      try {
+        const compressedBase64 = await resizeAndCompressImage(file, 800, 0.75);
+        setChatVisualInstructionImage(compressedBase64);
+      } catch (err) {
+        console.error("Erro ao processar imagem de instrução visual para o chat:", err);
+      }
+    }
+  };
+
+  const handleClearChatVisualInstruction = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setChatVisualInstructionImage(undefined);
+    if (modalVisualInstructionInputRef.current) modalVisualInstructionInputRef.current.value = "";
   };
 
   const handleClearVisualInstruction = (e: React.MouseEvent) => {
@@ -714,12 +749,11 @@ function StoryboardCardComponent({
       ? scene.sceneStylePreference 
       : stylePreference;
 
-    let styleGuidance = "Automatically detect and choose the best matching Art Director styling.";
-    if (activeStyle === "caravaggio") {
-      styleGuidance = "Strictly use the Caravaggio-inspired dramatic chiaroscuro historical/religious style. The image must be a borderless full screen image, with absolutely no picture frames, wooden borders, museum background, or canvas edges.";
-    } else if (activeStyle === "urban_realism") {
-      styleGuidance = "Strictly use the gritty, naturalistic Brazilian urban realism style.";
-    }
+    const matchedStyle = (artisticStyles || []).find(s => s.id === activeStyle);
+
+    let styleGuidance = matchedStyle
+      ? `Strictly apply the following artistic style guidance: "${matchedStyle.prompt}"`
+      : "Automatically detect and choose the best matching Art Director styling.";
 
     let directionPrompt = "";
     if (scene.generationGuidelines && scene.generationGuidelines.trim()) {
@@ -814,7 +848,7 @@ ${userPromptText}`;
       timestamp: new Date().toLocaleTimeString()
     };
 
-    const initialHistory = scene.chatHistory || [
+    const initialHistory = activeChatHistory || [
       {
         id: "welcome",
         role: "assistant" as const,
@@ -842,25 +876,20 @@ ${userPromptText}`;
       visualInstructionImage: s.visualInstructionImage,
     }));
 
-    // Find the latest visual state in the current conversation thread for perfect context and continuous editing
-    let latestChatImageUrl = scene.generatedImageUrl;
-    let latestChatPrompt = scene.prompt || localPrompt;
-    let latestChatDescription = scene.description || localDescription;
+    // Always honor the current text in the card's prompt and description box (including manual edits)
+    const actualCurrentPrompt = (localPrompt && localPrompt.trim()) 
+      ? localPrompt.trim() 
+      : (scene.prompt && scene.prompt.trim()) 
+        ? scene.prompt.trim() 
+        : "";
 
-    // Search backwards to find the last assistant message that successfully generated an image and use its prompt/description/image
-    for (let i = currentHistory.length - 1; i >= 0; i--) {
-      const msg = currentHistory[i];
-      if (msg.role === "assistant" && msg.imageUrl) {
-        latestChatImageUrl = msg.imageUrl;
-        if (msg.promptUsed) {
-          latestChatPrompt = msg.promptUsed;
-        }
-        if (msg.descriptionUsed) {
-          latestChatDescription = msg.descriptionUsed;
-        }
-        break;
-      }
-    }
+    const actualCurrentDescription = (localDescription && localDescription.trim()) 
+      ? localDescription.trim() 
+      : (scene.description && scene.description.trim()) 
+        ? scene.description.trim() 
+        : "";
+
+    let latestChatImageUrl = scene.generatedImageUrl;
 
     try {
       const isUsingOpenAi = (useOpenAiForPrompts || selectedPromptModel.includes("gpt") || selectedPromptModel.includes("openai") || selectedPromptModel.startsWith("o1") || selectedPromptModel.startsWith("o3")) && !!openAiKey;
@@ -879,8 +908,8 @@ ${userPromptText}`;
           sceneText: scene.text,
           chatHistory: currentHistory.slice(0, -1),
           userMessage: userMsgText,
-          currentDescription: latestChatDescription,
-          currentPrompt: latestChatPrompt,
+          currentDescription: actualCurrentDescription,
+          currentPrompt: actualCurrentPrompt,
           stylePreference: stylePreference,
           visualInstructionImage: scene.visualInstructionImage,
           currentImageUrl: latestChatImageUrl,
@@ -910,7 +939,7 @@ ${userPromptText}`;
         body: JSON.stringify({
           prompt: editResult.newPrompt,
           model: selectedChatModel,
-          visualInstructionImage: scene.visualInstructionImage,
+          visualInstructionImage: chatVisualInstructionImage || scene.visualInstructionImage,
           customApiKey
         })
       });
@@ -934,6 +963,8 @@ ${userPromptText}`;
         timestamp: new Date().toLocaleTimeString()
       };
 
+      const finalHistory = [...currentHistory, assistantMsg];
+
       const newVersion = imgResult.imageUrl ? {
         id: `version-${Date.now()}`,
         url: imgResult.imageUrl,
@@ -941,20 +972,36 @@ ${userPromptText}`;
         timestamp: new Date().toLocaleTimeString(),
         prompt: editResult.newPrompt,
         description: editResult.newDescription,
-        engineName: "Estúdio AI"
+        engineName: "Estúdio AI Conversacional",
+        chatHistory: finalHistory
       } : null;
 
-      const updatedVersions = newVersion 
-        ? [newVersion, ...(scene.imageVersions || [])] 
-        : (scene.imageVersions || []);
+      // Update current active version's chatHistory and append new version
+      let updatedVersions = (scene.imageVersions || []).map((v) => {
+        if (v.url === scene.generatedImageUrl) {
+          return { ...v, chatHistory: finalHistory };
+        }
+        return v;
+      });
+
+      if (newVersion) {
+        updatedVersions = [newVersion, ...updatedVersions];
+      }
+
+      setChatVisualInstructionImage(undefined);
 
       onUpdate(scene.id, {
-        chatHistory: [...currentHistory, assistantMsg],
-        ...(imgResult.imageUrl ? { generatedImageUrl: imgResult.imageUrl, disableImageStatus: false } : {}),
-        ...(editResult.newPrompt ? { prompt: editResult.newPrompt, disablePromptStatus: false } : {}),
-        ...(editResult.newDescription ? { description: editResult.newDescription } : {}),
+        chatHistory: finalHistory,
+        generatedImageUrl: imgResult.imageUrl || scene.generatedImageUrl,
+        prompt: editResult.newPrompt || scene.prompt,
+        description: editResult.newDescription || scene.description,
+        selectedModel: selectedChatModel as any,
         imageVersions: updatedVersions,
-        renderStatus: "completed"
+        renderStatus: "completed",
+        renderError: undefined,
+        disableImageStatus: false,
+        disablePromptStatus: false,
+        isPromptModified: true
       });
 
     } catch (err: any) {
@@ -1035,6 +1082,8 @@ ${userPromptText}`;
   const activeStyle = scene.sceneStylePreference && scene.sceneStylePreference !== "auto" 
     ? scene.sceneStylePreference 
     : (scene.sceneStylePreference === "auto" ? "auto" : stylePreference);
+
+  const matchedStyle = (artisticStyles || []).find(s => s.id === activeStyle);
 
   const isCaravaggio = activeStyle === "caravaggio" || 
                        (activeStyle === "auto" && (scene.prompt.toLowerCase().includes("caravaggio") || scene.prompt.toLowerCase().includes("chiaroscuro"))) ||
@@ -1347,6 +1396,14 @@ ${userPromptText}`;
                     title={`Conectado ao grupo: ${activeGroup.name}`}
                   >
                     <Link size={8} className="shrink-0" /> {activeGroup.name}
+                  </span>
+                )}
+                {matchedStyle && (
+                  <span 
+                    className="text-[9px] font-mono py-0.5 px-2 rounded uppercase tracking-wider flex items-center gap-1 border font-bold bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/35 animate-fadeIn shrink-0 truncate"
+                    title={`Estilo Artístico Aplicado: ${matchedStyle.name}`}
+                  >
+                    🎨 {matchedStyle.name}
                   </span>
                 )}
               </div>
@@ -1912,71 +1969,98 @@ ${userPromptText}`;
                   }}
                   className="w-full bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer"
                 >
-                  <option value="auto">Auto</option>
-                  <option value="caravaggio">✦ Caravaggio (Chiaroscuro)</option>
-                  <option value="urban_realism">❖ Realismo Urbano (Rústico)</option>
+                  <option value="auto">Auto (Detectar do Projeto)</option>
+                  {(artisticStyles && artisticStyles.length > 0 ? artisticStyles : [
+                    { id: "caravaggio", name: "✦ Caravaggio (Chiaroscuro)", prompt: "", autoDetectKeywords: "" },
+                    { id: "urban_realism", name: "❖ Realismo Urbano (Rústico)", prompt: "", autoDetectKeywords: "" }
+                  ]).map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               {/* AI Model dropdown */}
               <div className="space-y-1">
-                <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block">
-                  Modelo de IA (Prompt)
+                <label className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block flex items-center justify-between">
+                  <span>Modelo de IA (Prompt)</span>
+                  {localAiModel && !enabledPromptModels.includes(localAiModel) && !enabledPromptModels.includes(`ollama:${localAiModel.replace(/^ollama:/, "")}`) && (
+                    <span className="text-[8px] text-rose-400 font-bold uppercase tracking-wider animate-pulse">⚠️ Offline / Desativado</span>
+                  )}
                 </label>
                 <div className="flex gap-1.5">
-                  <select
-                    value={
-                      (availableModels?.gemini?.text || []).includes(localAiModel) || 
-                      (availableModels?.openai?.text || []).includes(localAiModel) || 
-                      localAiModel === "ollama" ||
-                      localAiModel.startsWith("ollama:") ||
-                      ollamaModels.includes(localAiModel)
-                        ? localAiModel 
-                        : (localAiModel === "" ? "" : "custom")
-                    }
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val !== "custom") {
-                        setLocalAiModel(val);
-                        onUpdate(scene.id, { promptAiModel: val });
-                      } else {
-                        setLocalAiModel("");
-                        onUpdate(scene.id, { promptAiModel: "" });
-                      }
-                    }}
-                    className="w-full min-w-0 bg-[#050505] border border-[#333] hover:border-[#555] rounded px-2 py-1 text-xs text-[#E0D8D0] focus:outline-none focus:border-[#D4AF37]/50 cursor-pointer truncate"
-                    title={localAiModel ? `Modelo selecionado: ${localAiModel}` : "Selecione o modelo de IA"}
-                  >
-                    <optgroup label="Google Gemini">
-                      {(availableModels?.gemini?.text || ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"])
-                        .filter((m) => enabledPromptModels.includes(m))
-                        .map((m) => (
-                          <option key={m} value={m} title={m}>
-                            {formatModelDisplayName(m)}
-                          </option>
-                        ))}
-                    </optgroup>
-                    <optgroup label="OpenAI GPT">
-                      {(availableModels?.openai?.text || ["gpt-4o-mini", "gpt-4o"])
-                        .filter((m) => enabledPromptModels.includes(m))
-                        .map((m) => (
-                          <option key={m} value={m} title={m}>
-                            {formatModelDisplayName(m)}
-                          </option>
-                        ))}
-                    </optgroup>
-                    {ollamaModels && ollamaModels.length > 0 && (
-                      <optgroup label="Ollama Local">
-                        {ollamaModels
-                          .filter((m) => enabledPromptModels.includes(`ollama:${m}`) || enabledPromptModels.includes(m))
-                          .map((m) => (
-                            <option key={`ollama-${m}`} value={`ollama:${m}`} title={m}>
-                              Ollama: {formatModelDisplayName(m)}
+                  {(() => {
+                    const isUnconfigured = !!(localAiModel && !enabledPromptModels.includes(localAiModel) && !enabledPromptModels.includes(`ollama:${localAiModel.replace(/^ollama:/, "")}`));
+                    return (
+                      <select
+                        value={
+                          isUnconfigured
+                            ? localAiModel
+                            : (availableModels?.gemini?.text || []).includes(localAiModel) || 
+                              (availableModels?.openai?.text || []).includes(localAiModel) || 
+                              localAiModel === "ollama" ||
+                              localAiModel.startsWith("ollama:") ||
+                              ollamaModels.includes(localAiModel)
+                                ? localAiModel 
+                                : (localAiModel === "" ? "" : "custom")
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val !== "custom") {
+                            setLocalAiModel(val);
+                            onUpdate(scene.id, { promptAiModel: val });
+                          } else {
+                            setLocalAiModel("");
+                            onUpdate(scene.id, { promptAiModel: "" });
+                          }
+                        }}
+                        className={`w-full min-w-0 rounded px-2 py-1 text-xs focus:outline-none cursor-pointer truncate transition-all ${
+                          isUnconfigured
+                            ? "bg-rose-950/60 border border-rose-500 text-rose-300 font-bold shadow-[0_0_10px_rgba(244,63,94,0.4)]"
+                            : "bg-[#050505] border border-[#333] hover:border-[#555] text-[#E0D8D0] focus:border-[#D4AF37]/50"
+                        }`}
+                        title={localAiModel ? `Modelo selecionado: ${localAiModel}${isUnconfigured ? " (Desativado / Offline nas configurações)" : ""}` : "Selecione o modelo de IA"}
+                      >
+                        {isUnconfigured && (
+                          <optgroup label="⚠️ Desativado / Offline">
+                            <option value={localAiModel} className="text-rose-400 font-bold bg-rose-950">
+                              ⚠️ {formatModelDisplayName(localAiModel)} (Desativado / Offline)
                             </option>
-                          ))}
-                      </optgroup>
-                    )}
-                  </select>
+                          </optgroup>
+                        )}
+                        <optgroup label="Google Gemini">
+                          {(availableModels?.gemini?.text || ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"])
+                            .filter((m) => enabledPromptModels.includes(m))
+                            .map((m) => (
+                              <option key={m} value={m} title={m}>
+                                {formatModelDisplayName(m)}
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="OpenAI GPT">
+                          {(availableModels?.openai?.text || ["gpt-4o-mini", "gpt-4o"])
+                            .filter((m) => enabledPromptModels.includes(m))
+                            .map((m) => (
+                              <option key={m} value={m} title={m}>
+                                {formatModelDisplayName(m)}
+                              </option>
+                            ))}
+                        </optgroup>
+                        {ollamaModels && ollamaModels.length > 0 && (
+                          <optgroup label="Ollama Local">
+                            {ollamaModels
+                              .filter((m) => enabledPromptModels.includes(`ollama:${m}`) || enabledPromptModels.includes(m))
+                              .map((m) => (
+                                <option key={`ollama-${m}`} value={`ollama:${m}`} title={m}>
+                                  Ollama: {formatModelDisplayName(m)}
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    );
+                  })()}
 
                   {(!(availableModels?.gemini?.text || []).includes(localAiModel) && 
                     !(availableModels?.openai?.text || []).includes(localAiModel) && 
@@ -2087,7 +2171,7 @@ ${userPromptText}`;
                 
                 {/* Scrollable Chat Feed */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 min-h-0">
-                  {(scene.chatHistory && scene.chatHistory.length > 0 ? scene.chatHistory : [
+                  {(activeChatHistory || (scene.chatHistory && scene.chatHistory.length > 0 && activeImageVersion && activeImageVersion.url === scene.generatedImageUrl ? scene.chatHistory : [
                     {
                       id: "welcome",
                       role: "assistant" as const,
@@ -2096,7 +2180,7 @@ ${userPromptText}`;
                       imageUrl: scene.generatedImageUrl,
                       timestamp: new Date().toLocaleTimeString()
                     }
-                  ]).map((msg: any, msgIdx: number) => (
+                  ])).map((msg: any, msgIdx: number) => (
                     <div 
                       key={`${msg.id || "msg"}-${msgIdx}`} 
                       className={`flex flex-col max-w-[85%] ${
@@ -2293,18 +2377,18 @@ ${userPromptText}`;
                         e.preventDefault();
                         setIsDraggingModalVisualInstruction(false);
                         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                          processVisualInstructionFile(e.dataTransfer.files[0]);
+                          processChatVisualInstructionFile(e.dataTransfer.files[0]);
                         }
                       }}
                       onClick={() => modalVisualInstructionInputRef.current?.click()}
                       className={`w-10 h-[72px] shrink-0 border-2 border-dashed rounded flex items-center justify-center cursor-pointer relative overflow-hidden transition-all ${
                         isDraggingModalVisualInstruction
                           ? "border-[#D4AF37] bg-[#D4AF37]/10"
-                          : scene.visualInstructionImage
+                          : chatVisualInstructionImage
                           ? "border-zinc-800 bg-[#0c0c0c]"
                           : "border-zinc-805 bg-black/40 hover:border-zinc-700 hover:bg-black/80"
                       }`}
-                      title="Anexar imagem de referência/instrução visual para o chat"
+                      title="Anexar imagem de referência/instrução visual exclusiva para esta interação no chat"
                     >
                       <input 
                         ref={modalVisualInstructionInputRef}
@@ -2313,16 +2397,16 @@ ${userPromptText}`;
                         className="hidden"
                         onChange={(e) => {
                           if (e.target.files && e.target.files.length > 0) {
-                            processVisualInstructionFile(e.target.files[0]);
+                            processChatVisualInstructionFile(e.target.files[0]);
                           }
                         }}
                       />
 
-                      {scene.visualInstructionImage ? (
+                      {chatVisualInstructionImage ? (
                         <div className="absolute inset-0 group flex items-center justify-center">
                           <img 
-                            src={scene.visualInstructionImage} 
-                            alt="Instrução Visual" 
+                            src={chatVisualInstructionImage} 
+                            alt="Instrução Visual do Chat" 
                             className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
                           />
@@ -2331,10 +2415,10 @@ ${userPromptText}`;
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleClearVisualInstruction(e);
+                                handleClearChatVisualInstruction(e);
                               }}
                               className="p-0.5 rounded bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800 transition-colors"
-                              title="Remover referência"
+                              title="Remover referência do chat"
                             >
                               <X size={10} />
                             </button>

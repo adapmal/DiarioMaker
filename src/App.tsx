@@ -6,7 +6,7 @@ import StoryboardCard from "./components/StoryboardCard";
 import { SAMPLE_SCRIPTS } from "./data/samples";
 import { generateFCPXML, generateVegasXML, generateEDL, alignAudioToExistingScenes, getSceneFilename } from "./lib/timecodeUtils";
 import { detectFaceFocalPoint } from "./lib/faceDetector";
-import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, Plus, Info, Key, Eye, EyeOff, Lock, Check, CheckCircle2, Loader2, FileText, Save, Upload, Undo, Redo, Settings, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu, Mic, Edit3, FolderOpen, Folder } from "lucide-react";
+import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, Plus, Info, Key, Eye, EyeOff, Lock, Check, CheckCircle2, Loader2, FileText, Save, Upload, Undo, Redo, Settings, Sliders, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu, Mic, Edit3, FolderOpen, Folder } from "lucide-react";
 import { getCachedImage, setCachedImage, getCacheSizeMB, clearCache } from "./lib/cacheStore";
 import { prepareImageBlobForDownload } from "./lib/imageUtils";
 import { motion, AnimatePresence } from "motion/react";
@@ -1120,6 +1120,98 @@ const deriveFolderFromDate = (dateStr: string): string => {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [logsText, setLogsText] = useState("");
 
+  // Model Reconciliation State
+  const [reconciliationModalData, setReconciliationModalData] = useState<{
+    projectName: string;
+    inactivePromptModels: string[];
+    inactiveImageModels: string[];
+    offlinePromptModels: string[];
+    offlineImageModels: string[];
+    targetScenes: StoryboardScene[];
+    pendingLoadAction: () => void;
+  } | null>(null);
+
+  const [substitutePromptModel, setSubstitutePromptModel] = useState<string>("");
+  const [substituteImageModel, setSubstituteImageModel] = useState<string>("");
+
+  const checkProjectModelCompatibility = (
+    loadedScenes: StoryboardScene[],
+    loadedProjectName: string,
+    onProceed: () => void
+  ) => {
+    const referencedPromptModels = new Set<string>();
+    const referencedImageModels = new Set<string>();
+
+    loadedScenes.forEach((s) => {
+      if (s.promptAiModel) referencedPromptModels.add(s.promptAiModel);
+      if (s.selectedModel) referencedImageModels.add(s.selectedModel);
+    });
+
+    const inactivePromptModels: string[] = [];
+    const offlinePromptModels: string[] = [];
+    const inactiveImageModels: string[] = [];
+    const offlineImageModels: string[] = [];
+
+    const allKnownPromptModels = [
+      ...(availableModels?.gemini?.text || ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-1.5-pro"]),
+      ...(availableModels?.openai?.text || ["gpt-4o-mini", "gpt-4o"]),
+      ...ollamaModels.map(m => `ollama:${m}`)
+    ];
+
+    const allKnownImageModels = [
+      "nano_banana", "nano_banana_pro", "nano_banana_2", "chatgpt_dalle3",
+      ...(availableModels?.gemini?.image || []),
+      ...(availableModels?.openai?.image || [])
+    ];
+
+    referencedPromptModels.forEach((m) => {
+      if (!m) return;
+      const cleanM = m.replace(/^ollama:/, "");
+      const isEnabled = enabledPromptModels.includes(m) || enabledPromptModels.includes(`ollama:${cleanM}`) || enabledPromptModels.includes(cleanM);
+      if (!isEnabled) {
+        const isKnown = allKnownPromptModels.includes(m) || m.startsWith("gemini-") || m.startsWith("gpt-") || m.startsWith("ollama:");
+        if (isKnown) {
+          inactivePromptModels.push(m);
+        } else {
+          offlinePromptModels.push(m);
+        }
+      }
+    });
+
+    referencedImageModels.forEach((m) => {
+      if (!m) return;
+      const isEnabled = enabledImageModels.includes(m);
+      if (!isEnabled) {
+        const isKnown = allKnownImageModels.includes(m) || m.startsWith("nano_banana") || m.includes("dalle");
+        if (isKnown) {
+          inactiveImageModels.push(m);
+        } else {
+          offlineImageModels.push(m);
+        }
+      }
+    });
+
+    const hasIssues = inactivePromptModels.length > 0 || offlinePromptModels.length > 0 || inactiveImageModels.length > 0 || offlineImageModels.length > 0;
+
+    if (!hasIssues) {
+      onProceed();
+      return;
+    }
+
+    setSubstitutePromptModel(enabledPromptModels[0] || "gemini-3.5-flash");
+    setSubstituteImageModel(enabledImageModels[0] || "nano_banana");
+
+    setReconciliationModalData({
+      projectName: loadedProjectName,
+      inactivePromptModels,
+      inactiveImageModels,
+      offlinePromptModels,
+      offlineImageModels,
+      targetScenes: loadedScenes,
+      pendingLoadAction: onProceed
+    });
+  };
+
   const handleFetchLogs = async () => {
     try {
       const res = await fetch("/api/storyboard/logs");
@@ -1806,48 +1898,53 @@ const deriveFolderFromDate = (dateStr: string): string => {
             return s;
           });
           const hydrated = await hydrateScenes(cleaned);
-          setScenes(hydrated);
 
-          if (finalData.stylePreference) setStylePreference(finalData.stylePreference);
-          if (finalData.projectName) setProjectName(finalData.projectName);
-          if (finalData.scriptText) setScriptText(finalData.scriptText);
-          if (finalData.scriptReferenceImage !== undefined) setScriptReferenceImage(finalData.scriptReferenceImage || undefined);
-          if (finalData.connectionGroups) setConnectionGroups(finalData.connectionGroups);
-          if (finalData.selectedStyle) setSelectedStyle(finalData.selectedStyle);
-          if (finalData.consecutiveNumbering !== undefined) setConsecutiveNumbering(finalData.consecutiveNumbering);
-          if (Array.isArray(finalData.enabledPromptModels) && finalData.enabledPromptModels.length > 0) {
-            setEnabledPromptModels(finalData.enabledPromptModels);
-            setLocalStorageItemSafely("ethos_enabled_prompt_models", JSON.stringify(finalData.enabledPromptModels));
-          }
-          if (Array.isArray(finalData.enabledImageModels) && finalData.enabledImageModels.length > 0) {
-            setEnabledImageModels(finalData.enabledImageModels);
-            setLocalStorageItemSafely("ethos_enabled_image_models", JSON.stringify(finalData.enabledImageModels));
-          }
-          if (finalData.openAiModel) setOpenAiModel(finalData.openAiModel);
-          if (finalData.openAiDalleModel) setOpenAiDalleModel(finalData.openAiDalleModel);
-          if (finalData.batchSelectedPromptModel) setBatchSelectedPromptModel(finalData.batchSelectedPromptModel);
-          if (finalData.batchSelectedImageModel) setBatchSelectedImageModel(finalData.batchSelectedImageModel);
-          
-          if (finalData.diaryDate) {
-            setDiaryDate(finalData.diaryDate);
-          } else {
-            const localDiaryDate = localStorage.getItem("ethos_storyboard_diary_date");
-            if (localDiaryDate) setDiaryDate(localDiaryDate);
-          }
-          if (finalData.saveVersion !== undefined) {
-            setSaveVersion(Number(finalData.saveVersion));
-          } else {
-            const localSaveVersion = localStorage.getItem("ethos_storyboard_save_version");
-            if (localSaveVersion) setSaveVersion(Number(localSaveVersion));
-          }
+          const applyLoadedSession = () => {
+            setScenes(hydrated);
 
-          if (usedLocalOverServer) {
-            setNotification("Restauração Inteligente: Recuperamos suas edições em tempo real mais recentes do navegador!");
-          } else if (loadedSource === "disk") {
-            setNotification(`✓ Projeto carregado do diretório do servidor: "projects/${projectFolder}"`);
-          } else if (loadedSource === "legacy") {
-            setNotification("Sessão legada restaurada do servidor com sucesso!");
-          }
+            if (finalData.stylePreference) setStylePreference(finalData.stylePreference);
+            if (finalData.projectName) setProjectName(finalData.projectName);
+            if (finalData.scriptText) setScriptText(finalData.scriptText);
+            if (finalData.scriptReferenceImage !== undefined) setScriptReferenceImage(finalData.scriptReferenceImage || undefined);
+            if (finalData.connectionGroups) setConnectionGroups(finalData.connectionGroups);
+            if (finalData.selectedStyle) setSelectedStyle(finalData.selectedStyle);
+            if (finalData.consecutiveNumbering !== undefined) setConsecutiveNumbering(finalData.consecutiveNumbering);
+            if (Array.isArray(finalData.enabledPromptModels) && finalData.enabledPromptModels.length > 0) {
+              setEnabledPromptModels(finalData.enabledPromptModels);
+              setLocalStorageItemSafely("ethos_enabled_prompt_models", JSON.stringify(finalData.enabledPromptModels));
+            }
+            if (Array.isArray(finalData.enabledImageModels) && finalData.enabledImageModels.length > 0) {
+              setEnabledImageModels(finalData.enabledImageModels);
+              setLocalStorageItemSafely("ethos_enabled_image_models", JSON.stringify(finalData.enabledImageModels));
+            }
+            if (finalData.openAiModel) setOpenAiModel(finalData.openAiModel);
+            if (finalData.openAiDalleModel) setOpenAiDalleModel(finalData.openAiDalleModel);
+            if (finalData.batchSelectedPromptModel) setBatchSelectedPromptModel(finalData.batchSelectedPromptModel);
+            if (finalData.batchSelectedImageModel) setBatchSelectedImageModel(finalData.batchSelectedImageModel);
+            
+            if (finalData.diaryDate) {
+              setDiaryDate(finalData.diaryDate);
+            } else {
+              const localDiaryDate = localStorage.getItem("ethos_storyboard_diary_date");
+              if (localDiaryDate) setDiaryDate(localDiaryDate);
+            }
+            if (finalData.saveVersion !== undefined) {
+              setSaveVersion(Number(finalData.saveVersion));
+            } else {
+              const localSaveVersion = localStorage.getItem("ethos_storyboard_save_version");
+              if (localSaveVersion) setSaveVersion(Number(localSaveVersion));
+            }
+
+            if (usedLocalOverServer) {
+              setNotification("Restauração Inteligente: Recuperamos suas edições em tempo real mais recentes do navegador!");
+            } else if (loadedSource === "disk") {
+              setNotification(`✓ Projeto carregado do diretório do servidor: "projects/${projectFolder}"`);
+            } else if (loadedSource === "legacy") {
+              setNotification("Sessão legada restaurada do servidor com sucesso!");
+            }
+          };
+
+          checkProjectModelCompatibility(hydrated, finalData.projectName || "Meu Storyboard", applyLoadedSession);
         } catch (hydrationErr) {
           console.error("Hydration failed during load:", hydrationErr);
         }
@@ -4048,7 +4145,10 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           return clonedScene;
         });
 
-        exportedArchive = sessionImageArchive.map((item) => {
+        const activeSceneIds = new Set(scenes.map((s) => s.id));
+        const projectArchive = sessionImageArchive.filter((item) => activeSceneIds.has(item.sceneId));
+
+        exportedArchive = projectArchive.map((item) => {
           const clonedItem = { ...item };
           if (clonedItem.url && clonedItem.url.startsWith("data:")) {
             clonedItem.url = `idb://img_archive_${item.id}`;
@@ -4057,6 +4157,9 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         });
 
       } else {
+        const activeSceneIds = new Set(scenes.map((s) => s.id));
+        const projectArchive = sessionImageArchive.filter((item) => activeSceneIds.has(item.sceneId));
+
         // Opção A: Full package containing all image binaries embedded in the Zip.
         exportedScenes = await Promise.all(scenes.map(async (s) => {
           const clonedScene = { ...s };
@@ -4090,8 +4193,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           return clonedScene;
         }));
 
-        // 3. Pack the archived session images
-        exportedArchive = await Promise.all(sessionImageArchive.map(async (item) => {
+        // 3. Pack only the archived images belonging to this project's scenes
+        exportedArchive = await Promise.all(projectArchive.map(async (item) => {
           const clonedItem = { ...item };
           if (item.url) {
             const blob = await fetchImageAsBlob(item.url);
@@ -4391,41 +4494,45 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         const hydratedScenes = await hydrateScenes(unpackedScenes);
         const hydratedArchive = await hydrateArchive(unpackedArchive);
 
-        pushToHistory();
-        setScenes(hydratedScenes);
-        setSessionImageArchive(hydratedArchive);
-        if (data.projectName !== undefined) setProjectName(data.projectName);
-        else {
-          const guessedName = fileName.replace(/\.(dmaker|diariomaker|zip)$/i, "").replace(/[-_]+/g, " ");
-          setProjectName(guessedName);
-        }
-        setProjectFolder("260802");
-        if (data.scriptText !== undefined) setScriptText(data.scriptText);
-        if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
-        if (data.stylePreference !== undefined) setStylePreference(data.stylePreference);
-        
-        if (data.diaryDate !== undefined) {
-          setDiaryDate(data.diaryDate);
-          setLocalStorageItemSafely("ethos_storyboard_diary_date", data.diaryDate);
-        } else {
-          setDiaryDate("");
-          localStorage.removeItem("ethos_storyboard_diary_date");
-        }
-        if (data.saveVersion !== undefined) {
-          setSaveVersion(data.saveVersion);
-          setLocalStorageItemSafely("ethos_storyboard_save_version", String(data.saveVersion));
-        } else {
-          setSaveVersion(1);
-          setLocalStorageItemSafely("ethos_storyboard_save_version", "1");
-        }
-        
-        // Sync with local storage immediately for auto-recovery safety
-        setLocalStorageItemSafely("ethos_storyboard_scenes", JSON.stringify(hydratedScenes));
-        setLocalStorageItemSafely("ethos_storyboard_image_archive", JSON.stringify(hydratedArchive));
-        if (data.scriptText !== undefined) setLocalStorageItemSafely("ethos_storyboard_script_text", data.scriptText);
-        if (data.selectedStyle !== undefined) setLocalStorageItemSafely("ethos_storyboard_selected_style", data.selectedStyle);
-        
-        setNotification(`✓ Projeto "${data.projectName || "Carregado"}" importado com sucesso com todas as fotos salvas!`);
+        const applyImportedZip = () => {
+          pushToHistory();
+          setScenes(hydratedScenes);
+          setSessionImageArchive(hydratedArchive);
+          if (data.projectName !== undefined) setProjectName(data.projectName);
+          else {
+            const guessedName = fileName.replace(/\.(dmaker|diariomaker|zip)$/i, "").replace(/[-_]+/g, " ");
+            setProjectName(guessedName);
+          }
+          setProjectFolder("260802");
+          if (data.scriptText !== undefined) setScriptText(data.scriptText);
+          if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
+          if (data.stylePreference !== undefined) setStylePreference(data.stylePreference);
+          
+          if (data.diaryDate !== undefined) {
+            setDiaryDate(data.diaryDate);
+            setLocalStorageItemSafely("ethos_storyboard_diary_date", data.diaryDate);
+          } else {
+            setDiaryDate("");
+            localStorage.removeItem("ethos_storyboard_diary_date");
+          }
+          if (data.saveVersion !== undefined) {
+            setSaveVersion(data.saveVersion);
+            setLocalStorageItemSafely("ethos_storyboard_save_version", String(data.saveVersion));
+          } else {
+            setSaveVersion(1);
+            setLocalStorageItemSafely("ethos_storyboard_save_version", "1");
+          }
+          
+          // Sync with local storage immediately for auto-recovery safety
+          setLocalStorageItemSafely("ethos_storyboard_scenes", JSON.stringify(hydratedScenes));
+          setLocalStorageItemSafely("ethos_storyboard_image_archive", JSON.stringify(hydratedArchive));
+          if (data.scriptText !== undefined) setLocalStorageItemSafely("ethos_storyboard_script_text", data.scriptText);
+          if (data.selectedStyle !== undefined) setLocalStorageItemSafely("ethos_storyboard_selected_style", data.selectedStyle);
+          
+          setNotification(`✓ Projeto "${data.projectName || "Carregado"}" importado com sucesso com todas as fotos salvas!`);
+        };
+
+        checkProjectModelCompatibility(hydratedScenes, data.projectName || fileName, applyImportedZip);
         setIsImporting(false);
       }
     } catch (err: any) {
@@ -6829,6 +6936,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       enabledPromptModels={enabledPromptModels}
                       enabledImageModels={enabledImageModels}
                       audioNarrationUrl={audioNarrationUrl}
+                      artisticStyles={artisticStyles}
                       fps={24}
                     />
                   </div>
@@ -7372,6 +7480,169 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 Confirmar e Limpar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Model Compatibility Reconciliation Modal Overlay */}
+      {reconciliationModalData && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 sm:p-6 overflow-y-auto animate-fadeIn">
+          <div className="bg-[#141414] border border-[#D4AF37]/60 rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-5 animate-scaleUp text-[#E4DCD3]">
+            
+            {/* Header */}
+            <div className="flex items-start gap-3 pb-3 border-b border-zinc-800">
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-[#D4AF37] shrink-0">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <h3 className="text-base font-serif tracking-wide text-white font-bold">
+                  Compatibilidade de Modelos de IA
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">
+                  O projeto <strong className="text-[#D4AF37]">"{reconciliationModalData.projectName}"</strong> possui cenas configuradas com modelos que não estão ativos no seu ambiente atual.
+                </p>
+              </div>
+            </div>
+
+            {/* Affected Models List */}
+            <div className="bg-[#0a0a0a] border border-zinc-800/80 rounded-lg p-3.5 space-y-2 max-h-48 overflow-y-auto font-mono text-xs">
+              {[...reconciliationModalData.inactivePromptModels, ...reconciliationModalData.offlinePromptModels].map((m) => (
+                <div key={`p-${m}`} className="flex items-center justify-between py-1 border-b border-zinc-900 last:border-0 gap-2">
+                  <span className="text-slate-300 font-bold truncate">📝 Prompt: <code className="text-amber-300">{m}</code></span>
+                  <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase shrink-0 ${
+                    reconciliationModalData.inactivePromptModels.includes(m)
+                      ? "bg-amber-950/60 text-amber-400 border border-amber-800/60"
+                      : "bg-rose-950/60 text-rose-400 border border-rose-800/60"
+                  }`}>
+                    {reconciliationModalData.inactivePromptModels.includes(m) ? "Desativado nas Configurações" : "Modelo Offline / Não Encontrado"}
+                  </span>
+                </div>
+              ))}
+
+              {[...reconciliationModalData.inactiveImageModels, ...reconciliationModalData.offlineImageModels].map((m) => (
+                <div key={`i-${m}`} className="flex items-center justify-between py-1 border-b border-zinc-900 last:border-0 gap-2">
+                  <span className="text-slate-300 font-bold truncate">🎨 Render: <code className="text-emerald-300">{m}</code></span>
+                  <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase shrink-0 ${
+                    reconciliationModalData.inactiveImageModels.includes(m)
+                      ? "bg-amber-950/60 text-amber-400 border border-amber-800/60"
+                      : "bg-rose-950/60 text-rose-400 border border-rose-800/60"
+                  }`}>
+                    {reconciliationModalData.inactiveImageModels.includes(m) ? "Desativado nas Configurações" : "Modelo Offline / Não Encontrado"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Decision Action Buttons */}
+            <div className="space-y-3 pt-1">
+              
+              {/* Option 1: Ativar Modelos nas Configurações (Default Button) */}
+              {(reconciliationModalData.inactivePromptModels.length > 0 || reconciliationModalData.inactiveImageModels.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newPromptModels = Array.from(new Set([...enabledPromptModels, ...reconciliationModalData.inactivePromptModels]));
+                    const newImageModels = Array.from(new Set([...enabledImageModels, ...reconciliationModalData.inactiveImageModels]));
+                    setEnabledPromptModels(newPromptModels);
+                    setEnabledImageModels(newImageModels);
+                    setLocalStorageItemSafely("ethos_enabled_prompt_models", JSON.stringify(newPromptModels));
+                    setLocalStorageItemSafely("ethos_enabled_image_models", JSON.stringify(newImageModels));
+                    reconciliationModalData.pendingLoadAction();
+                    setReconciliationModalData(null);
+                    setNotification("✓ Modelos ativados no seu perfil e projeto carregado!");
+                  }}
+                  className="w-full py-2.5 px-4 bg-[#D4AF37] hover:bg-amber-400 text-black font-bold text-xs rounded uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+                >
+                  <Check size={14} />
+                  <span>1. Ativar Modelos nas Minhas Configurações (Recomendado)</span>
+                </button>
+              )}
+
+              {/* Option 2: Substituir por Modelos Ativos */}
+              <div className="p-3 bg-[#0d0d0d] border border-zinc-800 rounded-lg space-y-2">
+                <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-400 font-bold block">
+                  2. Substituir por Modelos Ativos Atuais:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label className="text-[9px] text-zinc-500 font-mono block mb-1">Substituto de Prompt (Texto):</label>
+                    <select
+                      value={substitutePromptModel}
+                      onChange={(e) => setSubstitutePromptModel(e.target.value)}
+                      className="w-full bg-black border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                    >
+                      {enabledPromptModels.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-zinc-500 font-mono block mb-1">Substituto de Render (Imagem):</label>
+                    <select
+                      value={substituteImageModel}
+                      onChange={(e) => setSubstituteImageModel(e.target.value)}
+                      className="w-full bg-black border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                    >
+                      {enabledImageModels.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const affectedPromptSet = new Set([...reconciliationModalData.inactivePromptModels, ...reconciliationModalData.offlinePromptModels]);
+                    const affectedImageSet = new Set([...reconciliationModalData.inactiveImageModels, ...reconciliationModalData.offlineImageModels]);
+                    
+                    setScenes(prev => prev.map(s => ({
+                      ...s,
+                      promptAiModel: affectedPromptSet.has(s.promptAiModel || "") ? substitutePromptModel : s.promptAiModel,
+                      selectedModel: affectedImageSet.has(s.selectedModel || "") ? substituteImageModel as any : s.selectedModel
+                    })));
+
+                    reconciliationModalData.pendingLoadAction();
+                    setReconciliationModalData(null);
+                    setNotification("✓ Modelos substituídos e projeto carregado!");
+                  }}
+                  className="w-full py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs rounded uppercase tracking-wider transition-all cursor-pointer mt-1"
+                >
+                  Substituir e Abrir Projeto
+                </button>
+              </div>
+
+              {/* Option 3: Ajustar Configurações / Option 4: Seguir sem Modificar */}
+              <div className="flex gap-2 flex-col sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const configSection = document.getElementById("advanced-settings-panel");
+                    if (configSection) {
+                      configSection.scrollIntoView({ behavior: "smooth" });
+                    }
+                    setNotification("Edite os modelos no painel abaixo. As escolhas serão atualizadas no modal!");
+                  }}
+                  className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-mono text-xs rounded border border-zinc-700 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Sliders size={12} />
+                  <span>3. Ajustar Configurações</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    reconciliationModalData.pendingLoadAction();
+                    setReconciliationModalData(null);
+                    setNotification("⚠️ Projeto carregado. Modelos ausentes destacados em vermelho nas cartelas.");
+                  }}
+                  className="flex-1 py-2 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 font-mono text-xs rounded border border-rose-800 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span>Seguir Sem Modificar (Destacar Vermelho)</span>
+                </button>
+              </div>
+
+            </div>
+
           </div>
         </div>
       )}
