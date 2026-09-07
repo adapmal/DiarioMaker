@@ -89,11 +89,13 @@ export async function setCachedImage(key: string, base64Data: string): Promise<v
       const store = transaction.objectStore(STORE_NAME);
       const request = store.put({ key, data: base64Data, timestamp: Date.now() });
 
-      request.onsuccess = () => resolve();
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error || new Error("Transação de cache cancelada."));
       request.onerror = () => reject(request.error);
     });
   } catch (err) {
     console.warn("Falha ao salvar imagem no cache local IndexedDB:", err);
+    throw err;
   }
 }
 
@@ -109,7 +111,8 @@ export async function deleteCachedImage(key: string): Promise<void> {
       const store = transaction.objectStore(STORE_NAME);
       const request = store.delete(key);
 
-      request.onsuccess = () => resolve();
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error || new Error("Transação de cache cancelada."));
       request.onerror = () => reject(request.error);
     });
   } catch (err) {

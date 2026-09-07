@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import JSZip from "jszip";
 import { StoryboardScene, StylePreference, ArchivedImage, ConnectionGroup, ArtisticStyle, ImageVersion } from "./types";
 import ScriptInputArea from "./components/ScriptInputArea";
@@ -10,6 +10,9 @@ import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, 
 import { getCachedImage, setCachedImage, getCacheSizeMB, clearCache } from "./lib/cacheStore";
 import { prepareImageBlobForDownload } from "./lib/imageUtils";
 import { motion, AnimatePresence } from "motion/react";
+import ProjectSaveMenu from "./components/ProjectSaveMenu";
+import OpenAiTranscriptionModelRadios from "./components/OpenAiTranscriptionModelRadios";
+import { useProjectPersistence, DocumentResult, DocumentLocation } from "./lib/useProjectPersistence";
 
 function setLocalStorageItemSafely(key: string, value: string): void {
   try {
@@ -837,46 +840,7 @@ export default function App() {
 
   // Debounced Lightweight Safety Backup to server (waits 1.2s after last modification)
   const autosaveTimeoutRef = useRef<any>(null);
-  const triggerAutosave = (customScenes?: StoryboardScene[]) => {
-    if (autosaveTimeoutRef.current) {
-      clearTimeout(autosaveTimeoutRef.current);
-    }
-    autosaveTimeoutRef.current = setTimeout(async () => {
-      const scenesToSave = customScenes || scenes;
-      if (scenesToSave.length === 0) return;
-      try {
-        setIsAutosaving(true);
-        const response = await fetch("/api/storyboard/autosave", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            scenes: scenesToSave, 
-            stylePreference,
-            projectName,
-            scriptText,
-            scriptReferenceImage,
-            connectionGroups,
-            selectedStyle,
-            consecutiveNumbering
-          }),
-        });
-        if (response.ok) {
-          const now = new Date();
-          const timeString = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-          setLastAutosaveTime(timeString);
-          try {
-            localStorage.setItem("ethos_last_autosave_time", timeString);
-          } catch {}
-          console.log(`[Auto-Save Event] Backup leve efetuado com sucesso às ${timeString}`);
-          fetchAvailableBackups();
-        }
-      } catch (err) {
-        console.warn("[Auto-Save Event] Falha ao realizar auto-salvamento no servidor:", err);
-      } finally {
-        setIsAutosaving(false);
-      }
-    }, 1200);
-  };
+  const triggerAutosave = (_customScenes?: StoryboardScene[]) => { /* The document coordinator observes state changes. */ };
 
   // Fetch backups on config view entrance
   useEffect(() => {
@@ -1109,6 +1073,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
 
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjectDate, setNewProjectDate] = useState(getTodayDateYmd());
+  const [newProjectBaseDir, setNewProjectBaseDir] = useState<string>("");
   const [newProjectScript, setNewProjectScript] = useState("");
   const [newProjectAudioFile, setNewProjectAudioFile] = useState<File | null>(null);
   const [newProjectAudioFileName, setNewProjectAudioFileName] = useState<string | undefined>();
@@ -1294,35 +1259,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
     }
   }, [projectName]);
 
-  // Hydrate & persist audio narration URL on project reload / F5 refresh (probing mp3, wav, m4a, ogg)
-  useEffect(() => {
-    if (!projectName) return;
-    const savedUrl = localStorage.getItem(`ethos_storyboard_audio_url_${projectName}`) || localStorage.getItem("ethos_storyboard_audio_url");
-    if (savedUrl) {
-      setAudioNarrationUrl(savedUrl);
-    }
-
-    const exts = ["mp3", "wav", "m4a", "ogg"];
-    let found = false;
-    const probeNext = async (idx: number) => {
-      if (idx >= exts.length || found) return;
-      const testUrl = `/api/projects/${projectName}/narration.${exts[idx]}`;
-      try {
-        const res = await fetch(testUrl, { method: "HEAD" });
-        if (res.ok) {
-          found = true;
-          setAudioNarrationUrl(testUrl);
-          localStorage.setItem(`ethos_storyboard_audio_url_${projectName}`, testUrl);
-          localStorage.setItem("ethos_storyboard_audio_url", testUrl);
-        } else {
-          probeNext(idx + 1);
-        }
-      } catch {
-        probeNext(idx + 1);
-      }
-    };
-    probeNext(0);
-  }, [projectName]);
+  // Audio is restored from the document; legacy audio is migrated on load.
 
   // Sync audioNarrationUrl to localStorage whenever it changes
   useEffect(() => {
@@ -1396,6 +1333,50 @@ const deriveFolderFromDate = (dateStr: string): string => {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
   const [isOpenAiTestingKey, setIsOpenAiTestingKey] = useState(false);
+  const [saveAsTrigger, setSaveAsTrigger] = useState(0);
+
+  const [recoveryCandidate, setRecoveryCandidate] = useState<any>(null);
+  const [studioJobs, setStudioJobs] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const { id, active } = (event as CustomEvent).detail;
+      setStudioJobs(previous => { const next = new Set(previous); active ? next.add(id) : next.delete(id); return next; });
+    };
+    window.addEventListener("diariomaker-job", listener);
+    return () => window.removeEventListener("diariomaker-job", listener);
+  }, []);
+  const hasActiveJobs = isGenerating || studioJobs.size > 0 || scenes.some(s => s.renderStatus === "queued" || s.renderStatus === "rendering");
+  const requireIdle = () => { if (hasActiveJobs) throw new Error("Aguarde a geração terminar antes de trocar ou transferir o projeto."); };
+
+  const persistenceSnapshot = useMemo(() => ({
+    scenes,
+    stylePreference,
+    projectName,
+    scriptText,
+    scriptReferenceImage,
+    connectionGroups,
+    selectedStyle,
+    consecutiveNumbering,
+    diaryDate,
+    saveVersion,
+    enabledPromptModels,
+    enabledImageModels,
+    openAiModel,
+    openAiDalleModel,
+    batchSelectedPromptModel,
+    batchSelectedImageModel,
+    audioNarrationUrl,
+    sessionImageArchive,
+  }), [scenes, stylePreference, projectName, scriptText, scriptReferenceImage, connectionGroups, selectedStyle, consecutiveNumbering, diaryDate, saveVersion, enabledPromptModels, enabledImageModels, openAiModel, openAiDalleModel, batchSelectedPromptModel, batchSelectedImageModel, audioNarrationUrl, sessionImageArchive]);
+
+  const persistence = useProjectPersistence(
+    persistenceSnapshot,
+    !isHydrating && !isImporting && !recoveryCandidate,
+    projectFolder
+  );
+  useEffect(() => {
+    if (persistence.location) setProjectFolder(persistence.location.id);
+  }, [persistence.location]);
   const [openAiKeyTestResult, setOpenAiKeyTestResult] = useState<{
     success: boolean;
     message: string;
@@ -1481,13 +1462,14 @@ const deriveFolderFromDate = (dateStr: string): string => {
       if (cached) rawData = cached;
       else return "";
     }
+    if (isImporting || !persistence.currentLocation()) return rawData;
     if (rawData.startsWith("data:") || rawData.length > 500) {
       try {
         const res = await fetch("/api/storyboard/projects/save-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            folder: folder || projectFolder || "default",
+            folder: persistence.currentLocation()?.id || folder || projectFolder || "default",
             sceneId: sceneId || "scene",
             sceneNumber: sceneNum || "01",
             imageUrl: rawData
@@ -1560,6 +1542,88 @@ const deriveFolderFromDate = (dateStr: string): string => {
     } catch (e) {
       console.warn("Hydration failed for archive:", e);
       return sanitizeArchiveArray(dehydrated);
+    }
+  };
+
+  const applyLoadedDocument = async (result: DocumentResult) => {
+    const data = result.data;
+    if (!data) return;
+    if (result.location) {
+      if (result.location.name) setProjectName(result.location.name);
+      setProjectFolder(result.location.id);
+    }
+    setAudioNarrationUrl(data.audioNarrationUrl || undefined);
+    setSessionImageArchive(data.sessionImageArchive || []);
+    setScriptReferenceImage(data.scriptReferenceImage || undefined);
+    setConnectionGroups(data.connectionGroups || []);
+    setDiaryDate(data.diaryDate || "");
+    setHistory([]); setRedoStack([]);
+    if (Array.isArray(data.scenes)) {
+      const cleaned = data.scenes.map((s: any) => {
+        if (s.renderStatus === "queued" || s.renderStatus === "rendering") {
+          return { ...s, renderStatus: s.generatedImageUrl ? "completed" : "idle" };
+        }
+        return s;
+      });
+      const hydrated = await hydrateScenes(cleaned);
+      setScenes(hydrated);
+    }
+    if (data.stylePreference) setStylePreference(data.stylePreference);
+    if (data.projectName && !result.location?.name) setProjectName(data.projectName);
+    if (data.scriptText !== undefined) setScriptText(data.scriptText);
+    if (data.scriptReferenceImage !== undefined) setScriptReferenceImage(data.scriptReferenceImage || undefined);
+    if (data.connectionGroups) setConnectionGroups(data.connectionGroups);
+    if (data.selectedStyle) setSelectedStyle(data.selectedStyle);
+    if (data.consecutiveNumbering !== undefined) setConsecutiveNumbering(data.consecutiveNumbering);
+    if (Array.isArray(data.enabledPromptModels) && data.enabledPromptModels.length > 0) {
+      setEnabledPromptModels(data.enabledPromptModels);
+      setLocalStorageItemSafely("ethos_enabled_prompt_models", JSON.stringify(data.enabledPromptModels));
+    }
+    if (Array.isArray(data.enabledImageModels) && data.enabledImageModels.length > 0) {
+      setEnabledImageModels(data.enabledImageModels);
+      setLocalStorageItemSafely("ethos_enabled_image_models", JSON.stringify(data.enabledImageModels));
+    }
+    if (data.openAiModel) setOpenAiModel(data.openAiModel);
+    if (data.openAiDalleModel) setOpenAiDalleModel(data.openAiDalleModel);
+    if (data.batchSelectedPromptModel) setBatchSelectedPromptModel(data.batchSelectedPromptModel);
+    if (data.batchSelectedImageModel) setBatchSelectedImageModel(data.batchSelectedImageModel);
+    if (data.diaryDate) setDiaryDate(data.diaryDate);
+    if (data.saveVersion !== undefined) setSaveVersion(Number(data.saveVersion));
+  };
+
+  const handleOpenNativeProject = async () => {
+    try {
+      requireIdle(); setIsImporting(true);
+      const result = await persistence.open();
+      if (result && result.data) {
+        await applyLoadedDocument(result);
+        setIsHydrating(false);
+        setRecoveryCandidate(await persistence.recovery(result.location.id));
+        setNotification(`✓ Projeto aberto: "${result.location.name}"`);
+      }
+    } catch (err: any) {
+      setNotification(`Erro ao abrir projeto: ${err.message || err}`);
+    } finally { setIsImporting(false); }
+  };
+
+  const handleRevealProjectFolder = async () => {
+    try {
+      if (persistence.location?.id) {
+        await persistence.reveal();
+      } else {
+        const target = persistence.location?.root || projectFolder || "default";
+        const response = await fetch("/api/storyboard/reveal-folder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folder: target })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || "Não foi possível abrir a pasta no Explorer.");
+        }
+      }
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
@@ -1692,8 +1756,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
     }
   }, [openAiKey, useOpenAiForPrompts, openAiModel, openAiDalleModel, isHydrating]);
   useEffect(() => {
-    if (isHydrating) return;
-    if (scenes.length === 0) return;
+    if (isHydrating || isImporting) return;
 
     const persistScenes = async () => {
       try {
@@ -1737,49 +1800,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
 
     persistScenes();
 
-    // Sync to server storage asynchronously
-    const nowStr = new Date().toISOString();
-    const payload = {
-      folder: projectFolder,
-      scenes, 
-      stylePreference,
-      projectName,
-      scriptText,
-      scriptReferenceImage,
-      connectionGroups,
-      selectedStyle,
-      consecutiveNumbering,
-      diaryDate,
-      saveVersion,
-      enabledPromptModels,
-      enabledImageModels,
-      openAiModel,
-      openAiDalleModel,
-      batchSelectedPromptModel,
-      batchSelectedImageModel,
-      updatedAt: nowStr
-    };
-
-    // 1. Salva no diretório do projeto físico
-    fetch("/api/storyboard/projects/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    .then((res) => {
-      if (res.ok) {
-        setLastDiskSaveTime(new Date().toLocaleTimeString());
-      }
-    })
-    .catch((err) => console.info("Failed to save project physically:", err));
-
-    // 2. Salva na sessão global para compatibilidade
-    fetch("/api/storyboard/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }).catch((err) => console.info("Failed to sync session to legacy server storage:", err));
-  }, [scenes, stylePreference, localCacheEnabled, projectName, scriptText, scriptReferenceImage, connectionGroups, selectedStyle, consecutiveNumbering, projectFolder, diaryDate, saveVersion, enabledPromptModels, enabledImageModels, openAiModel, openAiDalleModel, batchSelectedPromptModel, batchSelectedImageModel, isHydrating]);
+  }, [scenes, localCacheEnabled, isHydrating, isImporting]);
 
   // Robust Session Retrieval on mount from both server and local storage with IndexedDB hydration support
   useEffect(() => {
@@ -1821,15 +1842,34 @@ const deriveFolderFromDate = (dateStr: string): string => {
       let loadedData: any = null;
       let loadedSource: "disk" | "legacy" | "none" = "none";
 
+      // A registered document is authoritative, including an empty one.
+      try {
+        const response = await fetch("/api/project-documents/current");
+        if (!response.ok) throw new Error("Não foi possível abrir o projeto salvo. Tente novamente ou use Abrir.");
+        const currentDoc: DocumentResult | null = await response.json();
+        if (currentDoc) {
+          persistence.adopt(currentDoc);
+          await applyLoadedDocument(currentDoc);
+          setRecoveryCandidate(await persistence.recovery(currentDoc.location.id));
+          setIsHydrating(false);
+          return;
+        }
+      } catch (err: any) {
+        setError(err.message);
+        return;
+      }
+
       // 1. Tenta carregar o projeto ativo do servidor
       try {
-        const response = await fetch(`/api/storyboard/projects/load?folder=${encodeURIComponent(currentFolder)}`);
+        if (!loadedData) {
+          const response = await fetch(`/api/storyboard/projects/load?folder=${encodeURIComponent(currentFolder)}`);
         if (response.ok) {
           const resJson = await response.json();
-          if (resJson.success && resJson.data && resJson.data.scenes && resJson.data.scenes.length > 0) {
+          if (resJson.success && resJson.data && Array.isArray(resJson.data.scenes)) {
             loadedData = resJson.data;
             loadedSource = "disk";
           }
+        }
         }
       } catch (err) {
         console.warn("Física do projeto não pôde ser carregada do disco:", err);
@@ -1886,7 +1926,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
       }
 
       // 4. Aplica os dados hidratados
-      if (finalData && finalData.scenes && finalData.scenes.length > 0) {
+      if (finalData && Array.isArray(finalData.scenes)) {
         try {
           const cleaned = finalData.scenes.map((s: any) => {
             if (s.renderStatus === "queued" || s.renderStatus === "rendering") {
@@ -1901,6 +1941,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
 
           const applyLoadedSession = () => {
             setScenes(hydrated);
+            setAudioNarrationUrl(finalData.audioNarrationUrl || localStorage.getItem(`ethos_storyboard_audio_url_${finalData.projectName}`) || undefined);
 
             if (finalData.stylePreference) setStylePreference(finalData.stylePreference);
             if (finalData.projectName) setProjectName(finalData.projectName);
@@ -1964,6 +2005,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
         console.warn("Falha ao restaurar acervo de imagens local:", archiveErr);
       }
 
+      setRecoveryCandidate(await persistence.recovery("unsaved"));
       setIsHydrating(false);
     };
 
@@ -2135,7 +2177,8 @@ const deriveFolderFromDate = (dateStr: string): string => {
 
   // Clear session to start fresh
   const handleClearSession = async () => {
-    pushToHistory();
+    try { requireIdle(); await persistence.startNew(); } catch (err: any) { setError(err.message); return; }
+    setAudioNarrationUrl(undefined); setHistory([]); setRedoStack([]);
     setScenes([]);
     setSessionImageArchive([]);
     setStylePreference("auto");
@@ -2148,12 +2191,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
     setError(null);
     setResetTrigger(prev => prev + 1);
     
-    try {
-      await clearCache();
-      setCacheSizeMB(0);
-    } catch (err) {
-      console.warn("Failed to clear IndexedDB cache during session reset:", err);
-    }
+    // Preserve caches and recovery drafts belonging to other documents.
 
     try {
       localStorage.removeItem("ethos_storyboard_scenes");
@@ -2167,20 +2205,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
       localStorage.removeItem("ethos_storyboard_save_version");
     } catch (_) {}
     
-    fetch("/api/storyboard/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        scenes: [], 
-        stylePreference: "auto",
-        projectName: "Meu Storyboard",
-        scriptText: "",
-        diaryDate: "",
-        saveVersion: 1
-      }),
-    }).catch((err) => console.warn("Failed to clear server session:", err));
-    
-    setNotification("Sessão e cache de imagens limpos. Pronto para iniciar um novo roteiro.");
+    setNotification("Novo projeto iniciado. O projeto anterior foi preservado.");
     setShowConfirmClear(false);
   };
 
@@ -2518,7 +2543,8 @@ Output MUST be valid JSON only, matching this schema exactly:
           engineName: scene.engineName || "Geração",
           renderTimeSeconds: scene.renderTimeSeconds,
           description: scene.description,
-          letter: letter
+          letter: letter,
+          chatHistory: scene.chatHistory || []
         };
         updatedVersions = [oldVersion, ...updatedVersions];
       }
@@ -2538,7 +2564,8 @@ Output MUST be valid JSON only, matching this schema exactly:
         engineName: fields.engineName || scene.engineName || "Geração",
         renderTimeSeconds: fields.renderTimeSeconds || scene.renderTimeSeconds,
         description: fields.description || scene.description,
-        letter: letter
+        letter: letter,
+        chatHistory: fields.chatHistory || []
       };
       updatedVersions = [newVersion, ...updatedVersions].slice(0, 6);
     } else if (fields.generatedImageUrl) {
@@ -2640,6 +2667,23 @@ Output MUST be valid JSON only, matching this schema exactly:
       if (isEventAutosaveTrigger || isUserEdit) {
         setTimeout(() => triggerAutosave(nextScenes), 0);
       }
+      return nextScenes;
+    });
+  };
+
+  const handleSelectSceneImage = (id: string, fields: Partial<StoryboardScene>) => {
+    setScenes((prev) => {
+      const nextScenes = prev.map((s) => {
+        if (s.id === id) {
+          return {
+            ...s,
+            ...fields,
+            isPromptModified: false
+          };
+        }
+        return s;
+      });
+      setTimeout(() => triggerAutosave(nextScenes), 0);
       return nextScenes;
     });
   };
@@ -2935,7 +2979,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              folder: projectFolder,
+              folder: persistence.currentLocation()?.id || projectFolder,
               sceneId: nextToRender.id,
               sceneNumber: nextToRender.sceneNumber || "",
               imageUrl: base64ImageUrl
@@ -3312,6 +3356,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       sceneStylePreference: originalScene.sceneStylePreference || "auto",
       promptAiModel: originalScene.promptAiModel || "gemini-3.5-flash",
       promptTargetTool: originalScene.promptTargetTool || "Nano Banana",
+      selectedModel: originalScene.selectedModel,
       generatedImageUrl: undefined,
       isPromptModified: false,
       startTime: splitTime,
@@ -3472,12 +3517,16 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
   // Add a blank new scene manually at the bottom
   const handleAddBlankScene = () => {
     pushToHistory();
+    const lastScene = scenes.length > 0 ? scenes[scenes.length - 1] : undefined;
     const newScene: StoryboardScene = {
       id: `scene-manual-${Date.now()}`,
-      text: "Novo segmento de narração ou reflexão para desenvolvimento.",
-      description: "Nova sugestão de enquadramento de câmera e iluminação dramática.",
-      prompt: "Dramatic cinematography setting, evocative mood, high contrast lighting --ar 16:9",
+      text: "",
+      description: "",
+      prompt: "",
       sceneNumber: String(scenes.length + 1),
+      promptAiModel: lastScene?.promptAiModel || "gemini-3.5-flash",
+      selectedModel: lastScene?.selectedModel || "fal-ai/nano-banana",
+      promptTargetTool: lastScene?.promptTargetTool || "Nano Banana",
     };
     const updated = [...scenes, newScene];
     setScenes(updated);
@@ -3642,8 +3691,15 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     audioFileName?: string;
     audioPath?: string;
     explicitProjectName?: string;
+    openAiAudioModel?: string;
+    openAiTextModel?: string;
   }) => {
     const { text, style, referenceImage, selectedEngine, audioFile, audioBase64, audioMimeType, audioPath, explicitProjectName } = params;
+    const effectiveAudioModel = params.openAiAudioModel || openAiAudioModel || "whisper-1";
+    if (params.openAiAudioModel && params.openAiAudioModel !== openAiAudioModel) {
+      setOpenAiAudioModel(params.openAiAudioModel);
+      try { localStorage.setItem("ethos_openai_audio_model", params.openAiAudioModel); } catch {}
+    }
 
     if (!audioFile && !audioBase64 && !audioPath) {
       handleGenerateStoryboard(text, style, referenceImage, selectedEngine as any);
@@ -3672,6 +3728,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         const formData = new FormData();
         formData.append("audio", fileToUpload);
         formData.append("projectName", activeProjectName);
+      if (persistence.currentLocation()) formData.append("documentId", persistence.currentLocation()!.id);
         if (selectedEngine) formData.append("engine", selectedEngine);
 
         response = await fetch("/api/storyboard/transcribe-audio", {
@@ -3682,7 +3739,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               "x-use-openai": "true",
               "x-openai-key": openAiKey,
               "x-openai-model": openAiModel,
-              "x-openai-audio-model": openAiAudioModel
+              "x-openai-audio-model": effectiveAudioModel
             } : {})
           },
           body: formData
@@ -3700,7 +3757,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               "x-use-openai": "true",
               "x-openai-key": openAiKey,
               "x-openai-model": openAiModel,
-              "x-openai-audio-model": openAiAudioModel
+              "x-openai-audio-model": effectiveAudioModel
             } : {})
           },
           body: JSON.stringify({
@@ -3708,6 +3765,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             audioMimeType,
             audioPath,
             projectName: activeProjectName,
+            documentId: persistence.currentLocation()?.id,
             selectedEngine
           })
         });
@@ -3798,6 +3856,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
   const handleMidProjectAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files[0]) return;
     const file = e.target.files[0];
+    setIsGenerating(true);
 
     setNotification(`🎙️ Enviando áudio "${file.name}" para alinhamento de timecodes...`);
 
@@ -3805,6 +3864,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       const formData = new FormData();
       formData.append("audio", file);
       formData.append("projectName", projectName || "meu-projeto");
+      if (persistence.currentLocation()) formData.append("documentId", persistence.currentLocation()!.id);
 
       const response = await fetch("/api/storyboard/transcribe-audio", {
         method: "POST",
@@ -3832,7 +3892,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     } catch (err: any) {
       console.error("Mid-project audio fail:", err);
       setError(`Erro ao alinhar áudio: ${err.message || err}`);
-    }
+    } finally { setIsGenerating(false); }
   };
 
   // Handle mid-project audio link (NLE Mode)
@@ -3895,6 +3955,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       const projName = projectName || "meu-projeto";
       const formData = new FormData();
       formData.append("projectName", projName);
+      if (persistence.currentLocation()) formData.append("documentId", persistence.currentLocation()!.id);
 
       // 1. Check if audioNarrationUrl is available in memory or localStorage
       const currentAudioUrl = audioNarrationUrl || localStorage.getItem(`ethos_storyboard_audio_url_${projName}`) || localStorage.getItem("ethos_storyboard_audio_url");
@@ -3916,7 +3977,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           } catch (e) {
             console.warn("Failed to parse data URL audio blob:", e);
           }
-        } else if (currentAudioUrl.startsWith("blob:") || currentAudioUrl.startsWith("/api/projects")) {
+        } else if (currentAudioUrl.startsWith("blob:") || currentAudioUrl.startsWith("/api/projects") || currentAudioUrl.startsWith("/api/project-documents/")) {
           try {
             const blobRes = await fetch(currentAudioUrl);
             if (blobRes.ok) {
@@ -4299,6 +4360,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     setNotification("Carregando projeto... Por favor, aguarde.");
     
     try {
+      requireIdle(); await persistence.startNew();
+      setAudioNarrationUrl(undefined); setSessionImageArchive([]);
       const fileName = file.name;
       
       if (fileName.endsWith(".json")) {
@@ -4350,7 +4413,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               const guessedName = fileName.replace(/\.json$/i, "").replace(/[-_]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
               setProjectName(guessedName);
             }
-            setProjectFolder("260802");
+            setProjectFolder("");
             if (data.scriptText !== undefined) setScriptText(data.scriptText);
             if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
             if (data.stylePreference !== undefined) setStylePreference(data.stylePreference);
@@ -4503,7 +4566,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             const guessedName = fileName.replace(/\.(dmaker|diariomaker|zip)$/i, "").replace(/[-_]+/g, " ");
             setProjectName(guessedName);
           }
-          setProjectFolder("260802");
+          setProjectFolder("");
           if (data.scriptText !== undefined) setScriptText(data.scriptText);
           if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
           if (data.stylePreference !== undefined) setStylePreference(data.stylePreference);
@@ -4701,6 +4764,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (persistence.busy || isImporting || recoveryCandidate) { e.preventDefault(); return; }
       const isCmdOrCtrl = e.ctrlKey || e.metaKey;
       const isShift = e.shiftKey;
 
@@ -4750,10 +4814,12 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         }
       }
 
-      // 4. Ctrl+Shift+S (Save project)
-      if (isCmdOrCtrl && isShift && e.key.toLowerCase() === "s") {
+      // Save the active document; Shift opens Save As.
+      if (isCmdOrCtrl && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        handleSaveProject();
+        if (isHydrating || persistence.busy) return;
+        if (isShift) setSaveAsTrigger(v => v + 1);
+        else void persistence.save().catch((err: any) => setError(err.message));
       }
     };
 
@@ -4761,7 +4827,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [scenes, history, redoStack, activeStudioSceneId, focusedSceneId, consecutiveNumbering, exportModeOption, sessionImageArchive, projectName, stylePreference, customApiKey]);
+  }, [scenes, history, redoStack, activeStudioSceneId, focusedSceneId, consecutiveNumbering, exportModeOption, sessionImageArchive, projectName, stylePreference, customApiKey, persistence.busy, isImporting, isHydrating, recoveryCandidate]);
 
   // Restores scroll and focus position when returning from Config to Storyboard
   useEffect(() => {
@@ -4788,6 +4854,88 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
   return (
     <div className="min-h-screen bg-[#0F0F0F] text-[#E0D8D0] flex flex-col font-sans selection:bg-[#D4AF37]/30 selection:text-white">
       
+      {persistence.busy && (
+        <div className="fixed inset-0 z-[1000000] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fadeIn" role="status">
+          <div className="bg-[#121212] border border-[#D4AF37]/50 rounded-xl px-6 py-5 shadow-2xl flex items-center gap-4 animate-scaleUp">
+            <div className="w-8 h-8 border-2 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-sm font-serif tracking-wider uppercase text-[#D4AF37] font-semibold">Operação em Andamento</span>
+              <span className="text-xs text-slate-300 font-sans">Aguarde a conclusão da operação do projeto…</span>
+            </div>
+          </div>
+        </div>
+      )}
+      {persistence.failure && (
+        <div role="alert" className="sticky top-0 z-[60] bg-[#1a0c0e] border-b border-rose-900/60 px-4 py-2.5 text-xs sm:text-sm text-rose-200 flex flex-wrap items-center justify-between gap-3 shadow-xl backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
+            <span className="font-mono text-rose-400 uppercase text-[11px] tracking-wider font-bold">Aviso de Salvamento:</span>
+            <span className="font-sans text-rose-100">{persistence.failure}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="px-3 py-1 bg-rose-950/80 hover:bg-rose-900 border border-rose-700/60 text-white rounded text-[10px] uppercase font-mono tracking-wider transition-all cursor-pointer"
+              onClick={() => void persistence.save().catch(() => {})}
+            >
+              Tentar novamente
+            </button>
+            <button
+              type="button"
+              className="px-3 py-1 bg-zinc-900 hover:bg-zinc-800 border border-[#D4AF37]/50 text-[#D4AF37] hover:text-white rounded text-[10px] uppercase font-mono tracking-wider transition-all cursor-pointer"
+              onClick={() => setSaveAsTrigger(v => v + 1)}
+            >
+              Salvar como
+            </button>
+          </div>
+        </div>
+      )}
+      {recoveryCandidate && (
+        <div className="fixed inset-0 z-[99998] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 sm:p-6 animate-fadeIn">
+          <div role="dialog" aria-modal="true" className="bg-[#121212] border border-[#D4AF37]/45 rounded-xl max-w-lg w-full p-6 shadow-2xl relative flex flex-col space-y-4 text-center animate-scaleUp">
+            <div className="w-12 h-12 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37] mx-auto">
+              <FileText size={22} />
+            </div>
+            
+            <h3 className="text-sm sm:text-base font-serif tracking-widest uppercase text-white font-semibold">
+              Rascunho Não Salvo Detectado
+            </h3>
+            
+            <p className="text-xs text-slate-300 leading-relaxed font-sans text-left bg-zinc-900/80 p-3.5 rounded-lg border border-zinc-800/80">
+              Há alterações locais em rascunho sem salvamento confirmado no disco. Deseja recuperar essas alterações em um novo arquivo ou descartá-las e continuar com a versão atual gravada no disco?
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                type="button"
+                className="flex-1 py-2.5 px-4 bg-[#D4AF37] hover:bg-[#c49f30] text-black font-semibold text-xs uppercase tracking-wider font-mono rounded shadow transition-all cursor-pointer"
+                onClick={async () => {
+                  try {
+                    const result = await persistence.recoverDraft(recoveryCandidate.state, recoveryCandidate.draftKey);
+                    await applyLoadedDocument(result);
+                    setRecoveryCandidate(null);
+                    setNotification("✓ Rascunho recuperado com sucesso em novo arquivo!");
+                  } catch (err: any) {
+                    setError(err.message);
+                  }
+                }}
+              >
+                Recuperar em novo arquivo
+              </button>
+              <button
+                type="button"
+                className="flex-1 py-2.5 px-4 border border-zinc-700 hover:border-zinc-500 bg-zinc-900/60 hover:bg-zinc-800 text-slate-300 hover:text-white text-xs uppercase tracking-wider font-mono rounded transition-all cursor-pointer"
+                onClick={async () => {
+                  await persistence.discardDraft(recoveryCandidate.draftKey);
+                  setRecoveryCandidate(null);
+                }}
+              >
+                Continuar com a versão do disco
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Upper Fixed Sticky Panel Container */}
       <div className="sticky top-0 z-50 flex flex-col bg-[#0F0F0F] shadow-md border-b border-[#D4AF37]/25 divide-y divide-zinc-900/80">
         
@@ -4809,8 +4957,11 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                   onClick={() => {
                     const todayYmd = getTodayDateYmd();
                     setNewProjectDate(todayYmd);
-                    setProjectFolder(deriveFolderFromDate(todayYmd));
+                    setNewProjectBaseDir("");
                     setNewProjectScript("");
+                    setNewProjectAudioFile(null);
+                    setNewProjectAudioFileName(undefined);
+                    if (newProjectAudioInputRef.current) newProjectAudioInputRef.current.value = "";
                     setNewProjectStyle("auto");
                     setNewProjectStyleRefImage(undefined);
                     setNewProjectEngine(useOpenAiForPrompts && openAiKey ? "openai" : "gemini");
@@ -4826,83 +4977,99 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
                 <span className="text-zinc-700 text-[10px] select-none">|</span>
 
-                <label 
-                  className={`text-[10px] uppercase tracking-wider font-mono font-bold text-slate-400 hover:text-[#D4AF37] cursor-pointer flex items-center gap-1 transition-all ${
-                    isImporting ? "opacity-60 cursor-not-allowed" : ""
-                  }`}
-                  title="Carregar um arquivo de projeto (.dmaker, .diariomaker ou legado .json) do computador"
-                >
-                  {isImporting ? (
-                    <Loader2 size={10} className="animate-spin text-[#D4AF37]" />
-                  ) : (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={handleOpenNativeProject}
+                    disabled={persistence.busy}
+                    className={`text-[10px] uppercase tracking-wider font-mono font-bold text-slate-400 hover:text-[#D4AF37] cursor-pointer flex items-center gap-1 transition-all bg-transparent border-none p-0 ${
+                      persistence.busy ? "opacity-60 cursor-not-allowed" : ""
+                    }`}
+                    title="Abrir arquivo de projeto (.dmproj) usando o seletor nativo do Windows"
+                  >
                     <Upload size={10} className="text-[#D4AF37]/70" />
-                  )}
-                  <span>{isImporting ? "Abrindo..." : "Abrir..."}</span>
-                  <input 
-                    type="file" 
-                    accept=".dmaker,.diariomaker,.json" 
-                    onChange={handleLoadProject} 
-                    className="hidden" 
-                    disabled={isImporting}
-                  />
-                </label>
+                    <span>Abrir...</span>
+                  </button>
+                  <label
+                    className="text-[8px] text-zinc-600 hover:text-zinc-400 cursor-pointer transition-colors"
+                    title="Importar arquivo de projeto legado (.dmaker, .json)"
+                  >
+                    <span>(legado)</span>
+                    <input
+                      type="file"
+                      accept=".dmaker,.diariomaker,.json"
+                      onChange={handleLoadProject}
+                      className="hidden"
+                      disabled={isImporting || persistence.busy}
+                    />
+                  </label>
+                </div>
 
                 <span className="text-zinc-700 text-[10px] select-none">|</span>
 
-                <button
-                  type="button"
-                  onClick={handleSaveProject}
-                  disabled={scenes.length === 0 || isExporting}
-                  className={`text-[10px] uppercase tracking-wider font-mono font-bold flex items-center gap-1 transition-all ${
-                    scenes.length === 0 || isExporting
-                      ? "text-zinc-650 opacity-25 cursor-not-allowed"
-                      : "text-slate-400 hover:text-[#D4AF37] cursor-pointer bg-transparent border-none p-0"
-                  }`}
-                  title="Salvar todas as cenas e imagens em um arquivo .dmaker"
-                >
-                  {isExporting ? (
-                    <Loader2 size={10} className="animate-spin text-[#D4AF37]" />
-                  ) : (
-                    <Save size={10} className={scenes.length === 0 ? "text-zinc-600" : "text-[#D4AF37]/70"} />
-                  )}
-                  <span>{isExporting ? "Salvando..." : "Salvar"}</span>
-                </button>
+                <ProjectSaveMenu
+                  disabled={isHydrating || isImporting || hasActiveJobs || !!recoveryCandidate}
+                  busy={persistence.busy}
+                  name={persistence.location?.name || projectName || "meu-projeto"}
+                  openSaveAsTrigger={saveAsTrigger}
+                  onSave={async () => {
+                    const res = await persistence.save();
+                    setNotification(`✓ Projeto salvo às ${new Date(res.updatedAt).toLocaleTimeString()}`);
+                  }}
+                  onSaveAs={async (newName: string) => {
+                    requireIdle(); setIsImporting(true);
+                    try {
+                    const res = await persistence.saveAs(newName);
+                    await applyLoadedDocument(res);
+                    setNotification(`✓ Projeto salvo como "${res.location.name}"`);
+                    } finally { setIsImporting(false); }
+                  }}
+                  onTransfer={async (mode: "move" | "copy") => {
+                    requireIdle(); setIsImporting(true);
+                    try {
+                    const res = await persistence.transfer(mode);
+                    if (res) {
+                      if (mode === "move") {
+                        await applyLoadedDocument(res);
+                      }
+                      setNotification(res.warning || `✓ Projeto ${mode === "move" ? "movido" : "copiado"} com sucesso para "${res.location.root}"`);
+                    }
+                    } finally { setIsImporting(false); }
+                  }}
+                />
               </div>
             </div>
 
             {/* Projeto Ativo Panel */}
             <div className="flex flex-col border-l border-zinc-800 pl-4 py-0.5 justify-center">
               <span className="text-[8px] uppercase tracking-wider text-zinc-500 font-mono font-bold block mb-0.5">Projeto Ativo</span>
-              <input
-                type="text"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                className="bg-transparent border-b border-transparent hover:border-[#D4AF37]/20 focus:border-[#D4AF37]/50 focus:outline-none text-[13px] text-white font-mono px-0.5 pb-0.5 w-[130px] sm:w-[160px] truncate transition-colors font-bold"
-                placeholder="Nome do projeto..."
-                title="Clique para editar o nome do projeto"
-              />
+              <button
+                type="button"
+                onClick={() => setSaveAsTrigger(prev => prev + 1)}
+                className="flex items-center gap-1.5 cursor-pointer group bg-transparent border-none p-0 text-left"
+                title="Clique para renomear ou Salvar Como uma nova versão do projeto"
+              >
+                <span className="text-[13px] text-white font-mono font-bold truncate max-w-[130px] sm:max-w-[170px] group-hover:text-[#D4AF37] transition-colors">
+                  {persistence.location?.name || projectName || "meu-projeto"}
+                </span>
+                <Edit3 size={11} className="text-zinc-500 group-hover:text-[#D4AF37] transition-colors shrink-0" />
+              </button>
 
               {/* Below Projeto Ativo: Pasta do projeto (Servidor) and AutoSave with Undo/Redo above it */}
               <div className="flex items-center gap-2 mt-1 text-[9px] font-mono">
                 <div className="flex items-center gap-1">
                   <span className="text-[#D4AF37] font-bold text-[8px] uppercase tracking-wider">Pasta:</span>
-                  <span className="text-zinc-500 select-none">projects/</span>
-                  <input
-                    type="text"
-                    value={projectFolder}
-                    onChange={(e) => {
-                      const cleaned = e.target.value.replace(/[^a-zA-Z0-9_-]/g, "_");
-                      setProjectFolder(cleaned);
-                    }}
-                    className="bg-transparent border-b border-transparent hover:border-[#D4AF37]/20 focus:border-[#D4AF37]/50 focus:outline-none text-[10px] text-stone-200 font-mono px-0.5 pb-0.5 w-[80px] sm:w-[100px] truncate transition-colors font-semibold"
-                    placeholder="nome-da-pasta"
-                    title="Pasta física no servidor"
-                  />
+                  <span
+                    className="text-[10px] text-stone-200 font-mono px-0.5 pb-0.5 max-w-[80px] sm:max-w-[110px] truncate select-all font-semibold"
+                    title={persistence.location?.root || (projectFolder ? (/^[a-zA-Z]:[\\/]/.test(projectFolder) || projectFolder.startsWith("/") ? projectFolder : `projects/${projectFolder}`) : "Ainda não salvo")}
+                  >
+                    {persistence.location?.root || (projectFolder ? (/^[a-zA-Z]:[\\/]/.test(projectFolder) || projectFolder.startsWith("/") ? projectFolder : `projects/${projectFolder}`) : "Ainda não salvo")}
+                  </span>
                   <button
                     type="button"
-                    onClick={handleBrowseFolder}
+                    onClick={handleRevealProjectFolder}
                     className="p-0.5 text-zinc-400 hover:text-[#D4AF37] transition-colors cursor-pointer"
-                    title="Escolher diretório no Windows Explorer"
+                    title="Revelar pasta do projeto no Windows Explorer"
                   >
                     <FolderOpen size={11} />
                   </button>
@@ -4944,12 +5111,12 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
                   <div className="flex items-center gap-1 select-none">
                     <span className="text-zinc-500">AutoSave:</span>
-                    <span className="text-emerald-400 font-semibold">Ativo</span>
-                    {lastDiskSaveTime && (
-                      <span className="text-zinc-500 text-[8px]">
-                        ({lastDiskSaveTime})
-                      </span>
-                    )}
+                    <span className={persistence.busy ? "text-amber-400 font-semibold" : "text-emerald-400 font-semibold"}>
+                      {persistence.busy ? "Salvando..." : "Ativo"}
+                    </span>
+                    <span className="text-zinc-500 text-[8px] max-w-[120px] truncate" title={persistence.status}>
+                      ({persistence.status})
+                    </span>
                   </div>
                 </div>
               </div>
@@ -6562,17 +6729,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                     onClick={async () => {
                       try {
                         setIsAutosaving(true);
-                        const response = await fetch("/api/storyboard/session", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ scenes, stylePreference }),
-                        });
-                        if (response.ok) {
-                          setNotification("✓ Sessão principal salva no servidor com sucesso!");
-                          fetchAvailableBackups();
-                        } else {
-                          setError("Falha ao salvar sessão manual no servidor.");
-                        }
+                        await persistence.save();
+                        setNotification("✓ Projeto salvo em disco com backup da revisão anterior.");
                       } catch (err: any) {
                         setError(`Erro ao salvar no servidor: ${err.message}`);
                       } finally {
@@ -7045,7 +7203,19 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 return;
               }
               
-              // Clear state, caches, and trigger generation
+              const derived = deriveFolderFromDate(newProjectDate);
+              const targetDir = newProjectBaseDir ? `${newProjectBaseDir.replace(/[\\/]+$/, "")}\\${derived}` : undefined;
+              
+              try {
+                requireIdle();
+                await persistence.startNew(undefined, undefined, derived, targetDir);
+              } catch (err: any) {
+                setNewProjectModalError(err.message);
+                return;
+              }
+              setProjectFolder(targetDir || derived);
+              setAudioNarrationUrl(undefined); setHistory([]); setRedoStack([]);
+              // Clear editor state only; preserve other documents.
               setScenes([]);
               setSessionImageArchive([]);
               setScriptText(newProjectScript);
@@ -7074,13 +7244,6 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               setProjectName(initialProjectName);
 
               try {
-                await clearCache();
-                setCacheSizeMB(0);
-              } catch (err) {
-                console.warn("Failed to clear cache for new project:", err);
-              }
-
-              try {
                 localStorage.setItem("ethos_storyboard_scenes", "[]");
                 localStorage.setItem("ethos_storyboard_image_archive", "[]");
                 localStorage.setItem("ethos_storyboard_script_text", newProjectScript);
@@ -7095,23 +7258,9 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 }
               } catch (_) {}
 
-              // Notify legacy backend
-              fetch("/api/storyboard/session", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                  scenes: [], 
-                  stylePreference: "auto",
-                  projectName: initialProjectName,
-                  scriptText: newProjectScript,
-                  diaryDate: newProjectDate,
-                  saveVersion: 1
-                }),
-              }).catch((err) => console.warn("Failed to initialize server session for new project:", err));
-
               setShowNewProjectModal(false);
 
-              if (newProjectAudioFile || newProjectScript.trim()) {
+              if (newProjectAudioFile) {
                 handleGenerateStoryboardWithAudio({
                   text: newProjectScript.trim(),
                   style: newProjectStyle,
@@ -7119,8 +7268,17 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                   selectedEngine: newProjectEngine,
                   audioFile: newProjectAudioFile,
                   audioFileName: newProjectAudioFileName,
-                  explicitProjectName: initialProjectName
+                  explicitProjectName: initialProjectName,
+                  openAiAudioModel: openAiAudioModel
                 });
+                setActiveView("storyboard");
+              } else if (newProjectScript.trim()) {
+                handleGenerateStoryboard(
+                  newProjectScript.trim(),
+                  newProjectStyle,
+                  newProjectStyleRefImage,
+                  newProjectEngine as any
+                );
                 setActiveView("storyboard");
               } else {
                 setNotification(`✓ Novo projeto "${initialProjectName}" criado com sucesso!`);
@@ -7152,10 +7310,6 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                         val = `${digits.slice(0, 4)}/${digits.slice(4, 6)}/${digits.slice(6, 8)}`;
                       }
                       setNewProjectDate(val);
-                      const derived = deriveFolderFromDate(val);
-                      if (derived && derived !== "meu-projeto") {
-                        setProjectFolder(derived);
-                      }
                     }}
                     placeholder="YYYY/MM/DD (ex: 2026/08/07)"
                     maxLength={10}
@@ -7264,32 +7418,60 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                   Diretório do Projeto no Disco
                 </label>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 flex items-center bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-xs font-mono text-stone-200">
-                    <span className="text-zinc-500 mr-1 select-none">projects/</span>
-                    <input
-                      type="text"
-                      value={projectFolder}
-                      onChange={(e) => setProjectFolder(e.target.value.replace(/[^a-zA-Z0-9_-]/g, "_"))}
-                      className="bg-transparent border-none text-stone-200 focus:outline-none flex-1 font-mono text-xs"
-                      placeholder="nome-da-pasta"
-                    />
+                  <div className="flex-1 flex items-center bg-[#0a0a0a] border border-[#333] rounded px-3 py-2 text-xs font-mono text-stone-200 select-all truncate">
+                    {newProjectBaseDir ? (
+                      <span className="truncate">
+                        <span className="text-zinc-400">{newProjectBaseDir.replace(/[\\/]+$/, "")}\</span>
+                        <span className="text-[#D4AF37] font-bold">{deriveFolderFromDate(newProjectDate)}</span>
+                      </span>
+                    ) : (
+                      <span className="truncate">
+                        <span className="text-zinc-500 mr-0.5 select-none">projects/</span>
+                        <span className="text-[#D4AF37] font-bold">{deriveFolderFromDate(newProjectDate)}</span>
+                      </span>
+                    )}
                   </div>
                   <button
                     type="button"
-                    onClick={handleBrowseFolder}
+                    onClick={async () => {
+                      try {
+                        const res = await fetch("/api/storyboard/browse-folder", { method: "POST" });
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.success && data.folderPath) {
+                            setNewProjectBaseDir(data.folderPath);
+                          }
+                        }
+                      } catch (err) {
+                        console.warn("Falha ao abrir seletor de pastas:", err);
+                      }
+                    }}
                     className="px-3 py-2 bg-[#222] hover:bg-[#333] border border-[#444] hover:border-[#D4AF37] text-[#D4AF37] text-[10px] uppercase font-mono font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow"
-                    title="Abrir o seletor comum do Windows Explorer para escolher onde salvar"
+                    title="Escolher pasta no disco para hospedar o projeto"
                   >
                     <FolderOpen size={13} />
-                    <span>Explorer...</span>
+                    <span>Escolher Diretório…</span>
                   </button>
+                  {newProjectBaseDir && (
+                    <button
+                      type="button"
+                      onClick={() => setNewProjectBaseDir("")}
+                      className="px-2.5 py-2 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-zinc-500 text-zinc-400 hover:text-white text-[10px] uppercase font-mono rounded flex items-center gap-1 transition-all cursor-pointer shrink-0 shadow"
+                      title="Voltar para a pasta padrão do aplicativo (projects/)"
+                    >
+                      <span>Padrão</span>
+                    </button>
+                  )}
                 </div>
+                <p className="text-[9px] text-zinc-500">
+                  Uma subpasta com a data invertida (<code className="text-[#D4AF37] font-mono">{deriveFolderFromDate(newProjectDate)}</code>) será criada automaticamente dentro do diretório selecionado.
+                </p>
               </div>
 
               {/* Dynamic AI Prompt & Transcription Model Selector */}
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 font-mono block">
-                  Motor de IA para Transcrição e Roteiro
+                  {newProjectAudioFile ? "Motor de IA para Transcrição e Roteiro" : "Motor de IA para Roteiro e Cenas"}
                 </label>
                 <div className="flex flex-col gap-1.5 bg-[#0a0a0a] p-2 border border-[#333] rounded">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono">
@@ -7301,7 +7483,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                           ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
                           : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
                       }`}
-                      title="Usar Gemini (Google AI Studio) para transcrição e segmentação"
+                      title={newProjectAudioFile ? "Usar Gemini (Google AI Studio) para transcrição e segmentação" : "Usar Gemini (Google AI Studio) para criação de cenas"}
                     >
                       <span>♊ Gemini</span>
                     </button>
@@ -7313,9 +7495,9 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                           ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
                           : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
                       }`}
-                      title="Usar ChatGPT / Whisper (OpenAI) para transcrição e segmentação"
+                      title={newProjectAudioFile ? "Usar Whisper (OpenAI) para transcrição" : "Usar ChatGPT (OpenAI) para criação de cenas"}
                     >
-                      <span>🎨 OpenAI (Whisper)</span>
+                      <span>{newProjectAudioFile ? "🎨 OpenAI (Whisper)" : "🎨 OpenAI (ChatGPT)"}</span>
                     </button>
                     <button
                       type="button"
@@ -7330,6 +7512,18 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       <span>🦙 Ollama Local</span>
                     </button>
                   </div>
+                  {Boolean(newProjectAudioFile) && (newProjectEngine === "openai" || newProjectEngine?.includes("gpt") || newProjectEngine?.includes("whisper")) && (
+                    <div className="mt-2 pt-2 border-t border-[#222]">
+                      <OpenAiTranscriptionModelRadios
+                        value={openAiAudioModel}
+                        onChange={(model) => {
+                          setOpenAiAudioModel(model);
+                          try { localStorage.setItem("ethos_openai_audio_model", model); } catch {}
+                        }}
+                        compact
+                      />
+                    </div>
+                  )}
                   {(newProjectEngine === "openai" || newProjectEngine?.includes("gpt") || newProjectEngine?.includes("whisper")) && !openAiKey && (
                     <p className="text-[9.5px] text-rose-400 font-mono mt-1 px-1">
                       ⚠️ Chave OpenAI ausente em Conexões! Configure sua key no painel de Configurações.
@@ -7366,7 +7560,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                     className="px-5 py-2 bg-[#D4AF37] text-black hover:bg-white text-[10px] uppercase tracking-wider font-mono font-bold rounded transition-all cursor-pointer flex items-center gap-1.5"
                   >
                     <Film size={11} />
-                    <span>Criar Novo Projeto</span>
+                    <span>{newProjectAudioFile ? "Criar e Transcrever Áudio" : "Criar Novo Projeto"}</span>
                   </button>
                 </div>
               </div>
@@ -7417,6 +7611,18 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 hasScenes={scenes.length > 0}
                 useOpenAiForPrompts={useOpenAiForPrompts}
                 openAiKey={openAiKey}
+                openAiAudioModel={openAiAudioModel}
+                onOpenAiAudioModelChange={(model) => {
+                  setOpenAiAudioModel(model);
+                  try { localStorage.setItem("ethos_openai_audio_model", model); } catch {}
+                }}
+                openAiTextModel={openAiModel}
+                onOpenAiTextModelChange={(model) => {
+                  setOpenAiModel(model);
+                  try { localStorage.setItem("ethos_openai_model", model); } catch {}
+                }}
+                availableOpenAiTextModels={availableModels.openai?.text || []}
+                preferredEngine={useOpenAiForPrompts && openAiKey ? "openai" : "gemini"}
                 artisticStyles={artisticStyles}
                 onGoToSettings={() => {
                   setActiveView("config");

@@ -2,6 +2,9 @@ node_modules/
 build/
 dist/
 coverage/
+scratch/
+project_registry.json
+project-transfers/
 .DS_Store
 *.log
 .env*

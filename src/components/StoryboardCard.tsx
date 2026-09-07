@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { StoryboardScene, StylePreference, ConnectionGroup, ArtisticStyle } from "../types";
+import { StoryboardScene, StylePreference, ConnectionGroup, ArtisticStyle, StudioChatMessage } from "../types";
 import { getCachedImage } from "../lib/cacheStore";
 import { downloadSingleImageFile } from "../lib/imageUtils";
 import { secondsToSMPTE, formatDuration, formatShortTimecode, parseShortTimecode } from "../lib/timecodeUtils";
@@ -421,25 +421,53 @@ function StoryboardCardComponent({
 
   // Conversational chat edit states
   const [chatInputText, setChatInputText] = useState("");
+  const [isChatInputFocused, setIsChatInputFocused] = useState(false);
   const [isChatGenerating, setIsChatGenerating] = useState(false);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("diariomaker-job", { detail: { id: scene.id, active: isChatGenerating } }));
+    return () => { window.dispatchEvent(new CustomEvent("diariomaker-job", { detail: { id: scene.id, active: false } })); };
+  }, [isChatGenerating, scene.id]);
   const [chatVisualInstructionImage, setChatVisualInstructionImage] = useState<string | undefined>(undefined);
 
-  // Reset chat reference image whenever Studio opens
+  // Reset chat reference image and sync models with the original card whenever Studio opens
   React.useEffect(() => {
     if (isStudioOpen) {
       setChatVisualInstructionImage(undefined);
+
+      // Modelos padrão pré-selecionados são os mesmos da cartela original
+      const targetPrompt = scene.promptAiModel || localAiModel;
+      if (targetPrompt && (enabledPromptModels.includes(targetPrompt) || targetPrompt.startsWith("ollama:"))) {
+        setSelectedPromptModel(targetPrompt);
+      } else if (enabledPromptModels.length > 0) {
+        setSelectedPromptModel(enabledPromptModels[0]);
+      }
+
+      const candidateImg = scene.selectedModel || localTargetTool;
+      if (candidateImg && enabledImageModels.includes(candidateImg)) {
+        setSelectedChatModel(candidateImg);
+      } else {
+        const mapped = candidateImg === "Nano Banana" ? "nano_banana"
+          : candidateImg === "ChatGPT" ? "chatgpt_dalle3"
+          : candidateImg;
+        if (mapped && enabledImageModels.includes(mapped)) {
+          setSelectedChatModel(mapped);
+        } else if (enabledImageModels.length > 0) {
+          setSelectedChatModel(enabledImageModels[0]);
+        }
+      }
     }
-  }, [isStudioOpen]);
+  }, [isStudioOpen, scene.id, scene.promptAiModel, scene.selectedModel, scene.promptTargetTool]);
+
   const [selectedChatModel, setSelectedChatModel] = useState<string>(() => {
-    return enabledImageModels.includes("nano_banana") 
+    return scene.selectedModel || (enabledImageModels.includes("nano_banana") 
       ? "nano_banana" 
-      : (enabledImageModels[0] || "nano_banana");
+      : (enabledImageModels[0] || "nano_banana"));
   });
 
   const [selectedPromptModel, setSelectedPromptModel] = useState<string>(() => {
-    return enabledPromptModels.includes(openAiModel || "") 
+    return scene.promptAiModel || (enabledPromptModels.includes(openAiModel || "") 
       ? (openAiModel || "gpt-4o-mini") 
-      : (enabledPromptModels[0] || "gpt-4o-mini");
+      : (enabledPromptModels[0] || "gpt-4o-mini"));
   });
 
   const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
@@ -447,11 +475,19 @@ function StoryboardCardComponent({
 
   // Identify the active image version for per-image Conversational Studio chat memory
   const activeImageVersion = (scene.imageVersions || []).find(v => v.url === scene.generatedImageUrl);
-  const activeChatHistory = (activeImageVersion && activeImageVersion.chatHistory && activeImageVersion.chatHistory.length > 0)
-    ? activeImageVersion.chatHistory
-    : (scene.chatHistory && scene.chatHistory.length > 0 && activeImageVersion && activeImageVersion.url === scene.generatedImageUrl && !activeImageVersion.chatHistory)
-      ? scene.chatHistory
-      : undefined;
+  const activeChatHistory: StudioChatMessage[] = (() => {
+    if (activeImageVersion) {
+      if (Array.isArray(activeImageVersion.chatHistory)) {
+        return activeImageVersion.chatHistory;
+      }
+      // If legacy project with only 1 image version, allow fallback to scene.chatHistory
+      if ((scene.imageVersions || []).length <= 1 && Array.isArray(scene.chatHistory)) {
+        return scene.chatHistory;
+      }
+      return [];
+    }
+    return Array.isArray(scene.chatHistory) ? scene.chatHistory : [];
+  })();
 
   useEffect(() => {
     if (!enabledImageModels.includes(selectedChatModel) && enabledImageModels.length > 0) {
@@ -821,13 +857,15 @@ ${userPromptText}`;
   // Select image option generated within the chat history thread
   const handleSelectChatImage = (msg: any) => {
     if (msg.imageUrl) {
+      const targetVersion = (scene.imageVersions || []).find(v => v.url === msg.imageUrl);
       onUpdate(scene.id, {
         generatedImageUrl: msg.imageUrl,
         prompt: msg.promptUsed || scene.prompt,
         description: msg.descriptionUsed || scene.description,
         selectedModel: msg.model || "nano_banana",
         promptAiModelUsed: msg.promptAiModelUsed || "gemini-3.5-flash",
-        isPromptModified: false
+        isPromptModified: false,
+        chatHistory: targetVersion?.chatHistory || []
       });
     }
   };
@@ -848,21 +886,21 @@ ${userPromptText}`;
       timestamp: new Date().toLocaleTimeString()
     };
 
-    const initialHistory = activeChatHistory || [
-      {
-        id: "welcome",
-        role: "assistant" as const,
-        text: `Olá! Eu sou o seu Diretor de Arte do Estúdio AI. Estou pronto para discutir a composição visual da sua cena e fazer edições sucessivas nas imagens conforme conversamos.\n\nO que gostaria de ajustar ou detalhar nesta cena? Peça mudanças de iluminação, estilo, elementos ou clima!`,
-        reasoning: "Analisei a narração original para estabelecer a fundação visual da cena.",
-        imageUrl: scene.generatedImageUrl,
-        timestamp: new Date().toLocaleTimeString()
-      }
-    ];
+    const initialHistory = activeChatHistory.filter((msg: any) => msg.id !== "welcome" && msg.id !== "initial-base-anchor");
 
     const currentHistory = [...initialHistory, userMsg];
     
+    // Crucial: immediately save currentHistory to the active image version so it belongs strictly to this image
+    const updatedVersionsWithUser = (scene.imageVersions || []).map((v) => {
+      if (v.url === scene.generatedImageUrl) {
+        return { ...v, chatHistory: currentHistory };
+      }
+      return v;
+    });
+
     onUpdate(scene.id, {
       chatHistory: currentHistory,
+      imageVersions: updatedVersionsWithUser.length > 0 ? updatedVersionsWithUser : scene.imageVersions,
       visualInstructionImage: undefined
     });
 
@@ -1137,9 +1175,20 @@ ${userPromptText}`;
               <ChevronUp size={16} />
             </button>
             
-            <div className="text-center font-mono my-1 pt-1">
-              <span className="text-[8px] text-[#D4AF37]/50 uppercase tracking-widest block font-bold font-sans">Cena</span>
-              <span className="text-xl font-light text-[#E0D8D0] block font-serif">{sceneNumText}</span>
+            <div className="text-center font-mono my-1.5 pt-0.5 w-full px-1">
+              <span className="text-[8px] text-[#D4AF37]/70 uppercase tracking-widest block font-bold font-sans">Cena</span>
+              <span 
+                className="text-2xl sm:text-3xl font-black text-[#F3EFE0] block font-mono tracking-tight leading-none my-1 break-all"
+                title={`Cena ${sceneNumText}`}
+              >
+                {sceneNumText}
+              </span>
+              <span 
+                className="text-[9px] font-mono font-semibold text-zinc-500 block leading-tight tracking-wider" 
+                title={`Ordem sequencial: ${index + 1} de ${totalScenes}`}
+              >
+                {index + 1}/{totalScenes}
+              </span>
             </div>
 
             {(scene.startTime !== undefined || audioNarrationUrl) && (
@@ -1343,7 +1392,8 @@ ${userPromptText}`;
                           engineName: v.engineName,
                           renderTimeSeconds: v.renderTimeSeconds,
                           prompt: v.prompt || scene.prompt,
-                          description: v.description || scene.description
+                          description: v.description || scene.description,
+                          chatHistory: v.chatHistory || []
                         });
                       }}
                       className={`relative w-12 h-7 bg-zinc-900 border rounded cursor-pointer transition-all overflow-hidden group ${
@@ -1630,11 +1680,12 @@ ${userPromptText}`;
                   ref={narrationRef}
                   value={localText}
                   onChange={(e) => setLocalText(e.target.value)}
-                  className="w-full min-h-[40px] max-h-32 bg-[#0a0a0a] border border-[#333] rounded p-3 text-xs text-[#E0D8D0] focus:outline-[#D4AF37]/40 resize-y leading-relaxed"
+                  placeholder="Digite a narração ou texto original da cena..."
+                  className="w-full min-h-[40px] max-h-32 bg-[#0a0a0a] border border-[#333] rounded p-3 text-xs text-[#E0D8D0] focus:outline-[#D4AF37]/40 resize-y leading-relaxed placeholder:text-zinc-600 font-sans"
                 />
               ) : (
                 <div className="bg-transparent border-l-2 border-[#D4AF37]/50 pl-3.5 py-1 text-xs text-[#E0D8D0] italic leading-relaxed font-serif select-text break-words overflow-y-auto max-h-[120px]">
-                  "{scene.text}"
+                  {scene.text ? `"${scene.text}"` : <span className="text-zinc-500 font-sans not-italic text-[11px]">(Nenhum texto de narração inserido)</span>}
                 </div>
               )}
             {isManualEditing && (
@@ -2148,7 +2199,7 @@ ${userPromptText}`;
                     Estúdio AI Conversacional <span className="text-[10px] text-[#D4AF37] px-1 bg-[#D4AF37]/10 rounded border border-[#D4AF37]/20 font-bold">CHAT</span>
                   </h3>
                   <p className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest">
-                    Cena #{sceneNumText} • Memória e Raciocínio Ativo
+                    Cena #{sceneNumText} ({index + 1}/{totalScenes}) • Memória e Raciocínio Ativo
                   </p>
                 </div>
               </div>
@@ -2171,16 +2222,34 @@ ${userPromptText}`;
                 
                 {/* Scrollable Chat Feed */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 min-h-0">
-                  {(activeChatHistory || (scene.chatHistory && scene.chatHistory.length > 0 && activeImageVersion && activeImageVersion.url === scene.generatedImageUrl ? scene.chatHistory : [
-                    {
-                      id: "welcome",
+                  {(() => {
+                    const savedMessages = (activeChatHistory || []).filter((msg: any) => msg.id !== "welcome" && msg.id !== "initial-base-anchor");
+
+                    const startingAnchor = (scene.generatedImageUrl && !savedMessages.some((m: any) => m.imageUrl === scene.generatedImageUrl)) ? [{
+                      id: "initial-base-anchor",
                       role: "assistant" as const,
-                      text: `Olá! Eu sou o seu Diretor de Arte do Estúdio AI. Estou pronto para discutir a composição visual da sua cena e fazer edições sucessivas nas imagens conforme conversamos.\n\nO que gostaria de ajustar ou detalhar nesta cena? Peça mudanças de iluminação, estilo, elementos ou clima!`,
-                      reasoning: "Analisei a narração original para estabelecer a fundação visual da cena.",
+                      text: "",
                       imageUrl: scene.generatedImageUrl,
-                      timestamp: new Date().toLocaleTimeString()
+                      model: activeImageVersion?.model || scene.selectedModel || scene.engineName,
+                      timestamp: activeImageVersion?.timestamp || "Quadro Base",
+                      isInitialAnchor: true
+                    }] : [];
+
+                    const chatMessages = [...startingAnchor, ...savedMessages];
+
+                    if (chatMessages.length === 0) {
+                      return (
+                        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-zinc-600 space-y-2 select-none h-full my-auto">
+                          <MessageSquare size={32} className="opacity-25 text-[#D4AF37]" />
+                          <p className="text-xs font-mono text-zinc-400 font-bold uppercase tracking-wider">Estúdio AI Conversacional</p>
+                          <p className="text-[11px] text-zinc-500 max-w-sm leading-relaxed font-sans">
+                            Descreva abaixo as instruções visuais ou mudanças que deseja para esta cena (iluminação, estilo, elementos ou clima).
+                          </p>
+                        </div>
+                      );
                     }
-                  ])).map((msg: any, msgIdx: number) => (
+
+                    return chatMessages.map((msg: any, msgIdx: number) => (
                     <div 
                       key={`${msg.id || "msg"}-${msgIdx}`} 
                       className={`flex flex-col max-w-[85%] ${
@@ -2189,7 +2258,7 @@ ${userPromptText}`;
                     >
                       {/* Speaker title and timestamp */}
                       <span className="text-[8px] uppercase tracking-wider text-zinc-500 font-mono mb-1">
-                        {msg.role === "user" ? "Você" : "Diretor Artístico AI"} • {msg.timestamp}
+                        {msg.isInitialAnchor ? "Quadro de Partida da Cena" : (msg.role === "user" ? "Você" : "Diretor Artístico AI")} • {msg.timestamp}
                       </span>
 
                       {/* Message Bubble */}
@@ -2200,7 +2269,7 @@ ${userPromptText}`;
                             : "bg-[#161616] text-[#E0D8D0] border border-[#2b2b2b]"
                         }`}
                       >
-                        <p className="whitespace-pre-line select-text">{msg.text}</p>
+                        {msg.text ? <p className="whitespace-pre-line select-text">{msg.text}</p> : null}
 
                         {/* Visual Reasoning Block */}
                         {msg.role === "assistant" && msg.reasoning && (
@@ -2250,8 +2319,13 @@ ${userPromptText}`;
                                 </a>
                               </div>
                               {!msg.imageUrl.startsWith("data:image/svg+xml") && (
-                                <div className="absolute bottom-2 left-2 bg-black/80 px-2 py-0.5 rounded text-[8px] font-mono text-zinc-400 border border-zinc-800">
-                                  {msg.model || "Nano Banana"}
+                                <div className="absolute bottom-2 left-2 bg-black/80 px-2 py-0.5 rounded text-[8px] font-mono text-zinc-300 border border-zinc-800 shadow">
+                                  {(() => {
+                                    const m = msg.model || activeImageVersion?.model || scene.selectedModel || scene.engineName;
+                                    if (!m) return "IA";
+                                    const { badge, display } = formatModelDisplayLabel(m, openAiDalleModel);
+                                    return `${badge} ${display}`;
+                                  })()}
                                 </div>
                               )}
                             </div>
@@ -2277,7 +2351,8 @@ ${userPromptText}`;
                         )}
                       </div>
                     </div>
-                  ))}
+                  ));
+                })()}
 
                   {isChatGenerating && (
                     <div className="flex flex-col items-start max-w-[85%] mr-auto animate-pulse">
@@ -2436,6 +2511,8 @@ ${userPromptText}`;
                       rows={3}
                       value={chatInputText}
                       onChange={(e) => setChatInputText(e.target.value)}
+                      onFocus={() => setIsChatInputFocused(true)}
+                      onBlur={() => setIsChatInputFocused(false)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault();
@@ -2445,8 +2522,8 @@ ${userPromptText}`;
                         }
                       }}
                       disabled={isChatGenerating}
-                      className="flex-1 bg-black border border-zinc-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]/50 placeholder-zinc-650 resize-none font-mono leading-relaxed"
-                      placeholder="Descreva mudanças: 'Adicione mais mistério', 'Mude a iluminação para luz de velas' (Pressione Enter para enviar, Shift+Enter para nova linha)..."
+                      className="flex-1 bg-black border border-zinc-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37]/50 placeholder-zinc-650 focus:placeholder-transparent resize-none font-mono leading-relaxed"
+                      placeholder={isChatInputFocused ? "" : "Descreva mudanças:"}
                     />
 
                     {/* Small Paper Plane Button on the Right */}
@@ -2499,6 +2576,16 @@ ${userPromptText}`;
                             }
                           }}
                         />
+                        {!scene.generatedImageUrl.startsWith("data:image/svg+xml") && (
+                          <div className="absolute bottom-2 left-2 bg-black/80 px-2 py-0.5 rounded text-[8px] font-mono text-zinc-300 border border-zinc-800 shadow">
+                            {(() => {
+                              const m = activeImageVersion?.model || scene.selectedModel || scene.engineName;
+                              if (!m) return "IA";
+                              const { badge, display } = formatModelDisplayLabel(m, openAiDalleModel);
+                              return `${badge} ${display}`;
+                            })()}
+                          </div>
+                        )}
                         {scene.generatedImageUrl.startsWith("data:image/svg+xml") && (
                           <div className="absolute top-2 left-2 right-2 bg-amber-950/95 border border-amber-500/25 p-2 text-[8px] text-amber-200 flex items-start gap-1.5 rounded-md backdrop-blur-sm z-10 text-left animate-fadeIn shadow-lg">
                             <AlertTriangle size={12} className="text-[#D4AF37] shrink-0 mt-0.5" />
@@ -2521,7 +2608,7 @@ ${userPromptText}`;
                     <div>
                       <span className="text-zinc-500 uppercase block font-bold text-[8.5px]">Texto/Narração original:</span>
                       <p className="text-[#E0D8D0] font-sans italic mt-1 text-xs leading-relaxed select-text whitespace-pre-wrap break-words">
-                        "{scene.text}"
+                        {scene.text ? `"${scene.text}"` : <span className="text-zinc-500 font-sans not-italic text-[11px]">(Nenhum texto de narração inserido)</span>}
                       </p>
                     </div>
 

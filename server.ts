@@ -4,11 +4,14 @@ import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import fs from "fs";
 import multer from "multer";
-import { execSync } from "child_process";
+import { execSync, execFile } from "child_process";
+import { generateOpenAiImage, generateGoogleImage, resolveImageModel, ImageRequestError, openAiImageSize } from "./server/imageGeneration";
+import { projectRoutes, projectRepository } from "./server/projectRoutes";
+import { confinedFile } from "./server/projectRepository";
 
 dotenv.config();
 
-const app = express();
+export const app = express();
 const PORT = 3000;
 
 const storage = multer.memoryStorage();
@@ -28,6 +31,34 @@ function logErrorToFile(context: string, err: any) {
   try {
     fs.appendFileSync(SERVER_LOG_FILE, logLine, "utf-8");
   } catch (_) {}
+}
+
+export function validateProjectFolder(folder: any): string {
+  if (!folder || typeof folder !== "string" || !folder.trim()) {
+    throw new Error("Nome da pasta do projeto é obrigatório.");
+  }
+  const clean = folder.trim();
+  if (
+    clean === "." ||
+    clean === ".." ||
+    clean.includes("..") ||
+    clean.includes("/") ||
+    clean.includes("\\") ||
+    clean.includes("\0")
+  ) {
+    throw new Error("Nome de pasta inválido: não são permitidos caminhos relativos ou caracteres especiais.");
+  }
+  return clean;
+}
+
+export function atomicWriteFileSync(filePath: string, data: string | Buffer): void {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const tmpPath = `${filePath}.tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  fs.writeFileSync(tmpPath, data, typeof data === "string" ? "utf-8" : undefined);
+  fs.renameSync(tmpPath, filePath);
 }
 
 function sanitizeErrorMessage(msg: any): string {
@@ -169,6 +200,7 @@ function sanitizeScenes(scenes: any[]): any[] {
 // Enable JSON body parser with generous 500mb limit for projects with heavy Base64 image caches
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ limit: "500mb", extended: true }));
+app.use(projectRoutes());
 
 // Server-side robust session API
 app.get("/api/storyboard/session", (req, res) => {
@@ -602,64 +634,7 @@ app.post("/api/storyboard/projects/save", (req, res) => {
   }
 });
 
-// 5. Rota para salvar uma imagem fisicamente na pasta do projeto ativo
-app.post("/api/storyboard/projects/save-image", async (req, res) => {
-  try {
-    const { folder, sceneId, sceneNumber, imageUrl } = req.body;
-    if (!folder || !imageUrl) {
-      return res.status(400).json({ error: "Os parâmetros 'folder' e 'imageUrl' são obrigatórios." });
-    }
 
-    const safeFolder = path.basename(folder);
-    const projectDir = path.join(process.cwd(), "projects", safeFolder);
-    const imagesDir = path.join(projectDir, "imagens");
-
-    if (!fs.existsSync(imagesDir)) {
-      fs.mkdirSync(imagesDir, { recursive: true });
-    }
-
-    let ext = ".png";
-    let buffer: Buffer;
-
-    if (imageUrl.startsWith("data:")) {
-      const matches = imageUrl.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
-      if (!matches || matches.length !== 3) {
-        return res.status(400).json({ error: "Formato de imagem Base64 inválido." });
-      }
-      const rawMime = matches[1].toLowerCase();
-      if (rawMime === "jpeg" || rawMime === "jpg") ext = ".jpg";
-      else if (rawMime.includes("svg")) ext = ".svg";
-      else if (rawMime.includes("webp")) ext = ".webp";
-      else ext = ".png";
-      buffer = Buffer.from(matches[2], "base64");
-    } else {
-      // É uma URL externa (ex: Unsplash ou proxy). Vamos baixá-la
-      const response = await fetch(imageUrl);
-      if (!response.ok) {
-        throw new Error(`Falha ao fazer o download da imagem remota: ${response.statusText}`);
-      }
-      const arrayBuffer = await response.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
-      const contentType = response.headers.get("content-type") || "image/png";
-      ext = contentType.includes("jpeg") ? ".jpg" : contentType.includes("webp") ? ".webp" : ".png";
-    }
-
-    // Nomear o arquivo de forma inteligente, descritiva e única para cada versão
-    const cleanSceneNumber = String(sceneNumber || "sem_numero").replace(/[^a-zA-Z0-9_-]/g, "_");
-    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const filename = `cena_${cleanSceneNumber}_${sceneId || "scene"}_${uniqueSuffix}${ext}`;
-    const targetFilePath = path.join(imagesDir, filename);
-
-    fs.writeFileSync(targetFilePath, buffer);
-
-    // Retorna a URL local estática acessível no frontend
-    const localStaticUrl = `/projects/${safeFolder}/imagens/${filename}`;
-    return res.json({ success: true, url: localStaticUrl });
-  } catch (err: any) {
-    console.error("Erro ao salvar imagem no disco:", err);
-    return res.status(500).json({ error: `Erro ao gravar imagem no disco: ${err.message}` });
-  }
-});
 
 // Proxy remote image URLs (like Unsplash fallbacks) to avoid CORS issues on packaging on the client
 app.get("/api/storyboard/proxy-image", async (req, res) => {
@@ -710,6 +685,15 @@ function getGeminiClient(customApiKey?: string): GoogleGenAI {
 // Converts standard HTTP image URLs or data URIs to inline base64 data for Gemini multimodal APIs (skips unsupported SVGs)
 async function imageUrlToInlineData(url: string): Promise<{ data: string; mimeType: string } | null> {
   if (!url || typeof url !== "string") return null;
+  const documentAsset = /^\/api\/project-documents\/([^/]+)\/assets\/([^/?]+)$/.exec(url);
+  const documentFile = /^\/api\/project-documents\/([^/]+)\/files\?path=(.+)$/.exec(url);
+  if (documentAsset || documentFile) {
+    const file = documentAsset
+      ? (await projectRepository.asset(documentAsset[1], decodeURIComponent(documentAsset[2]))).file
+      : await confinedFile(await projectRepository.root(documentFile![1]), decodeURIComponent(documentFile![2]));
+    const mimeType = ({ ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" } as Record<string, string>)[path.extname(file).toLowerCase()];
+    return mimeType ? { mimeType, data: fs.readFileSync(file).toString("base64") } : null;
+  }
   
   if (url.startsWith("data:")) {
     const matches = url.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
@@ -1879,8 +1863,33 @@ app.post("/api/storyboard/browse-folder", (req, res) => {
       return res.status(400).json({ error: "O seletor nativo do Explorer é exclusivo para Windows." });
     }
   } catch (err: any) {
+    if (err.killed || err.code === "ETIMEDOUT") {
+      return res.json({ success: false, cancelled: true });
+    }
     console.error("Error opening Windows folder picker:", err);
     return res.status(500).json({ error: "Não foi possível abrir a janela do Explorer." });
+  }
+});
+
+// Native Windows Explorer Reveal Folder Endpoint
+app.post("/api/storyboard/reveal-folder", (req, res) => {
+  try {
+    if (process.platform === "win32") {
+      const folderParam = req.body.folder || "default";
+      const targetPath = path.isAbsolute(folderParam)
+        ? folderParam
+        : path.join(process.cwd(), "projects", folderParam);
+      if (!fs.existsSync(targetPath)) {
+        fs.mkdirSync(targetPath, { recursive: true });
+      }
+      execFile("explorer.exe", [targetPath], () => {});
+      return res.json({ success: true, folderPath: targetPath });
+    } else {
+      return res.status(400).json({ error: "O Explorer é exclusivo para Windows." });
+    }
+  } catch (err: any) {
+    console.error("Error revealing folder in Explorer:", err);
+    return res.status(500).json({ error: "Não foi possível abrir a pasta no Explorer." });
   }
 });
 
@@ -1969,6 +1978,8 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
     let audioBuffer: Buffer | null = null;
     let audioMimeType = "audio/mp3";
     let projectName = req.body?.projectName;
+    const documentId = req.body?.documentId;
+    const documentRoot = documentId ? await projectRepository.root(documentId) : undefined;
 
     if (req.file) {
       audioBuffer = req.file.buffer;
@@ -1987,7 +1998,7 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
       else if (ext.endsWith(".m4a")) audioMimeType = "audio/mp4";
     } else if (!audioBuffer && projectName && typeof projectName === "string" && projectName.trim()) {
       const safeName = sanitizeProjectName(projectName);
-      const projDir = path.join(PROJECTS_DIR, safeName);
+      const projDir = documentRoot || path.join(PROJECTS_DIR, safeName);
       const possibleFiles = ["narration_hd.wav", "narration_hd.mp3", "narration.wav", "narration.mp3", "narration.m4a"];
       for (const fname of possibleFiles) {
         const fpath = path.join(projDir, fname);
@@ -2034,12 +2045,12 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
       let audioUrl = "";
       if (projectName && typeof projectName === "string" && projectName.trim()) {
         const safeName = sanitizeProjectName(projectName);
-        const projDir = path.join(PROJECTS_DIR, safeName);
+        const projDir = documentRoot || path.join(PROJECTS_DIR, safeName);
         if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
         const ext = cleanMime.includes("wav") ? "wav" : "mp3";
         const audioPath = path.join(projDir, `narration.${ext}`);
         fs.writeFileSync(audioPath, audioBuffer);
-        audioUrl = `/api/projects/${safeName}/narration.${ext}`;
+        audioUrl = documentId ? `/api/project-documents/${documentId}/files?path=narration.${ext}` : `/api/projects/${safeName}/narration.${ext}`;
       }
 
       return res.json({
@@ -2051,7 +2062,7 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
     if (projectName && audioBuffer) {
       try {
         const safeName = sanitizeProjectName(projectName);
-        const projDir = path.join(PROJECTS_DIR, safeName);
+        const projDir = documentRoot || path.join(PROJECTS_DIR, safeName);
         if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
         const targetExt = cleanMime.includes("wav") ? ".wav" : ".mp3";
         fs.writeFileSync(path.join(projDir, `narration${targetExt}`), audioBuffer);
@@ -2132,13 +2143,13 @@ Return a JSON object containing:
     let audioUrl = "";
     if (projectName && typeof projectName === "string" && projectName.trim()) {
       const safeName = sanitizeProjectName(projectName);
-      const projDir = path.join(PROJECTS_DIR, safeName);
+      const projDir = documentRoot || path.join(PROJECTS_DIR, safeName);
       if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
 
       const ext = audioMimeType && audioMimeType.includes("wav") ? "wav" : "mp3";
       const audioPath = path.join(projDir, `narration.${ext}`);
       fs.writeFileSync(audioPath, audioBuffer);
-      audioUrl = `/api/projects/${safeName}/narration.${ext}`;
+      audioUrl = documentId ? `/api/project-documents/${documentId}/files?path=narration.${ext}` : `/api/projects/${safeName}/narration.${ext}`;
     }
 
     res.json({
@@ -2681,232 +2692,23 @@ function getCinematicFallbackImage(prompt: string, searchQuery: string, model: s
 app.post("/api/storyboard/generate-image", async (req, res) => {
   try {
     const { prompt, model, visualInstructionImage, customApiKey } = req.body;
-    if (!prompt || typeof prompt !== "string") {
-      return res.status(400).json({ error: "O prompt de imagem é obrigatório." });
+    if (!prompt || typeof prompt !== "string") throw new ImageRequestError("O prompt de imagem é obrigatório.");
+    const selected = resolveImageModel(model, req.get("x-openai-dalle-model") || undefined);
+    const reference = visualInstructionImage ? await imageUrlToInlineData(visualInstructionImage) : null;
+    if (visualInstructionImage && !reference) throw new ImageRequestError("Não foi possível ler a imagem de referência.");
+    let imageUrl: string;
+    if (selected.provider === "openai") {
+      const key = req.get("x-openai-key") || loadUserConfig()?.customOpenAiKey || process.env.OPENAI_API_KEY;
+      if (!key) throw new ImageRequestError("Insira uma chave OpenAI válida nas configurações.");
+      imageUrl = await generateOpenAiImage(key, selected.model, prompt, reference);
+    } else {
+      imageUrl = await generateGoogleImage(getGeminiClient(req.get("x-gemini-key") || customApiKey), selected.model, prompt, reference);
     }
-
-    const activeKey = (req.headers["x-gemini-key"] as string) || customApiKey;
-    const isUsingCustomKey = !!(activeKey && activeKey.trim());
-
-    const openAiKey = req.headers["x-openai-key"] as string;
-    const requestedDalleModel = model?.startsWith("openai:")
-      ? model.replace("openai:", "")
-      : (model && (model.startsWith("gpt-image") || model.startsWith("dall-e") || model === "chatgpt-image-latest"))
-      ? model
-      : (req.headers["x-openai-dalle-model"] as string || "gpt-image-2");
-
-    const useOpenAi = (
-      model === "chatgpt_dalle3" ||
-      model?.startsWith("openai:") ||
-      model?.startsWith("gpt-") ||
-      model?.startsWith("dall") ||
-      model?.includes("openai")
-    ) && !!openAiKey;
-
-    let searchQuery = "atmospheric,scenery";
-    const promptLower = prompt.toLowerCase();
-
-    if (useOpenAi) {
-      console.log(`[OpenAI API] Image Generation using model: ${requestedDalleModel}`);
-      try {
-        const dalleUrl = await callOpenAiImage(openAiKey, requestedDalleModel, prompt);
-        return res.json({
-          imageUrl: dalleUrl,
-          keywords: searchQuery,
-          metadata: {
-            engineName: `OpenAI (${requestedDalleModel})`,
-            resolution: requestedDalleModel === "dall-e-3" ? "1792x1024 (Widescreen)" : "1024x1024 (Quadrado)",
-            renderTimeSeconds: 4.5,
-            creativeShader: "Geração de imagem fotorrealista premium via rede neural artificial do OpenAI."
-          },
-          isAiGenerated: true,
-          generationError: "",
-          isCustomKeyUsed: true
-        });
-      } catch (gptErr: any) {
-        console.error("[OpenAI API] Image generation failed. Falling back to stock query:", gptErr);
-        // We can let it fall through to stock/fallback or return error, but let's fall back to our beautiful offline SVG!
-        const errMsg = gptErr.message || String(gptErr);
-        const fallbackImage = getCinematicFallbackImage(prompt, searchQuery, model || "", errMsg);
-        return res.json({
-          imageUrl: fallbackImage,
-          keywords: searchQuery,
-          metadata: {
-            engineName: "Nano Banana Fallback Driver",
-            resolution: "1920x1080 (Cinemático 16:9)",
-            renderTimeSeconds: 0.1,
-            creativeShader: "Diretor de Arte local offline ativado após erro da API do OpenAI."
-          },
-          isAiGenerated: false,
-          generationError: errMsg,
-          isCustomKeyUsed: true
-        });
-      }
-    }
-
-    console.log(`[Gemini API] Image Generation. Model: ${model || "default"}. Is custom API key used? ${isUsingCustomKey ? "YES (begins with " + activeKey.trim().substring(0, 6) + ")" : "NO (using public shared key)"}`);
-    
-    // Choose specific styles, lighting descriptions, and visual directives for each Nano Banana variation
-    const modelStyleDesc = 
-      model === "nano_banana_pro" 
-        ? "cinematic dramatic high-contrast professional photography, dramatic lighting, 35mm film mood, realistic shadows"
-        : model === "nano_banana_2"
-        ? "artistic illustration, deep oil painting texture on canvas, classic painterly composition, neo-expressionist visual art"
-        : "clean atmospheric elegant photography, bright natural tones, authentic scenery portrait landscape";
-
-    // Attempt Gemini-powered minimalist core keyword extraction
-    try {
-      const ai = getGeminiClient(activeKey);
-      const geminiPrompt = `You are a visual set director. Convert the following scene description (which may be in Portuguese or English) into exactly 1 or 2 simple, concrete English nouns/adjectives representing the absolute core visual subject of the image (for example, if the prompt is "um homem passeando à noite na chuva", output "man,rain"; if the prompt is "an elderly monk meditating inside a temple", output "monk,temple").
-      
-      Requirements:
-      - Only output 1 or 2 core keywords separated by a comma (e.g. "monk,temple", "street,rain", "library,fire", "forest").
-      - ABSOLUTELY NEVER include style, camera, quality, or aspect ratio keywords (do NOT output "16:9", "photorealistic", "cinematic", "painting", "art", "detailed").
-      - Output ONLY the 1-2 comma-separated keywords and absolutely nothing else. No punctuation, no quotes, no conversational filler.
-
-      Description: "${prompt}"`;
-      
-      const { response } = await callGeminiWithRetry((modelName) => ai.models.generateContent({
-        model: modelName,
-        contents: geminiPrompt,
-        config: {
-          maxOutputTokens: 15,
-        }
-      }), "gemini-2.5-flash", ["gemini-3.5-flash", "gemini-2.5-pro"], 1000, req);
-      
-      const keywordOutput = response.text?.trim().replace(/['"“”`]/g, "");
-      if (keywordOutput && keywordOutput.length < 50 && !keywordOutput.includes("Error") && !keywordOutput.includes("Exception")) {
-        // Normalize keywords safely for query matching (single comma separated list)
-        const parsedWords = keywordOutput
-          .split(/[\s,]+/)
-          .map(w => w.replace(/[^a-zA-Z0-9]/g, "").trim())
-          .filter(w => w.length > 0);
-        if (parsedWords.length > 0) {
-          searchQuery = parsedWords.join(",");
-        }
-      }
-    } catch (e) {
-      console.warn("Gemini prompt keyword extraction failed, relying on rule-based fallback extractor:", e);
-      // Clean up fallback keywords
-      const filterOut = ["aspect", "ratio", "cinematic", "lighting", "detailed", "realistic", "contrast", "caravaggio", "chiaroscuro", "high", "quality", "with", "from", "and", "under", "moody", "composition"];
-      const words = promptLower
-        .replace(/[^a-zA-Z\s]/g, "")
-        .split(/\s+/)
-        .filter((w) => w.length > 3 && !filterOut.includes(w));
-      if (words.length > 0) {
-        searchQuery = words.slice(0, 2).join(",");
-      }
-    }
-
-    // Configure specific metadata according to the chosen Nano Banana pipeline variant
-    const modelMetadata = {
-      engineName: "Nano Banana Standard v1.9",
-      resolution: "1920x1080 (Cinemático 16:9)",
-      renderTimeSeconds: 1.1,
-      creativeShader: "Cores amigáveis e contrastes neutros para fins contemplativos.",
-    };
-
-    if (model === "nano_banana_pro") {
-      modelMetadata.engineName = "Nano Banana PRO Premium v3.2";
-      modelMetadata.renderTimeSeconds = 2.4;
-      modelMetadata.creativeShader = "Resolução 4K estendida, simulação analógica de granulação de filme 35mm e desfoque anamórfico.";
-    } else if (model === "nano_banana_2") {
-      modelMetadata.engineName = "Nano Banana 2 HyperArt Neural";
-      modelMetadata.renderTimeSeconds = 1.9;
-      modelMetadata.creativeShader = "Estetização pictórica neo-expressionista com pinceladas simuladas por inteligência neural profunda.";
-    }
-
-    let resolvedUrl = "";
-    let isAiGenerated = false;
-    let generationError = "";
-
-    // 1. Attempt native Imagen 3 Generation using @google/genai SDK
-    try {
-      const ai = getGeminiClient(activeKey);
-      const styleTag = 
-        model === "nano_banana_pro"
-          ? "Cinematic photography with 35mm film scan style, professional dramatic studio lighting, rich colors, realistic shadows"
-          : model === "nano_banana_2"
-          ? "Exquisite neo-expressionist oil painting on high-texture canvas, vivid brush strokes"
-          : "Warm ambient outdoor landscape photography, soft natural lighting style";
-
-      const cleanedSubjectPrompt = prompt
-        .replace(/aspect ratio[:=]?\s*\d+[:/]\d+/gi, "")
-        .replace(/16:9/gi, "")
-        .replace(/widescreen/gi, "")
-        .trim();
-
-      const generationPrompt = `${cleanedSubjectPrompt}. Style: ${styleTag}. High quality, clear focus.`;
-
-      const targetModel = model === "nano_banana" ? "imagen-3.0-fast-001" : "imagen-3.0-generate-002";
-
-      try {
-        console.log(`[Nano Banana] Attempting Imagen 3 image generation with requested model: "${targetModel}" for prompt: "${prompt.substring(0, 40)}..."`);
-        const imageResult: any = await (ai.models as any).generateImages({
-          model: targetModel,
-          prompt: generationPrompt,
-          config: {
-            numberOfImages: 1,
-            outputMimeType: "image/jpeg",
-            aspectRatio: "16:9"
-          }
-        });
-
-        if (imageResult?.generatedImages?.[0]?.image?.imageBytes) {
-          const base64Data = imageResult.generatedImages[0].image.imageBytes;
-          resolvedUrl = `data:image/jpeg;base64,${base64Data}`;
-          isAiGenerated = true;
-          console.log(`[Nano Banana] Native Imagen 3 (${targetModel}) generation successful!`);
-        } else {
-          generationError = `O modelo ${targetModel} não retornou dados de imagem válidos.`;
-        }
-      } catch (mErr: any) {
-        generationError = mErr?.message || String(mErr);
-        console.warn(`[Nano Banana] Direct generation on requested model ${targetModel} failed:`, generationError);
-      }
-
-      if (!resolvedUrl) {
-        generationError = "Cota de API do Gemini atingida ou modelo não suportou resposta de bytes inline.";
-      }
-    } catch (aiErr: any) {
-      generationError = aiErr?.message || String(aiErr);
-      console.warn("[Nano Banana] Native AI image generation failed:", generationError);
-    }
-
-    // 2. Procedural SVG Error/Standby Card if native generation fails
-    if (!resolvedUrl) {
-      console.warn("[Nano Banana] Native AI image generation failed. Showing detailed error card with reason:", generationError);
-      resolvedUrl = getCinematicFallbackImage(prompt, searchQuery, model || "", generationError);
-    }
-
-    res.json({
-      imageUrl: resolvedUrl,
-      keywords: searchQuery,
-      metadata: modelMetadata,
-      isAiGenerated,
-      generationError,
-      isCustomKeyUsed: isUsingCustomKey
-    });
-  } catch (error: any) {
-    console.error("Error in Nano Banana render agent:", error);
-    const errText = error?.message || String(error);
-    const fallbackImage = getCinematicFallbackImage(
-      req.body?.prompt || "meditation",
-      "meditation scenery",
-      req.body?.model || "",
-      errText
-    );
-    res.json({
-      imageUrl: fallbackImage,
-      keywords: "meditation scenery",
-      metadata: {
-        engineName: "Nano Banana Fallback Driver",
-        resolution: "1920x1080 (16:9)",
-        renderTimeSeconds: 0.5,
-        creativeShader: "Servidor de renderização fallback Unsplash ativado por indisponibilidade local."
-      },
-      isCustomKeyUsed: !!((req.headers["x-gemini-key"] as string) || req.body?.customApiKey)
-    });
+    res.json({ imageUrl, isAiGenerated: true, generationError: "", metadata: {
+      engineName: selected.model, resolution: selected.provider === "openai" ? openAiImageSize(selected.model) : "16:9"
+    } });
+  } catch (err: any) {
+    res.status(err instanceof ImageRequestError ? err.status : 502).json({ error: sanitizeErrorMessage(err.message || String(err)) });
   }
 });
 
@@ -2941,9 +2743,11 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "127.0.0.1", () => {
     console.log(`Express custom server running on http://localhost:${PORT}`);
   });
 }
 
-startServer();
+if (process.env.NODE_ENV !== "test") {
+  startServer();
+}

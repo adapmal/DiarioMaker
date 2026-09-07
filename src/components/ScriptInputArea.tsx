@@ -2,12 +2,13 @@ import React from "react";
 import { StylePreference, ArtisticStyle } from "../types";
 import { Sparkles, FileText, Film, MessageSquareCode, Upload, X, Image as ImageIcon, AlertCircle, Settings } from "lucide-react";
 import { resizeAndCompressImage } from "../utils";
+import OpenAiTranscriptionModelRadios from "./OpenAiTranscriptionModelRadios";
 
 import { Mic, Volume2 } from "lucide-react";
 
 interface ScriptInputAreaProps {
   onGenerate: (text: string, style: StylePreference, referenceImage?: string, selectedEngine?: "gemini" | "openai" | "ollama") => void;
-  onGenerateWithAudio?: (params: { text: string; style: StylePreference; referenceImage?: string; selectedEngine?: "gemini" | "openai" | "ollama"; audioFile?: File | null; audioBase64?: string; audioMimeType?: string; audioFileName?: string; audioPath?: string }) => void;
+  onGenerateWithAudio?: (params: { text: string; style: StylePreference; referenceImage?: string; selectedEngine?: "gemini" | "openai" | "ollama"; transcriptionEngine?: "gemini" | "openai"; audioFile?: File | null; audioBase64?: string; audioMimeType?: string; audioFileName?: string; audioPath?: string; openAiAudioModel?: string; openAiTextModel?: string }) => void;
   isGenerating: boolean;
   scriptText: string;
   setScriptText: (text: string) => void;
@@ -18,6 +19,15 @@ interface ScriptInputAreaProps {
   hasScenes?: boolean;
   useOpenAiForPrompts?: boolean;
   openAiKey?: string;
+  preferredEngine?: "gemini" | "openai" | "ollama";
+  onPreferredEngineChange?: (engine: "gemini" | "openai" | "ollama") => void;
+  preferredTranscriptionEngine?: "gemini" | "openai";
+  onPreferredTranscriptionEngineChange?: (engine: "gemini" | "openai") => void;
+  openAiAudioModel?: string;
+  onOpenAiAudioModelChange?: (model: string) => void;
+  openAiTextModel?: string;
+  onOpenAiTextModelChange?: (model: string) => void;
+  availableOpenAiTextModels?: string[];
   onGoToSettings?: () => void;
   artisticStyles: ArtisticStyle[];
 }
@@ -35,6 +45,15 @@ export default function ScriptInputArea({
   hasScenes = false,
   useOpenAiForPrompts = false,
   openAiKey = "",
+  preferredEngine,
+  onPreferredEngineChange,
+  preferredTranscriptionEngine,
+  onPreferredTranscriptionEngineChange,
+  openAiAudioModel = "whisper-1",
+  onOpenAiAudioModelChange,
+  openAiTextModel = "gpt-4o",
+  onOpenAiTextModelChange,
+  availableOpenAiTextModels = [],
   onGoToSettings,
   artisticStyles,
 }: ScriptInputAreaProps) {
@@ -49,8 +68,44 @@ export default function ScriptInputArea({
   const [audioMimeType, setAudioMimeType] = React.useState<string | undefined>();
   const [audioFileName, setAudioFileName] = React.useState<string | undefined>();
   const [audioPath, setAudioPath] = React.useState<string | undefined>();
+  const hasAudio = !!(audioFile || audioBase64 || audioFileName || audioPath);
 
-  const [selectedEngine, setSelectedEngine] = React.useState<"gemini" | "openai" | "ollama">("gemini");
+  const [localSelectedEngine, setLocalSelectedEngine] = React.useState<"gemini" | "openai" | "ollama">(
+    useOpenAiForPrompts ? "openai" : "gemini"
+  );
+  const selectedEngine = preferredEngine ?? localSelectedEngine;
+  const selectEngine = (engine: "gemini" | "openai" | "ollama") => {
+    setLocalSelectedEngine(engine);
+    onPreferredEngineChange?.(engine);
+  };
+  const [localTranscriptionEngine, setLocalTranscriptionEngine] = React.useState<"gemini" | "openai">(
+    useOpenAiForPrompts ? "openai" : "gemini"
+  );
+  const transcriptionEngine = preferredTranscriptionEngine ?? localTranscriptionEngine;
+  const selectTranscriptionEngine = (engine: "gemini" | "openai") => {
+    setLocalTranscriptionEngine(engine);
+    onPreferredTranscriptionEngineChange?.(engine);
+  };
+
+  const [localOpenAiAudioModel, setLocalOpenAiAudioModel] = React.useState<string>(openAiAudioModel || "whisper-1");
+  const effectiveOpenAiAudioModel = onOpenAiAudioModelChange ? openAiAudioModel : localOpenAiAudioModel;
+  const selectOpenAiAudioModel = (model: string) => {
+    setLocalOpenAiAudioModel(model);
+    onOpenAiAudioModelChange?.(model);
+  };
+  React.useEffect(() => {
+    if (openAiAudioModel) setLocalOpenAiAudioModel(openAiAudioModel);
+  }, [openAiAudioModel]);
+
+  const [localOpenAiTextModel, setLocalOpenAiTextModel] = React.useState<string>(openAiTextModel || "gpt-4o");
+  const effectiveOpenAiTextModel = onOpenAiTextModelChange ? openAiTextModel : localOpenAiTextModel;
+  const selectOpenAiTextModel = (model: string) => {
+    setLocalOpenAiTextModel(model);
+    onOpenAiTextModelChange?.(model);
+  };
+  React.useEffect(() => {
+    if (openAiTextModel) setLocalOpenAiTextModel(openAiTextModel);
+  }, [openAiTextModel]);
 
   React.useEffect(() => {
     setLocalScriptText(scriptText);
@@ -58,10 +113,10 @@ export default function ScriptInputArea({
 
   // Sync with global settings when props change
   React.useEffect(() => {
-    if (selectedEngine !== "ollama") {
-      setSelectedEngine(useOpenAiForPrompts && openAiKey ? "openai" : "gemini");
+    if (preferredEngine === undefined && localSelectedEngine !== "ollama") {
+      setLocalSelectedEngine(useOpenAiForPrompts ? "openai" : "gemini");
     }
-  }, [useOpenAiForPrompts, openAiKey]);
+  }, [useOpenAiForPrompts, preferredEngine]);
 
   // Reset new project form toggle if project becomes empty
   React.useEffect(() => {
@@ -175,18 +230,20 @@ export default function ScriptInputArea({
   };
 
   const executeGeneration = () => {
-    const hasAudio = !!(audioFile || audioBase64 || audioFileName || audioPath);
     if (onGenerateWithAudio && hasAudio) {
       onGenerateWithAudio({
         text: localScriptText.trim(),
         style: selectedStyle,
         referenceImage: scriptReferenceImage,
         selectedEngine,
+        transcriptionEngine,
         audioFile,
         audioBase64,
         audioMimeType,
         audioFileName,
-        audioPath
+        audioPath,
+        openAiAudioModel: effectiveOpenAiAudioModel,
+        openAiTextModel: effectiveOpenAiTextModel
       });
     } else {
       onGenerate(localScriptText.trim(), selectedStyle, scriptReferenceImage, selectedEngine);
@@ -195,7 +252,6 @@ export default function ScriptInputArea({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const hasAudio = !!(audioFile || audioBase64 || audioFileName);
     const hasText = !!localScriptText.trim();
 
     if (!hasAudio && !hasText) return;
@@ -261,56 +317,64 @@ export default function ScriptInputArea({
             </div>
           )}
 
-          {/* Motor de IA Selecionado (Transcrição & Segmentação) */}
-          <div className="bg-[#0a0a0a] border border-[#222] p-3.5 rounded-lg space-y-2">
-            <label className="block text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.2em] font-mono flex items-center gap-1.5">
-              <Sparkles size={12} className="text-[#D4AF37]" />
-              <span>Motor de IA (Transcrição & Segmentação)</span>
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono">
-              <button
-                type="button"
-                onClick={() => setSelectedEngine("gemini")}
-                className={`py-2 px-2 rounded text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
-                  selectedEngine === "gemini"
-                    ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
-                    : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
-                }`}
-                title="Usar Gemini (Google AI Studio) para transcrição e segmentação"
-              >
-                <span>♊ Gemini</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedEngine("openai")}
-                className={`py-2 px-2 rounded text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
-                  selectedEngine === "openai"
-                    ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
-                    : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
-                }`}
-                title="Usar ChatGPT / Whisper (OpenAI) para transcrição e segmentação"
-              >
-                <span>🎨 ChatGPT / Whisper</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedEngine("ollama")}
-                className={`py-2 px-2 rounded text-[10px] uppercase tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
-                  selectedEngine === "ollama"
-                    ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
-                    : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
-                }`}
-                title="Usar Ollama Local offline para processar o roteiro"
-              >
-                <span>🦙 Ollama Local</span>
-              </button>
-            </div>
-            {selectedEngine === "openai" && !openAiKey && (
-              <p className="text-[9.5px] text-rose-400 font-mono mt-1">
-                ⚠️ Chave OpenAI ausente em Conexões! Configure sua key no painel de Configurações.
-              </p>
+          <div className={hasAudio ? "grid grid-cols-1 md:grid-cols-2 gap-3" : "grid grid-cols-1 gap-3"}>
+            {hasAudio && (
+              <div className="bg-[#0a0a0a] border border-[#222] p-3.5 rounded-lg space-y-2">
+                <label className="block text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.15em] font-mono">
+                  1. Transcrição do áudio
+                </label>
+                <div className="grid grid-cols-2 gap-2 font-mono">
+                  {(["openai", "gemini"] as const).map((engine) => (
+                    <button
+                      key={engine}
+                      type="button"
+                      onClick={() => selectTranscriptionEngine(engine)}
+                      className={`py-2 rounded text-[10px] uppercase font-bold border cursor-pointer ${transcriptionEngine === engine ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37]" : "border-[#333] text-zinc-400"}`}
+                    >
+                      {engine === "openai" ? "🎙️ OpenAI" : "♊ Gemini"}
+                    </button>
+                  ))}
+                </div>
+                {transcriptionEngine === "openai" && (
+                  <OpenAiTranscriptionModelRadios
+                    value={effectiveOpenAiAudioModel}
+                    onChange={selectOpenAiAudioModel}
+                    compact
+                  />
+                )}
+              </div>
             )}
+
+            <div className="bg-[#0a0a0a] border border-[#222] p-3.5 rounded-lg space-y-2">
+              <label className="block text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.15em] font-mono">
+                {hasAudio ? "2. Divisão narrativa em cenas" : "Divisão narrativa em cenas"}
+              </label>
+              <div className="grid grid-cols-3 gap-2 font-mono">
+                {(["openai", "gemini", "ollama"] as const).map((engine) => (
+                  <button
+                    key={engine}
+                    type="button"
+                    onClick={() => selectEngine(engine)}
+                    className={`py-2 rounded text-[9px] uppercase font-bold border cursor-pointer ${selectedEngine === engine ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37]" : "border-[#333] text-zinc-400"}`}
+                  >
+                    {engine}
+                  </button>
+                ))}
+              </div>
+              {selectedEngine === "openai" && (
+                <select
+                  value={effectiveOpenAiTextModel}
+                  onChange={(e) => selectOpenAiTextModel(e.target.value)}
+                  className="w-full bg-[#111] border border-[#333] rounded px-2 py-2 text-[10px] font-mono text-white"
+                >
+                  {Array.from(new Set([effectiveOpenAiTextModel, ...availableOpenAiTextModels])).map((model) => <option key={model} value={model}>{model}</option>)}
+                </select>
+              )}
+            </div>
           </div>
+          {(((hasAudio && transcriptionEngine === "openai") || selectedEngine === "openai") && !openAiKey) && (
+            <p className="text-[9.5px] text-rose-400 font-mono">⚠️ Chave OpenAI ausente em Conexões.</p>
+          )}
 
           <div className="pt-2 border-t border-[#222] grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
@@ -511,15 +575,42 @@ export default function ScriptInputArea({
           </div>
 
           {/* AI Engine Selector for Segmenter */}
-          <div>
+          {hasAudio && (
+            <div className="space-y-2">
+              <label className="block text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.15em] font-mono">
+                1. Transcrição do áudio
+              </label>
+              <div className="grid grid-cols-2 gap-1.5 bg-[#0A0A0A] p-1 border border-[#333] rounded">
+                {(["openai", "gemini"] as const).map((engine) => (
+                  <button
+                    key={engine}
+                    type="button"
+                    onClick={() => selectTranscriptionEngine(engine)}
+                    className={`text-[9px] py-2 rounded uppercase font-semibold cursor-pointer ${transcriptionEngine === engine ? "bg-[#D4AF37]/20 border border-[#D4AF37] text-[#D4AF37]" : "text-slate-400"}`}
+                  >
+                    {engine === "openai" ? "OpenAI" : "Gemini"}
+                  </button>
+                ))}
+              </div>
+              {transcriptionEngine === "openai" && (
+                <OpenAiTranscriptionModelRadios
+                  value={effectiveOpenAiAudioModel}
+                  onChange={selectOpenAiAudioModel}
+                  compact
+                />
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
             <label className="block text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.2em] mb-2 font-mono flex items-center gap-1">
               <Sparkles size={11} className="text-[#D4AF37]" />
-              Motor de IA (Segmentação)
+              {hasAudio ? "2. Divisão narrativa em cenas" : "Divisão narrativa em cenas"}
             </label>
             <div className="grid grid-cols-3 gap-1.5 bg-[#0A0A0A] p-1 border border-[#333] rounded">
               <button
                 type="button"
-                onClick={() => setSelectedEngine("gemini")}
+                onClick={() => selectEngine("gemini")}
                 className={`text-[9px] py-2 px-1 rounded uppercase tracking-wider font-semibold transition-all cursor-pointer text-center truncate ${
                   selectedEngine === "gemini"
                     ? "bg-[#D4AF37]/20 border border-[#D4AF37] text-[#D4AF37] shadow-sm"
@@ -531,19 +622,19 @@ export default function ScriptInputArea({
               </button>
               <button
                 type="button"
-                onClick={() => setSelectedEngine("openai")}
+                onClick={() => selectEngine("openai")}
                 className={`text-[9px] py-2 px-1 rounded uppercase tracking-wider font-semibold transition-all cursor-pointer text-center truncate ${
                   selectedEngine === "openai"
                     ? "bg-[#D4AF37]/20 border border-[#D4AF37] text-[#D4AF37] shadow-sm"
                     : "text-slate-400 hover:text-[#E0D8D0] hover:bg-[#161616]"
                 }`}
-                title="Usar OpenAI ChatGPT para processar o roteiro"
+                title="Usar ChatGPT para processar o roteiro"
               >
                 ChatGPT
               </button>
               <button
                 type="button"
-                onClick={() => setSelectedEngine("ollama")}
+                onClick={() => selectEngine("ollama")}
                 className={`text-[9px] py-2 px-1 rounded uppercase tracking-wider font-semibold transition-all cursor-pointer text-center truncate ${
                   selectedEngine === "ollama"
                     ? "bg-[#D4AF37]/20 border border-[#D4AF37] text-[#D4AF37] shadow-sm"
@@ -554,6 +645,15 @@ export default function ScriptInputArea({
                 Ollama
               </button>
             </div>
+            {selectedEngine === "openai" && (
+              <select
+                value={effectiveOpenAiTextModel}
+                onChange={(e) => selectOpenAiTextModel(e.target.value)}
+                className="w-full bg-[#0A0A0A] border border-[#333] rounded px-2 py-1.5 text-[9px] font-mono text-white"
+              >
+                {Array.from(new Set([effectiveOpenAiTextModel, ...availableOpenAiTextModels])).map((model) => <option key={model} value={model}>{model}</option>)}
+              </select>
+            )}
             {selectedEngine === "openai" && !openAiKey && (
               <p className="text-[8px] text-rose-400 mt-1 font-mono absolute">
                 ⚠️ Chave OpenAI ausente em Conexões!
@@ -564,7 +664,7 @@ export default function ScriptInputArea({
           <div>
             <button
               type="submit"
-              disabled={isGenerating || (!localScriptText.trim() && !audioFile && !audioFileName && !audioBase64)}
+              disabled={isGenerating || (!localScriptText.trim() && !hasAudio)}
               id="generate-storyboard-submit"
               className={`w-full py-3.5 px-4 rounded font-bold uppercase tracking-[0.2em] text-xs transition-all flex items-center justify-center gap-2 relative shadow-2xl ${
                 isGenerating
@@ -580,7 +680,7 @@ export default function ScriptInputArea({
               ) : (
                 <>
                   <Sparkles size={14} className="text-[#0F0F0F]" />
-                  <span>Gerar Storyboard</span>
+                  <span>{hasAudio ? "Transcrever Áudio e Gerar Storyboard" : "Gerar Storyboard"}</span>
                 </>
               )}
             </button>
