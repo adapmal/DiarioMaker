@@ -30,6 +30,25 @@ async function fixture(t: any) {
   return { directory, repository };
 }
 const image = "data:image/png;base64," + Buffer.from("test image").toString("base64");
+
+test("missing registered media blocks save, copy and move before destination changes", async t => {
+  const { directory, repository } = await fixture(t);
+  const project = await repository.create(state());
+  const documentPath = path.join(project.location.root, project.location.fileName);
+  const original = await fs.readFile(documentPath, "utf8");
+  const document = JSON.parse(original);
+  const asset = Object.values(document.assets).find((a: any) => a.mime === "image/png") as any;
+  await fs.unlink(path.join(project.location.root, asset.path));
+  await assert.rejects(repository.save(project.location.id, project.data, 1, "missing"), /não encontrad/);
+  assert.equal(await fs.readFile(documentPath, "utf8"), original);
+  for (const mode of ["copy", "move"] as const) {
+    const target = path.join(directory, mode);
+    await fs.mkdir(target);
+    await assert.rejects(repository.transfer(project.location.id, target, mode), /não encontrad/);
+    assert.deepEqual(await fs.readdir(target), []);
+    assert.equal(await fs.readFile(documentPath, "utf8"), original);
+  }
+});
 const state = () => ({ projectName: "Original", scenes: [{ id: "scene", generatedImageUrl: image, imageVersions: [{ id: "v1", url: image }] }], sessionImageArchive: [{ url: image }], audioNarrationUrl: "data:audio/wav;base64," + Buffer.from("audio").toString("base64") });
 
 test("documents save empty state, reject stale revisions and preserve last good file on missing media", async t => {
@@ -48,8 +67,8 @@ test("documents save empty state, reject stale revisions and preserve last good 
       imageVersions: [{ id: "v-old", url: "/projects/test/imagens/missing_old_version.png" }]
     }]
   };
-  const savedWithMissing = await repository.save(a.location.id, withMissingVersion, empty.location.revision, "missing-ver");
-  assert.equal(savedWithMissing.data.scenes[0].imageVersions[0].url, "/projects/test/imagens/missing_old_version.png");
+  await assert.rejects(repository.save(a.location.id, withMissingVersion, empty.location.revision, "missing-ver"), /não encontrad/);
+  assert.equal((await repository.load(a.location.id)).location.revision, empty.location.revision);
 });
 
 test("save as, full copy and move preserve media, archive, audio, cache and both documents", async t => {
@@ -144,4 +163,3 @@ test("project creation with custom targetDirectory places project in chosen dire
   assert.ok(await fs.stat(path.join(customTarget, data.location.fileName)));
   assert.ok(await fs.stat(path.join(customTarget, "midias", "imagens")));
 });
-

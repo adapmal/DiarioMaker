@@ -155,4 +155,31 @@ test("audio removal closes transcription menu and routes pure text to standard g
   assert.match(sourceApp, /\{Boolean\(newProjectAudioFile\) && \(newProjectEngine === "openai"/);
 });
 
+test("empty scenes generation panel isolates wheel scroll to prevent moving background scenes", () => {
+  const sourceApp = fs.readFileSync(path.resolve("src", "App.tsx"), "utf8");
 
+  // 1. handleGlobalWheel explicitly stops and prevents wheel scroll over empty scenes dropdown
+  assert.match(sourceApp, /target\.closest\("#empty-scenes-dropdown"\)/);
+  assert.match(sourceApp, /target\.closest\("\[data-empty-scenes-panel='true'\]"\)/);
+
+  // 2. Dropdown element has ref, id and data attributes
+  assert.match(sourceApp, /ref=\{emptyScenesPanelRef\}/);
+  assert.match(sourceApp, /id="empty-scenes-dropdown"/);
+  assert.match(sourceApp, /data-empty-scenes-panel="true"/);
+  assert.match(sourceApp, /data-empty-scenes-wrapper="true"/);
+
+  // 3. Dropdown has isolated non-passive wheel listener preventing default and propagation
+  assert.match(sourceApp, /panel\.addEventListener\("wheel", handlePanelWheel, \{\s*passive:\s*false\s*\}\)/);
+  assert.match(sourceApp, /e\.preventDefault\(\);/);
+  assert.match(sourceApp, /e\.stopPropagation\(\);/);
+
+  // 4. Dropdown and model lists have overscroll-contain
+  assert.match(sourceApp, /id="empty-scenes-dropdown"[\s\S]*?overscroll-contain/);
+});
+
+test("active scene counter uses the same numbering rule as cards", async () => {
+  const { sceneDisplayNumber } = await import("../src/lib/sceneNumber");
+  assert.equal(sceneDisplayNumber({ sceneNumber: "20-8" }, 2, false), "20-8");
+  assert.equal(sceneDisplayNumber({ sceneNumber: "20-8" }, 2, true), "03");
+  assert.equal(sceneDisplayNumber(undefined, 0, false), "1");
+});

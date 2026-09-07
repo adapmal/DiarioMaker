@@ -167,8 +167,8 @@ export class ProjectRepository {
           try {
             await confinedFile(p.root, doc.assets[url.slice(8)].path);
             return url;
-          } catch {
-            return url;
+          } catch (err) {
+            throw err;
           }
         }
         const own = `/api/project-documents/${p.id}/assets/`;
@@ -178,8 +178,8 @@ export class ProjectRepository {
             try {
               await confinedFile(p.root, doc.assets[keyName].path);
               return `asset://${keyName}`;
-            } catch {
-              return url;
+            } catch (err) {
+              throw err;
             }
           }
         }
@@ -189,10 +189,6 @@ export class ProjectRepository {
           bytes = res.bytes;
           mime = res.mime;
         } catch (err: any) {
-          if (key === "url" && err instanceof ProjectError && err.status === 404) {
-            console.warn(`[ProjectRepository] Mídia secundária ausente ignorada durante salvamento: ${url}`);
-            return url;
-          }
           throw err;
         }
         const digest = hash(bytes);
@@ -301,6 +297,27 @@ export class ProjectRepository {
       if (within(source, target) || within(target, source)) throw new ProjectError("Escolha uma pasta fora da origem, que não contenha o projeto atual.");
       if ((await fs.readdir(target)).length) throw new ProjectError("Escolha uma pasta vazia para evitar misturar ou sobrescrever arquivos.");
       const files = await walk(source);
+      // Validate references as well as physical files before touching the destination.
+      // Save As documents share this directory and must remain usable after a move.
+      for (const relative of files.filter(file => path.dirname(file) === "." && file.toLowerCase().endsWith(".dmproj"))) {
+        const document: Document = JSON.parse(await fs.readFile(await confinedFile(source, relative), "utf8"));
+        if (document.format !== "diariomaker" || document.version !== 2 || !document.assets || !Array.isArray(document.state?.scenes)) {
+          throw new ProjectError(`Projeto inválido: ${relative}`);
+        }
+        for (const asset of Object.values(document.assets)) {
+          const file = await confinedFile(source, asset.path);
+          if (hash(await fs.readFile(file)) !== asset.hash) throw new ProjectError(`Mídia corrompida em ${relative}: ${asset.path}`);
+        }
+        const validate = (value: any, key = ""): void => {
+          if (typeof value === "string" && value && mediaKeys.has(key)) {
+            if (!value.startsWith("asset://") || !document.assets[value.slice(8)]) {
+              throw new ProjectError(`Mídia não incorporada em ${relative}. Abra e salve esse documento antes de transferir.`);
+            }
+          } else if (Array.isArray(value)) value.forEach(item => validate(item, key));
+          else if (value && typeof value === "object") Object.entries(value).forEach(([k, v]) => validate(v, k));
+        };
+        validate(document.state);
+      }
       const operation = randomUUID(); const staging = path.join(target, `.transfer-${operation}`);
       await fs.mkdir(staging);
       const journalFile = path.join(this.workspace, "project-transfers", operation + ".json");

@@ -1,3 +1,4 @@
+import { sceneDisplayNumber } from "./lib/sceneNumber";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import JSZip from "jszip";
 import { StoryboardScene, StylePreference, ArchivedImage, ConnectionGroup, ArtisticStyle, ImageVersion } from "./types";
@@ -11,6 +12,7 @@ import { getCachedImage, setCachedImage, getCacheSizeMB, clearCache } from "./li
 import { prepareImageBlobForDownload } from "./lib/imageUtils";
 import { motion, AnimatePresence } from "motion/react";
 import ProjectSaveMenu from "./components/ProjectSaveMenu";
+import ProjectOpenMenu from "./components/ProjectOpenMenu";
 import OpenAiTranscriptionModelRadios from "./components/OpenAiTranscriptionModelRadios";
 import { useProjectPersistence, DocumentResult, DocumentLocation } from "./lib/useProjectPersistence";
 
@@ -383,6 +385,7 @@ export default function App() {
   const mainScrollRef = useRef<HTMLDivElement | null>(null);
   const superScrollPadRef = useRef<HTMLDivElement | null>(null);
   const [visibleSceneIndex, setVisibleSceneIndex] = useState<number>(0);
+  const activeSceneIndex = Math.min(Math.max(0, visibleSceneIndex), Math.max(0, scenes.length - 1));
 
   // Mouse wheel 7x accelerated scroll for the storyboard scenes grid (excluding config, studio, inputs & modals)
   useEffect(() => {
@@ -392,6 +395,17 @@ export default function App() {
 
       const target = e.target as HTMLElement | null;
       if (!target) return;
+
+      // Completely block wheel scrolling on background scenes if mouse is over Gerar Cenas Vazias panel or trigger
+      const emptyScenesPanel = document.getElementById("empty-scenes-dropdown");
+      if (
+        target.closest("#empty-scenes-dropdown") ||
+        target.closest("[data-empty-scenes-panel='true']") ||
+        (emptyScenesPanel && target.closest("[data-empty-scenes-wrapper='true']"))
+      ) {
+        e.preventDefault();
+        return;
+      }
 
       // Ignore 7x acceleration if scrolling inside dialogs, modals, or config drawer
       if (
@@ -919,6 +933,52 @@ export default function App() {
       body: JSON.stringify({ batchSelectedImageModel: model })
     }).catch((e) => console.warn("Failed to persist batch image model:", e));
   };
+
+  const emptyScenesPanelRef = useRef<HTMLDivElement | null>(null);
+
+  // Isolate wheel scroll on the Gerar Cenas Vazias panel so background scenes NEVER move
+  useEffect(() => {
+    const panel = emptyScenesPanelRef.current;
+    if (!panel || !showEmptyScenesSubMenu) return;
+
+    const handlePanelWheel = (e: WheelEvent) => {
+      // 1. Immediately prevent native window/background scrolling
+      e.preventDefault();
+      // 2. Stop event from bubbling to window listeners
+      e.stopPropagation();
+
+      // Normalize deltaY (handles pixel mode 0, line mode 1, page mode 2)
+      const deltaY = e.deltaMode === 1 ? e.deltaY * 18 : e.deltaMode === 2 ? e.deltaY * 300 : e.deltaY;
+
+      // 3. Find if cursor is over an inner scrollable container (e.g. Prompt/Image model lists or textarea)
+      let targetEl = e.target as HTMLElement | null;
+      let scrollable: HTMLElement | null = null;
+
+      while (targetEl && targetEl !== panel.parentElement) {
+        const style = window.getComputedStyle(targetEl);
+        const canScrollY =
+          (style.overflowY === "auto" || style.overflowY === "scroll" || targetEl.tagName === "TEXTAREA") &&
+          targetEl.scrollHeight > targetEl.clientHeight;
+        if (canScrollY && (deltaY > 0 ? targetEl.scrollTop + targetEl.clientHeight < targetEl.scrollHeight - 1 : targetEl.scrollTop > 0)) {
+          scrollable = targetEl;
+          break;
+        }
+        if (targetEl === panel) break;
+        targetEl = targetEl.parentElement;
+      }
+
+      if (scrollable) {
+        scrollable.scrollTop += deltaY;
+      } else if (panel.scrollHeight > panel.clientHeight) {
+        panel.scrollTop += deltaY;
+      }
+    };
+
+    panel.addEventListener("wheel", handlePanelWheel, { passive: false });
+    return () => {
+      panel.removeEventListener("wheel", handlePanelWheel);
+    };
+  }, [showEmptyScenesSubMenu]);
 
   const [enabledPromptModels, setEnabledPromptModels] = useState<string[]>(() => {
     try {
@@ -2334,7 +2394,8 @@ const deriveFolderFromDate = (dateStr: string): string => {
     rawText: string, 
     preference: StylePreference, 
     referenceImage?: string,
-    selectedEngine?: string
+    selectedEngine?: string,
+    selectedTextModel?: string
   ) => {
     pushToHistory([]);
     setIsGenerating(true);
@@ -2347,9 +2408,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
     const isOpenAiSelected = engineLower.startsWith("gpt-") || engineLower.startsWith("o1") || engineLower.startsWith("o3") || engineLower.startsWith("openai:") || selectedEngine === "openai";
 
     // If an engine is explicitly specified, respect it. Otherwise fallback to the general toggle.
-    const useOpenAi = isOpenAiSelected 
-      ? (isOpenAiSelected && !!openAiKey)
-      : (useOpenAiForPrompts && !!openAiKey);
+    const useOpenAi = selectedEngine ? isOpenAiSelected : (useOpenAiForPrompts && !!openAiKey);
 
     const resolvedStyleId = preference === "auto" ? detectStylePreference(rawText) : preference;
     const matchedStyle = artisticStyles.find(s => s.id === resolvedStyleId);
@@ -2408,6 +2467,7 @@ Output MUST be valid JSON only, matching this schema exactly:
             }));
             setScenes(initializedScenes);
             setNotification("✓ Storyboard gerado com sucesso localmente via Ollama!");
+            return initializedScenes;
           } else {
             throw new Error("Ollama returned invalid format.");
           }
@@ -2428,6 +2488,7 @@ Output MUST be valid JSON only, matching this schema exactly:
           }));
           setScenes(initializedScenes);
           setError(`⚠️ Conexão com Ollama falhou (${ollamaErr.message || "Erro de rede"}). O roteiro foi segmentado usando o algoritmo local inteligente.`);
+          return initializedScenes;
         } finally {
           setIsGenerating(false);
         }
@@ -2442,7 +2503,7 @@ Output MUST be valid JSON only, matching this schema exactly:
           ...(useOpenAi ? {
             "x-use-openai": "true",
             "x-openai-key": openAiKey,
-            "x-openai-model": openAiModel
+            "x-openai-model": selectedTextModel || openAiModel
           } : {})
         },
         body: JSON.stringify({ rawText, stylePreference: preference, customApiKey, scriptReferenceImage: referenceImage, stylePrompt }),
@@ -3685,6 +3746,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     style: StylePreference;
     referenceImage?: string;
     selectedEngine?: string;
+    transcriptionEngine?: "gemini" | "openai";
     audioFile?: File | null;
     audioBase64?: string;
     audioMimeType?: string;
@@ -3694,7 +3756,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     openAiAudioModel?: string;
     openAiTextModel?: string;
   }) => {
-    const { text, style, referenceImage, selectedEngine, audioFile, audioBase64, audioMimeType, audioPath, explicitProjectName } = params;
+    const { text, style, referenceImage, selectedEngine, transcriptionEngine, audioFile, audioBase64, audioMimeType, audioPath, explicitProjectName } = params;
     const effectiveAudioModel = params.openAiAudioModel || openAiAudioModel || "whisper-1";
     if (params.openAiAudioModel && params.openAiAudioModel !== openAiAudioModel) {
       setOpenAiAudioModel(params.openAiAudioModel);
@@ -3702,7 +3764,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     }
 
     if (!audioFile && !audioBase64 && !audioPath) {
-      handleGenerateStoryboard(text, style, referenceImage, selectedEngine as any);
+      await handleGenerateStoryboard(text, style, referenceImage, selectedEngine, params.openAiTextModel);
       return;
     }
 
@@ -3715,7 +3777,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       const activeProjectName = explicitProjectName || projectName || "meu-projeto";
       let response: Response;
 
-      const isOpenAiEngine = selectedEngine === "openai" || selectedEngine?.startsWith("gpt-") || selectedEngine?.includes("openai") || (useOpenAiForPrompts && !!openAiKey);
+      const audioEngine = transcriptionEngine || (selectedEngine === "openai" ? "openai" : selectedEngine === "gemini" ? "gemini" : (useOpenAiForPrompts ? "openai" : "gemini"));
+      const isOpenAiEngine = audioEngine === "openai";
 
       if (audioFile) {
         // Set instant HD object URL for full quality local audio playback
@@ -3729,13 +3792,14 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         formData.append("audio", fileToUpload);
         formData.append("projectName", activeProjectName);
       if (persistence.currentLocation()) formData.append("documentId", persistence.currentLocation()!.id);
-        if (selectedEngine) formData.append("engine", selectedEngine);
+        formData.append("engine", audioEngine);
+        formData.append("audioModel", effectiveAudioModel);
 
         response = await fetch("/api/storyboard/transcribe-audio", {
           method: "POST",
           headers: {
             ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
-            ...(isOpenAiEngine && openAiKey ? {
+            ...(isOpenAiEngine ? {
               "x-use-openai": "true",
               "x-openai-key": openAiKey,
               "x-openai-model": openAiModel,
@@ -3753,7 +3817,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           headers: {
             "Content-Type": "application/json",
             ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
-            ...(isOpenAiEngine && openAiKey ? {
+            ...(isOpenAiEngine ? {
               "x-use-openai": "true",
               "x-openai-key": openAiKey,
               "x-openai-model": openAiModel,
@@ -3766,7 +3830,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             audioPath,
             projectName: activeProjectName,
             documentId: persistence.currentLocation()?.id,
-            selectedEngine
+            engine: audioEngine,
+            audioModel: effectiveAudioModel
           })
         });
       }
@@ -3781,67 +3846,21 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         setAudioNarrationUrl(audioData.audioUrl);
       }
 
-      const scriptToUse = (text && text.trim()) || audioData.fullScript || (audioData.scenes || []).map((s: any) => s.text).join("\n\n") || "Narração em áudio importada.";
+      const scriptToUse = ((text && text.trim()) || audioData.fullScript || (audioData.scenes || []).map((s: any) => s.text).join("\n\n") || "").trim();
+      if (!scriptToUse) throw new Error("A transcrição não retornou texto. Confira o áudio antes de tentar novamente.");
       setScriptText(scriptToUse);
 
-      let createdScenes: StoryboardScene[] = [];
-
-      // If text script was empty or if audio transcription produced scenes natively
-      if (!text && audioData.scenes && Array.isArray(audioData.scenes) && audioData.scenes.length > 0) {
-        createdScenes = audioData.scenes.map((s: any, idx: number) => ({
-          id: `scene-audio-${Date.now()}-${idx}`,
-          text: s.text || "",
-          description: "Cena extraída da narração em áudio.",
-          prompt: `Cinematic landscape or scenery: ${s.text || "narration"}, 16:9 aspect ratio`,
-          sceneNumber: String(idx + 1),
-          startTime: s.startTime,
-          endTime: s.endTime,
-          duration: s.endTime - s.startTime,
-          promptQueueStatus: "idle"
-        }));
-      } else if (text && text.trim()) {
-        const textGeneratedScenes = await handleGenerateStoryboard(scriptToUse, style, referenceImage, selectedEngine);
-        if (!textGeneratedScenes || textGeneratedScenes.length === 0) {
-          // Failure in text storyboard generation, error is already set by handleGenerateStoryboard
-          return;
-        }
-        createdScenes = textGeneratedScenes;
-      } else if (audioData.scenes && Array.isArray(audioData.scenes) && audioData.scenes.length > 0) {
-        createdScenes = audioData.scenes.map((s: any, idx: number) => ({
-          id: `scene-audio-${Date.now()}-${idx}`,
-          text: s.text || "",
-          description: "Cena extraída da narração em áudio.",
-          prompt: `Cinematic landscape or scenery: ${s.text || "narration"}, 16:9 aspect ratio`,
-          sceneNumber: String(idx + 1),
-          startTime: s.startTime,
-          endTime: s.endTime,
-          duration: s.endTime - s.startTime,
-          promptQueueStatus: "idle"
-        }));
-      }
-
-      // Robust fallback: if createdScenes is empty, split scriptToUse into scenes locally
-      if (!createdScenes || createdScenes.length === 0) {
-        const sentences = scriptToUse.split(/(?<=[.!?])\s+|\n+/).map(s => s.trim()).filter(s => s.length > 0);
-        const segments = sentences.length > 0 ? sentences : [scriptToUse];
-        createdScenes = segments.map((segText, idx) => ({
-          id: `scene-audio-${Date.now()}-${idx}`,
-          text: segText,
-          description: "Cena extraída da narração em áudio.",
-          prompt: `Cinematic landscape or scenery: ${segText}, 16:9 aspect ratio`,
-          sceneNumber: String(idx + 1),
-          promptQueueStatus: "idle"
-        }));
-      }
+      const createdScenes = await handleGenerateStoryboard(scriptToUse, style, referenceImage, selectedEngine, params.openAiTextModel);
+      if (!createdScenes?.length) return;
 
       // Align timecodes safely in memory
-      if (audioData.timedWords && Array.isArray(createdScenes) && createdScenes.length > 0) {
+      if (Array.isArray(audioData.timedWords) && audioData.timedWords.length > 0 && Array.isArray(createdScenes) && createdScenes.length > 0) {
         const aligned = alignAudioToExistingScenes(createdScenes, audioData.timedWords);
         setScenes(aligned);
         setNotification("✓ Narração transcrevida e timecodes sincronizados com sucesso!");
       } else if (Array.isArray(createdScenes) && createdScenes.length > 0) {
         setScenes(createdScenes);
-        setNotification("✓ Narração transcrevida com sucesso!");
+        setNotification("✓ Narração transcrita e cenas geradas. Este resultado não contém marcações de tempo por palavra.");
       }
       setActiveView("storyboard");
     } catch (err: any) {
@@ -4977,33 +4996,11 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
                 <span className="text-zinc-700 text-[10px] select-none">|</span>
 
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={handleOpenNativeProject}
-                    disabled={persistence.busy}
-                    className={`text-[10px] uppercase tracking-wider font-mono font-bold text-slate-400 hover:text-[#D4AF37] cursor-pointer flex items-center gap-1 transition-all bg-transparent border-none p-0 ${
-                      persistence.busy ? "opacity-60 cursor-not-allowed" : ""
-                    }`}
-                    title="Abrir arquivo de projeto (.dmproj) usando o seletor nativo do Windows"
-                  >
-                    <Upload size={10} className="text-[#D4AF37]/70" />
-                    <span>Abrir...</span>
-                  </button>
-                  <label
-                    className="text-[8px] text-zinc-600 hover:text-zinc-400 cursor-pointer transition-colors"
-                    title="Importar arquivo de projeto legado (.dmaker, .json)"
-                  >
-                    <span>(legado)</span>
-                    <input
-                      type="file"
-                      accept=".dmaker,.diariomaker,.json"
-                      onChange={handleLoadProject}
-                      className="hidden"
-                      disabled={isImporting || persistence.busy}
-                    />
-                  </label>
-                </div>
+                <ProjectOpenMenu
+                  disabled={isImporting || persistence.busy}
+                  onOpen={handleOpenNativeProject}
+                  onImport={handleLoadProject}
+                />
 
                 <span className="text-zinc-700 text-[10px] select-none">|</span>
 
@@ -5214,7 +5211,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             <div className="flex items-center gap-2 ml-auto lg:ml-0">
               
               {/* Standalone Column 1: Gerar Cenas Vazias Dropdown Menu */}
-              <div className="relative">
+              <div className="relative" data-empty-scenes-wrapper="true">
                 <button
                   type="button"
                   onClick={() => setShowEmptyScenesSubMenu(!showEmptyScenesSubMenu)}
@@ -5228,7 +5225,12 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
                 {/* Clean Radio Selection Dropdown Panel */}
                 {showEmptyScenesSubMenu && (
-                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-[#161616] border border-[#D4AF37]/50 rounded-lg p-3.5 shadow-2xl flex flex-col gap-3 min-w-[290px] sm:min-w-[330px] animate-fadeIn text-left no-super-scroll">
+                  <div
+                    ref={emptyScenesPanelRef}
+                    id="empty-scenes-dropdown"
+                    data-empty-scenes-panel="true"
+                    className="absolute right-0 top-full mt-1.5 z-50 bg-[#161616] border border-[#D4AF37]/50 rounded-lg p-3.5 shadow-2xl flex flex-col gap-3 min-w-[290px] sm:min-w-[330px] max-h-[calc(100vh-80px)] overflow-y-auto overscroll-contain animate-fadeIn text-left no-super-scroll"
+                  >
                     <div className="flex items-center justify-between border-b border-zinc-800 pb-1.5">
                       <span className="text-[10px] font-mono uppercase tracking-widest text-[#D4AF37] font-bold flex items-center gap-1.5">
                         <Sparkles size={12} />
@@ -5248,7 +5250,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 font-bold block">
                         1. Modelo de IA para Prompts (Texto):
                       </span>
-                      <div className="flex flex-col gap-1 max-h-36 overflow-y-auto pr-1">
+                      <div className="flex flex-col gap-1 max-h-36 overflow-y-auto pr-1 overscroll-contain">
                         {enabledPromptModels.map((m) => {
                           const isChecked = batchSelectedPromptModel === m;
                           const priceInfo = getModelPriceInfo(m);
@@ -5287,7 +5289,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 font-bold block">
                         2. Modelo de IA para Renderização de Imagem:
                       </span>
-                      <div className="flex flex-col gap-1 max-h-36 overflow-y-auto pr-1">
+                      <div className="flex flex-col gap-1 max-h-36 overflow-y-auto pr-1 overscroll-contain">
                         {enabledImageModels.map((m) => {
                           let label = "NB2 Lite";
                           const lower = m.toLowerCase();
@@ -5459,15 +5461,26 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               {/* Cena Ativa Counter (SWAPPED TO AFTER GERAR CENAS VAZIAS) */}
               <div className="flex flex-col h-full justify-between shrink-0">
                 <span className="text-[7px] uppercase tracking-wider text-zinc-500 font-mono font-bold block mb-0.5 whitespace-nowrap">Cena Ativa</span>
-                <div className="h-11 px-3 rounded-lg bg-zinc-950/60 border border-zinc-900 flex items-center justify-center min-w-[105px] sm:min-w-[125px] whitespace-nowrap shrink-0">
-                  <span className="text-base sm:text-lg font-mono font-black text-[#D4AF37] tracking-tight">
+                <div 
+                  className="h-11 px-3 rounded-lg bg-zinc-950/70 border border-zinc-800/80 flex items-center justify-center gap-2 min-w-[115px] sm:min-w-[135px] whitespace-nowrap shrink-0 shadow-inner"
+                  title={scenes.length > 0 ? `Cena: ${sceneDisplayNumber(scenes[activeSceneIndex], activeSceneIndex, consecutiveNumbering)} | Ordem: ${activeSceneIndex + 1} de ${scenes.length}` : undefined}
+                >
+                  <span className="text-lg sm:text-xl font-mono font-black text-[#D4AF37] tracking-tight">
                     {scenes.length > 0 
-                      ? (scenes[visibleSceneIndex]?.sceneNumber || String(visibleSceneIndex + 1)).padStart(2, "0") 
+                      ? (sceneDisplayNumber(scenes[activeSceneIndex], activeSceneIndex, consecutiveNumbering)) 
                       : "00"}
                   </span>
-                  <span className="text-[9px] font-mono font-bold text-zinc-650 ml-1 select-none">
-                    / {String(scenes.length).padStart(2, "0")}
-                  </span>
+                  {scenes.length > 0 && (
+                    <div className="flex flex-col items-center justify-center leading-none px-1.5 py-0.5 bg-black/60 rounded border border-zinc-800/90 font-mono select-none">
+                      <span className="text-[10px] font-mono font-bold text-zinc-200 leading-tight">
+                        {activeSceneIndex + 1}
+                      </span>
+                      <div className="w-full h-px bg-zinc-700 my-0.5" />
+                      <span className="text-[9px] font-mono font-semibold text-zinc-400 leading-tight">
+                        {scenes.length}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 

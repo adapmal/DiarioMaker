@@ -18,7 +18,7 @@ const MODEL_OPTIONS: Array<{
     id: "gpt-transcribe",
     name: "GPT Transcribe",
     badge: "Melhor texto",
-    description: "Maior precisão textual, com timecodes exatos solicitados por palavra."
+    description: "Transcrição textual sem marcações de tempo por palavra. Para sincronizar cenas, escolha Whisper-1."
   },
   {
     id: "whisper-1",
@@ -54,7 +54,6 @@ export default function OpenAiTranscriptionModelRadios({
           return (
             <label
               key={option.id}
-              onClick={() => onChange(option.id)}
               className={`flex items-start gap-2 rounded border cursor-pointer transition-colors select-none ${
                 compact ? "p-2" : "p-2.5"
               } ${

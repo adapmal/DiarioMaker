@@ -1,3 +1,4 @@
+import { sceneDisplayNumber } from "../lib/sceneNumber";
 import React, { useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { StoryboardScene, StylePreference, ConnectionGroup, ArtisticStyle, StudioChatMessage } from "../types";
@@ -256,9 +257,7 @@ function StoryboardCardComponent({
     }
   };
 
-  const sceneNumText = consecutiveNumbering 
-    ? String(index + 1).padStart(2, "0") 
-    : (scene.sceneNumber || String(index + 1));
+  const sceneNumText = sceneDisplayNumber(scene, index, consecutiveNumbering);
   
   // Local state for interactive editing to prevent constant parent state writes
   const [localText, setLocalText] = useState(scene.text);

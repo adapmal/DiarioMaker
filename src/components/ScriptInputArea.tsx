@@ -71,17 +71,17 @@ export default function ScriptInputArea({
   const hasAudio = !!(audioFile || audioBase64 || audioFileName || audioPath);
 
   const [localSelectedEngine, setLocalSelectedEngine] = React.useState<"gemini" | "openai" | "ollama">(
-    useOpenAiForPrompts ? "openai" : "gemini"
+    (preferredEngine ?? (useOpenAiForPrompts ? "openai" : "gemini"))
   );
-  const selectedEngine = preferredEngine ?? localSelectedEngine;
+  const selectedEngine = onPreferredEngineChange ? (preferredEngine ?? localSelectedEngine) : localSelectedEngine;
   const selectEngine = (engine: "gemini" | "openai" | "ollama") => {
     setLocalSelectedEngine(engine);
     onPreferredEngineChange?.(engine);
   };
   const [localTranscriptionEngine, setLocalTranscriptionEngine] = React.useState<"gemini" | "openai">(
-    useOpenAiForPrompts ? "openai" : "gemini"
+    (preferredTranscriptionEngine ?? (useOpenAiForPrompts ? "openai" : "gemini"))
   );
-  const transcriptionEngine = preferredTranscriptionEngine ?? localTranscriptionEngine;
+  const transcriptionEngine = onPreferredTranscriptionEngineChange ? (preferredTranscriptionEngine ?? localTranscriptionEngine) : localTranscriptionEngine;
   const selectTranscriptionEngine = (engine: "gemini" | "openai") => {
     setLocalTranscriptionEngine(engine);
     onPreferredTranscriptionEngineChange?.(engine);
@@ -177,8 +177,20 @@ export default function ScriptInputArea({
 
   const [showConfirmReset, setShowConfirmReset] = React.useState(false);
 
+  const audioSelectionVersion = React.useRef(0);
+  const audioReader = React.useRef<FileReader | null>(null);
+  const invalidateAudioRead = () => {
+    audioSelectionVersion.current++;
+    audioReader.current?.abort();
+    audioReader.current = null;
+    return audioSelectionVersion.current;
+  };
+  React.useEffect(() => () => { invalidateAudioRead(); }, []);
+
   const handleAudioFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      const version = invalidateAudioRead();
+      setAudioBase64(undefined);
       const file = e.target.files[0];
       setAudioFile(file);
       setAudioFileName(file.name);
@@ -188,8 +200,9 @@ export default function ScriptInputArea({
       // Only convert small audio files (<5MB) to data URL for inline preview, avoid memory crash on large WAVs
       if (file.size < 5 * 1024 * 1024) {
         const reader = new FileReader();
+        audioReader.current = reader;
         reader.onload = (event) => {
-          if (event.target?.result) {
+          if (version === audioSelectionVersion.current && event.target?.result) {
             setAudioBase64(event.target.result as string);
           }
         };
@@ -201,10 +214,11 @@ export default function ScriptInputArea({
   };
 
   const handleBrowseAudioFile = async () => {
+    const version = invalidateAudioRead();
     try {
       const response = await fetch("/api/storyboard/browse-audio-file", { method: "POST" });
       const data = await response.json();
-      if (data.success && data.filePath) {
+      if (version === audioSelectionVersion.current && data.success && data.filePath) {
         setAudioPath(data.filePath);
         setAudioFileName(data.fileName);
         setAudioFile(null);
@@ -221,6 +235,7 @@ export default function ScriptInputArea({
   };
 
   const handleClearAudio = () => {
+    invalidateAudioRead();
     setAudioFile(null);
     setAudioBase64(undefined);
     setAudioMimeType(undefined);

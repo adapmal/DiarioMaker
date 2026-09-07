@@ -1,3 +1,4 @@
+import { buildTranscriptionForm } from "./server/audioTranscription";
 import express from "express";
 import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -1325,9 +1326,10 @@ app.post("/api/storyboard/generate", async (req, res) => {
     return res.status(400).json({ error: "Script text is required" });
   }
 
-  const openAiKey = req.headers["x-openai-key"] as string;
+  const openAiKey = (req.headers["x-openai-key"] as string) || loadApiSecrets().customOpenAiKey || process.env.OPENAI_API_KEY;
   const openAiModel = req.headers["x-openai-model"] as string || "gpt-4o-mini";
-  const useOpenAi = req.headers["x-use-openai"] === "true" && !!openAiKey;
+  const useOpenAi = req.headers["x-use-openai"] === "true";
+  if (useOpenAi && !openAiKey?.trim()) return res.status(400).json({ error: "Configure a chave OpenAI para usar o motor selecionado." });
 
   const activeKey = (req.headers["x-gemini-key"] as string) || customApiKey;
   const isUsingCustomKey = !!(activeKey && activeKey.trim());
@@ -1772,14 +1774,7 @@ function consolidateRawSegments(rawSegments: Array<{ text: string; startTime: nu
 // Helper to transcribe audio using OpenAI Whisper API
 async function transcribeAudioOpenAi(apiKey: string, rawAudioBuffer: Buffer, filename: string, audioModel: string = "whisper-1"): Promise<any> {
   const audioBuffer = clampAudioBufferForOpenAi(rawAudioBuffer);
-  const fileBlob = new Blob([audioBuffer], { type: filename.endsWith(".wav") ? "audio/wav" : "audio/mp3" });
-  const formData = new FormData();
-  formData.append("file", fileBlob, filename || "narration.mp3");
-  formData.append("model", audioModel);
-  formData.append("response_format", "verbose_json");
-  formData.append("timestamp_granularities[]", "word");
-  formData.append("timestamp_granularities[]", "segment");
-  formData.append("language", "pt");
+  const formData = buildTranscriptionForm(audioBuffer, filename, audioModel);
 
   const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -1835,7 +1830,7 @@ async function transcribeAudioOpenAi(apiKey: string, rawAudioBuffer: Buffer, fil
   return {
     fullScript,
     timedWords,
-    scenes: scenes.length > 0 ? scenes : [{ sceneNumber: "1", text: fullScript, startTime: 0, endTime: 10 }]
+    scenes
   };
 }
 
@@ -2030,11 +2025,11 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
 
     const openAiKeyHeader = req.headers["x-openai-key"] as string;
     const requestedEngine = req.body?.engine || req.body?.selectedEngine || (req.headers["x-use-openai"] === "true" ? "openai" : "gemini");
-    const isUsingOpenAi = requestedEngine === "openai" || !!openAiKeyHeader;
+    const isUsingOpenAi = requestedEngine === "openai";
 
     if (isUsingOpenAi) {
       const activeOpenAiKey = openAiKeyHeader || req.body?.openAiKey || (loadApiSecrets().customOpenAiKey) || process.env.OPENAI_API_KEY;
-      const audioModel = req.headers["x-openai-audio-model"] as string || req.body?.openAiAudioModel || "whisper-1";
+      const audioModel = req.headers["x-openai-audio-model"] as string || req.body?.openAiAudioModel || req.body?.audioModel || "whisper-1";
 
       if (!activeOpenAiKey || !activeOpenAiKey.trim()) {
         throw new Error("Chave de API OpenAI não encontrada. Por favor, insira sua OpenAI Key no painel Conexões para usar a transcrição via ChatGPT/Whisper.");
