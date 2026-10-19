@@ -146,13 +146,13 @@ test("audio removal closes transcription menu and routes pure text to standard g
   assert.match(sourceApp, /setNewProjectAudioFileName\(undefined\);/);
 
   // 3. App.tsx routes pure text to handleGenerateStoryboard, NOT handleGenerateStoryboardWithAudio
-  assert.match(sourceApp, /if \(newProjectAudioFile\) \{\s*handleGenerateStoryboardWithAudio\(/);
+  assert.match(sourceApp, /if \(newProjectAudioFile( \|\| newProjectAudioPath)?\) \{\s*handleGenerateStoryboardWithAudio\(/);
   assert.match(sourceApp, /\} else if \(newProjectScript\.trim\(\)\) \{\s*handleGenerateStoryboard\(/);
 
-  // 4. App.tsx adapts label and engine button based on newProjectAudioFile
-  assert.match(sourceApp, /\{newProjectAudioFile \? "Motor de IA para Transcrição e Roteiro" : "Motor de IA para Roteiro e Cenas"\}/);
-  assert.match(sourceApp, /\{newProjectAudioFile \? "🎨 OpenAI \(Whisper\)" : "🎨 OpenAI \(ChatGPT\)"\}/);
-  assert.match(sourceApp, /\{Boolean\(newProjectAudioFile\) && \(newProjectEngine === "openai"/);
+  // 4. App.tsx adapts label and engine button based on audio presence
+  assert.match(sourceApp, /\{(?:\(?newProjectAudioFile \|\| newProjectAudioPath\)?|newProjectAudioFile) \? "Motor de IA para Transcrição e Roteiro" : "Motor de IA para Roteiro e Cenas"\}/);
+  assert.match(sourceApp, /\{(?:\(?newProjectAudioFile \|\| newProjectAudioPath\)?|newProjectAudioFile) \? "🎨 OpenAI \(Whisper\)" : "🎨 OpenAI \(ChatGPT\)"\}/);
+  assert.match(sourceApp, /\{Boolean\((?:newProjectAudioFile \|\| newProjectAudioPath|newProjectAudioFile)\) && \(newProjectEngine === "openai"/);
 });
 
 test("empty scenes generation panel isolates wheel scroll to prevent moving background scenes", () => {

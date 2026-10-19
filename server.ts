@@ -16,7 +16,7 @@ export const app = express();
 const PORT = 3000;
 
 const storage = multer.memoryStorage();
-const upload = multer({ storage, limits: { fileSize: 250 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 1024 * 1024 * 1024 } });
 
 const SESSION_FILE_PATH = path.join(process.cwd(), "session_store.json");
 const USER_CONFIG_PATH = path.join(process.cwd(), "user_config.json");
@@ -1643,14 +1643,41 @@ function clampAudioBufferForOpenAi(buffer: Buffer, maxBytes: number = 22 * 1024 
   if (!isWav) return buffer;
 
   try {
-    const numChannels = buffer.readUInt16LE(22);
-    let sampleRate = buffer.readUInt32LE(24);
-    let bitsPerSample = buffer.readUInt16LE(34);
+    // Scan RIFF chunks to locate fmt and data chunks reliably even if extra headers exist
+    let offset = 12;
+    let fmtOffset = -1;
+    let fmtSize = 0;
+    let dataOffset = -1;
+    let dataSize = 0;
 
-    let pcmData = buffer.subarray(44);
+    while (offset + 8 <= buffer.length) {
+      const chunkId = buffer.toString("ascii", offset, offset + 4);
+      const size = buffer.readUInt32LE(offset + 4);
+      if (chunkId === "fmt ") {
+        fmtOffset = offset + 8;
+        fmtSize = size;
+      } else if (chunkId === "data") {
+        dataOffset = offset + 8;
+        dataSize = size;
+        break;
+      }
+      offset += 8 + size + (size % 2);
+    }
+
+    if (fmtOffset === -1 || dataOffset === -1) {
+      fmtOffset = 20;
+      dataOffset = 44;
+      dataSize = buffer.length - 44;
+    }
+
+    const numChannels = buffer.readUInt16LE(fmtOffset + 2);
+    let sampleRate = buffer.readUInt32LE(fmtOffset + 4);
+    let bitsPerSample = buffer.readUInt16LE(fmtOffset + 14);
+
+    let pcmData = buffer.subarray(dataOffset, Math.min(buffer.length, dataOffset + dataSize));
     let totalSamples = Math.floor(pcmData.length / (numChannels * (bitsPerSample / 8)));
 
-    // 1. Convert to Mono if Stereo
+    // 1. Convert to Mono if Stereo / multi-channel
     if (numChannels > 1) {
       const monoBuffer = Buffer.alloc(totalSamples * (bitsPerSample / 8));
       for (let i = 0; i < totalSamples; i++) {
@@ -1666,18 +1693,7 @@ function clampAudioBufferForOpenAi(buffer: Buffer, maxBytes: number = 22 * 1024 
       pcmData = monoBuffer;
     }
 
-    // 2. Convert 16-bit to 8-bit if it helps reduce size (halves the size without touching sample rate)
-    if (bitsPerSample === 16 && pcmData.length > maxBytes) {
-      const buffer8bit = Buffer.alloc(totalSamples);
-      for (let i = 0; i < totalSamples; i++) {
-        const val16 = pcmData.readInt16LE(i * 2);
-        buffer8bit.writeUInt8(Math.max(0, Math.min(255, Math.floor((val16 + 32768) / 256))), i);
-      }
-      pcmData = buffer8bit;
-      bitsPerSample = 8;
-    }
-
-    // 3. Decimate sample rate accurately to preserve exact duration
+    // 2. Decimate sample rate accurately to fit maxBytes while preserving 16-bit PCM if possible
     let decimateRatio = 1;
     if (pcmData.length > maxBytes) {
       decimateRatio = Math.ceil(pcmData.length / maxBytes);
@@ -1685,7 +1701,7 @@ function clampAudioBufferForOpenAi(buffer: Buffer, maxBytes: number = 22 * 1024 
 
     let newSampleRate = Math.floor(sampleRate / decimateRatio);
     let newTotalSamples = Math.floor(totalSamples / decimateRatio);
-    
+
     if (decimateRatio > 1) {
       const newPcmBuffer = Buffer.alloc(newTotalSamples * (bitsPerSample / 8));
       for (let i = 0; i < newTotalSamples; i++) {
@@ -1697,7 +1713,18 @@ function clampAudioBufferForOpenAi(buffer: Buffer, maxBytes: number = 22 * 1024 
       sampleRate = newSampleRate;
     }
 
-    // Write header
+    // 3. Fallback: if STILL > maxBytes (extremely long audio > 30 mins), convert 16-bit to 8-bit
+    if (bitsPerSample === 16 && pcmData.length > maxBytes) {
+      const buffer8bit = Buffer.alloc(newTotalSamples);
+      for (let i = 0; i < newTotalSamples; i++) {
+        const val16 = pcmData.readInt16LE(i * 2);
+        buffer8bit.writeUInt8(Math.max(0, Math.min(255, Math.floor((val16 + 32768) / 256))), i);
+      }
+      pcmData = buffer8bit;
+      bitsPerSample = 8;
+    }
+
+    // Write standard 44-byte WAV header
     const header = Buffer.alloc(44);
     header.write("RIFF", 0);
     header.writeUInt32LE(36 + pcmData.length, 4);
@@ -1714,7 +1741,7 @@ function clampAudioBufferForOpenAi(buffer: Buffer, maxBytes: number = 22 * 1024 
     header.writeUInt32LE(pcmData.length, 40);
 
     const result = Buffer.concat([header, pcmData]);
-    console.log(`[Audio Transcoder Server] Downsampled oversized WAV buffer from ${(buffer.length / 1024 / 1024).toFixed(2)}MB down to ${(result.length / 1024 / 1024).toFixed(2)}MB (New SampleRate: ${sampleRate}Hz)`);
+    console.log(`[Audio Transcoder Server] Downsampled oversized WAV buffer from ${(buffer.length / 1024 / 1024).toFixed(2)}MB down to ${(result.length / 1024 / 1024).toFixed(2)}MB (New SampleRate: ${sampleRate}Hz, Channels: 1, Bits: ${bitsPerSample})`);
     return result;
   } catch (err) {
     console.warn("[Audio Transcoder Server] WAV downsampling failed, keeping original:", err);
@@ -1892,14 +1919,16 @@ app.post("/api/storyboard/reveal-folder", (req, res) => {
 app.post("/api/storyboard/browse-audio-file", (req, res) => {
   try {
     if (process.platform === "win32") {
-      const fallbackScript = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Filter = 'Arquivos de Áudio (*.wav, *.mp3, *.m4a)|*.wav;*.mp3;*.m4a|Todos os Arquivos (*.*)|*.*'; $f.Title = 'Selecione a narração (Modo NLE)'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.FileName }`;
+      const fallbackScript = `$ProgressPreference = 'SilentlyContinue'; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Filter = 'Arquivos de Áudio (*.wav, *.mp3, *.m4a)|*.wav;*.mp3;*.m4a|Todos os Arquivos (*.*)|*.*'; $f.Title = 'Selecione a narração (Modo NLE)'; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.FileName }`;
       const encoded = Buffer.from(fallbackScript, "utf16le").toString("base64");
       const command = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`;
       
       const output = execSync(command, { encoding: "utf-8", timeout: 60000 }).trim();
 
-      if (output) {
-        const filePath = output;
+      const lines = output.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#<") && !l.startsWith("<"));
+      const filePath = lines[lines.length - 1];
+
+      if (filePath && fs.existsSync(filePath)) {
         const fileName = path.basename(filePath);
         return res.json({ success: true, filePath, fileName });
       } else {
@@ -1912,6 +1941,19 @@ app.post("/api/storyboard/browse-audio-file", (req, res) => {
     console.error("Error opening Windows file picker:", err);
     return res.status(500).json({ error: "Falha ao abrir janela do Windows.", details: err.message });
   }
+});
+
+// Verify if local audio file exists at given path
+app.post("/api/storyboard/verify-audio-path", (req, res) => {
+  const audioPath = req.body?.path;
+  if (audioPath && typeof audioPath === "string") {
+    try {
+      if (fs.existsSync(audioPath)) {
+        return res.json({ exists: true, path: audioPath });
+      }
+    } catch (_) {}
+  }
+  return res.json({ exists: false, path: audioPath || "" });
 });
 
 // Stream Local Audio File (NLE Mode)
@@ -2038,7 +2080,18 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
       const whisperResult = await transcribeAudioOpenAi(activeOpenAiKey, audioBuffer, req.file?.originalname || "narration.mp3", audioModel);
 
       let audioUrl = "";
-      if (projectName && typeof projectName === "string" && projectName.trim()) {
+      if (req.body?.audioPath && typeof req.body.audioPath === "string" && fs.existsSync(req.body.audioPath)) {
+        audioUrl = `/api/storyboard/stream-local-audio?path=${encodeURIComponent(req.body.audioPath)}`;
+        if (projectName && typeof projectName === "string" && projectName.trim()) {
+          const safeName = sanitizeProjectName(projectName);
+          const projDir = documentRoot || path.join(PROJECTS_DIR, safeName);
+          if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
+          try {
+            const clamped = clampAudioBufferForOpenAi(audioBuffer, 18 * 1024 * 1024);
+            fs.writeFileSync(path.join(projDir, "narration_cache.wav"), clamped);
+          } catch (_) {}
+        }
+      } else if (projectName && typeof projectName === "string" && projectName.trim()) {
         const safeName = sanitizeProjectName(projectName);
         const projDir = documentRoot || path.join(PROJECTS_DIR, safeName);
         if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
@@ -2050,26 +2103,16 @@ app.post("/api/storyboard/transcribe-audio", upload.single("audio"), async (req:
 
       return res.json({
         ...whisperResult,
-        audioUrl
+        audioUrl,
+        originalAudioPath: req.body?.audioPath || ""
       });
-    }
-
-    if (projectName && audioBuffer) {
-      try {
-        const safeName = sanitizeProjectName(projectName);
-        const projDir = documentRoot || path.join(PROJECTS_DIR, safeName);
-        if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
-        const targetExt = cleanMime.includes("wav") ? ".wav" : ".mp3";
-        fs.writeFileSync(path.join(projDir, `narration${targetExt}`), audioBuffer);
-      } catch (saveErr) {
-        console.warn("[Audio Engine] Non-fatal error saving narration file to project disk:", saveErr);
-      }
     }
 
     const activeKey = (req.headers["x-gemini-key"] as string) || req.body?.customApiKey;
     const ai = getGeminiClient(activeKey);
 
-    const base64Data = audioBuffer.toString("base64");
+    const clampedGeminiBuffer = cleanMime.includes("wav") ? clampAudioBufferForOpenAi(audioBuffer, 18 * 1024 * 1024) : audioBuffer;
+    const base64Data = clampedGeminiBuffer.toString("base64");
     const audioPart = {
       inlineData: {
         data: base64Data,
@@ -2134,9 +2177,19 @@ Return a JSON object containing:
 
     const parsedData = JSON.parse(jsonText);
 
-    // Save audio file locally if projectName provided
+    // Save audio file locally if projectName provided AND not in NLE Mode
     let audioUrl = "";
-    if (projectName && typeof projectName === "string" && projectName.trim()) {
+    if (req.body?.audioPath && typeof req.body.audioPath === "string" && fs.existsSync(req.body.audioPath)) {
+      audioUrl = `/api/storyboard/stream-local-audio?path=${encodeURIComponent(req.body.audioPath)}`;
+      if (projectName && typeof projectName === "string" && projectName.trim()) {
+        const safeName = sanitizeProjectName(projectName);
+        const projDir = documentRoot || path.join(PROJECTS_DIR, safeName);
+        if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
+        try {
+          fs.writeFileSync(path.join(projDir, "narration_cache.wav"), clampedGeminiBuffer);
+        } catch (_) {}
+      }
+    } else if (projectName && typeof projectName === "string" && projectName.trim()) {
       const safeName = sanitizeProjectName(projectName);
       const projDir = documentRoot || path.join(PROJECTS_DIR, safeName);
       if (!fs.existsSync(projDir)) fs.mkdirSync(projDir, { recursive: true });
@@ -2149,7 +2202,8 @@ Return a JSON object containing:
 
     res.json({
       ...parsedData,
-      audioUrl
+      audioUrl,
+      originalAudioPath: req.body?.audioPath || ""
     });
   } catch (err: any) {
     logErrorToFile("Audio Transcription Endpoint", err);

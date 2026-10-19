@@ -7,7 +7,7 @@ import StoryboardCard from "./components/StoryboardCard";
 import { SAMPLE_SCRIPTS } from "./data/samples";
 import { generateFCPXML, generateVegasXML, generateEDL, alignAudioToExistingScenes, getSceneFilename } from "./lib/timecodeUtils";
 import { detectFaceFocalPoint } from "./lib/faceDetector";
-import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, Plus, Info, Key, Eye, EyeOff, Lock, Check, CheckCircle2, Loader2, FileText, Save, Upload, Undo, Redo, Settings, Sliders, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu, Mic, Edit3, FolderOpen, Folder } from "lucide-react";
+import { Sparkles, Film, Compass, Download, HelpCircle, RefreshCw, AlertCircle, AlertTriangle, Plus, Info, Key, Eye, EyeOff, Lock, Check, CheckCircle2, Loader2, FileText, Save, Upload, Undo, Redo, Settings, Sliders, History, X, Trash2, Image, Copy, Link as LinkIcon, Unlink, HardDrive, Cpu, Mic, Edit3, FolderOpen, Folder } from "lucide-react";
 import { getCachedImage, setCachedImage, getCacheSizeMB, clearCache } from "./lib/cacheStore";
 import { prepareImageBlobForDownload } from "./lib/imageUtils";
 import { motion, AnimatePresence } from "motion/react";
@@ -885,6 +885,10 @@ export default function App() {
   }, [connectionGroups]);
 
   const [audioNarrationUrl, setAudioNarrationUrl] = useState<string | undefined>();
+  const [originalAudioPath, setOriginalAudioPath] = useState<string | undefined>(() => {
+    return localStorage.getItem("ethos_storyboard_original_audio_path") || undefined;
+  });
+  const [isAudioMissing, setIsAudioMissing] = useState(false);
   const midProjectAudioInputRef = useRef<HTMLInputElement>(null);
 
 
@@ -1137,6 +1141,7 @@ const deriveFolderFromDate = (dateStr: string): string => {
   const [newProjectScript, setNewProjectScript] = useState("");
   const [newProjectAudioFile, setNewProjectAudioFile] = useState<File | null>(null);
   const [newProjectAudioFileName, setNewProjectAudioFileName] = useState<string | undefined>();
+  const [newProjectAudioPath, setNewProjectAudioPath] = useState<string | undefined>();
   const newProjectAudioInputRef = useRef<HTMLInputElement>(null);
   const [newProjectStyle, setNewProjectStyle] = useState<StylePreference>("auto");
   const [newProjectStyleRefImage, setNewProjectStyleRefImage] = useState<string | undefined>(undefined);
@@ -1326,8 +1331,98 @@ const deriveFolderFromDate = (dateStr: string): string => {
     if (audioNarrationUrl && projectName) {
       localStorage.setItem(`ethos_storyboard_audio_url_${projectName}`, audioNarrationUrl);
       localStorage.setItem("ethos_storyboard_audio_url", audioNarrationUrl);
+    } else if (!audioNarrationUrl && projectName) {
+      localStorage.removeItem(`ethos_storyboard_audio_url_${projectName}`);
+      localStorage.removeItem("ethos_storyboard_audio_url");
     }
   }, [audioNarrationUrl, projectName]);
+
+  // Sync originalAudioPath to localStorage whenever it changes
+  useEffect(() => {
+    if (originalAudioPath && projectName) {
+      localStorage.setItem(`ethos_storyboard_original_audio_path_${projectName}`, originalAudioPath);
+      localStorage.setItem("ethos_storyboard_original_audio_path", originalAudioPath);
+    } else if (!originalAudioPath && projectName) {
+      localStorage.removeItem(`ethos_storyboard_original_audio_path_${projectName}`);
+      localStorage.removeItem("ethos_storyboard_original_audio_path");
+    }
+  }, [originalAudioPath, projectName]);
+
+  // Verify if local original audio exists on disk (NLE link check)
+  const checkAudioPathExists = async (targetPath?: string) => {
+    const pathToTest = targetPath || originalAudioPath;
+    if (!pathToTest) {
+      setIsAudioMissing(false);
+      return;
+    }
+    try {
+      const res = await fetch("/api/storyboard/verify-audio-path", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: pathToTest })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsAudioMissing(!data.exists);
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    if (originalAudioPath) {
+      checkAudioPathExists(originalAudioPath);
+    } else if (audioNarrationUrl?.includes("stream-local-audio?path=")) {
+      const match = audioNarrationUrl.match(/[?&]path=([^&]+)/);
+      if (match && match[1]) {
+        const extracted = decodeURIComponent(match[1]);
+        setOriginalAudioPath(extracted);
+        checkAudioPathExists(extracted);
+      }
+    } else {
+      setIsAudioMissing(false);
+    }
+  }, [originalAudioPath, audioNarrationUrl]);
+
+  const handleRelinkAudio = async () => {
+    try {
+      const res = await fetch("/api/storyboard/browse-audio-file", { method: "POST" });
+      const data = await res.json();
+      if (data.success && data.filePath) {
+        const newPath = data.filePath;
+        const newStreamUrl = `/api/storyboard/stream-local-audio?path=${encodeURIComponent(newPath)}`;
+        setOriginalAudioPath(newPath);
+        setAudioNarrationUrl(newStreamUrl);
+        setIsAudioMissing(false);
+        try {
+          if (projectName) {
+            localStorage.setItem(`ethos_storyboard_original_audio_path_${projectName}`, newPath);
+            localStorage.setItem(`ethos_storyboard_audio_url_${projectName}`, newStreamUrl);
+          }
+          localStorage.setItem("ethos_storyboard_original_audio_path", newPath);
+          localStorage.setItem("ethos_storyboard_audio_url", newStreamUrl);
+        } catch (_) {}
+        setNotification(`✓ Áudio original revinculado: ${data.fileName}`);
+      }
+    } catch (err: any) {
+      console.error("Erro ao relincar áudio:", err);
+      setError(`Erro ao relincar áudio: ${err.message || err}`);
+    }
+  };
+
+  const handleBrowseNewProjectAudio = async () => {
+    try {
+      const res = await fetch("/api/storyboard/browse-audio-file", { method: "POST" });
+      const data = await res.json();
+      if (data.success && data.filePath) {
+        setNewProjectAudioPath(data.filePath);
+        setNewProjectAudioFileName(data.fileName);
+        setNewProjectAudioFile(null);
+        if (newProjectAudioInputRef.current) newProjectAudioInputRef.current.value = "";
+      }
+    } catch (err) {
+      console.warn("Falha ao abrir seletor nativo de áudio:", err);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -1426,8 +1521,9 @@ const deriveFolderFromDate = (dateStr: string): string => {
     batchSelectedPromptModel,
     batchSelectedImageModel,
     audioNarrationUrl,
+    originalAudioPath,
     sessionImageArchive,
-  }), [scenes, stylePreference, projectName, scriptText, scriptReferenceImage, connectionGroups, selectedStyle, consecutiveNumbering, diaryDate, saveVersion, enabledPromptModels, enabledImageModels, openAiModel, openAiDalleModel, batchSelectedPromptModel, batchSelectedImageModel, audioNarrationUrl, sessionImageArchive]);
+  }), [scenes, stylePreference, projectName, scriptText, scriptReferenceImage, connectionGroups, selectedStyle, consecutiveNumbering, diaryDate, saveVersion, enabledPromptModels, enabledImageModels, openAiModel, openAiDalleModel, batchSelectedPromptModel, batchSelectedImageModel, audioNarrationUrl, originalAudioPath, sessionImageArchive]);
 
   const persistence = useProjectPersistence(
     persistenceSnapshot,
@@ -1613,6 +1709,15 @@ const deriveFolderFromDate = (dateStr: string): string => {
       setProjectFolder(result.location.id);
     }
     setAudioNarrationUrl(data.audioNarrationUrl || undefined);
+    const loadedAudioPath = data.originalAudioPath || (data.audioNarrationUrl?.includes("stream-local-audio?path=")
+      ? decodeURIComponent(data.audioNarrationUrl.match(/[?&]path=([^&]+)/)?.[1] || "")
+      : undefined);
+    setOriginalAudioPath(loadedAudioPath);
+    if (loadedAudioPath) {
+      checkAudioPathExists(loadedAudioPath);
+    } else {
+      setIsAudioMissing(false);
+    }
     setSessionImageArchive(data.sessionImageArchive || []);
     setScriptReferenceImage(data.scriptReferenceImage || undefined);
     setConnectionGroups(data.connectionGroups || []);
@@ -2002,6 +2107,15 @@ const deriveFolderFromDate = (dateStr: string): string => {
           const applyLoadedSession = () => {
             setScenes(hydrated);
             setAudioNarrationUrl(finalData.audioNarrationUrl || localStorage.getItem(`ethos_storyboard_audio_url_${finalData.projectName}`) || undefined);
+            const loadedAudioPath = finalData.originalAudioPath || localStorage.getItem(`ethos_storyboard_original_audio_path_${finalData.projectName}`) || (finalData.audioNarrationUrl?.includes("stream-local-audio?path=")
+              ? decodeURIComponent(finalData.audioNarrationUrl.match(/[?&]path=([^&]+)/)?.[1] || "")
+              : undefined);
+            setOriginalAudioPath(loadedAudioPath);
+            if (loadedAudioPath) {
+              checkAudioPathExists(loadedAudioPath);
+            } else {
+              setIsAudioMissing(false);
+            }
 
             if (finalData.stylePreference) setStylePreference(finalData.stylePreference);
             if (finalData.projectName) setProjectName(finalData.projectName);
@@ -3672,72 +3786,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
   };
 
   const compressAudioFile = async (file: File): Promise<File> => {
-    // If file is already smaller than 18MB, return directly
-    if (file.size < 18 * 1024 * 1024) {
-      return file;
-    }
-    try {
-      setNotification(`⚡ Otimizando áudio (${(file.size / 1024 / 1024).toFixed(1)}MB) para respeitar o limite de 25MB da OpenAI...`);
-      const arrayBuffer = await file.arrayBuffer();
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-      const duration = decodedBuffer.duration;
-      // Calculate target sample rate dynamically so encoded 16-bit PCM WAV is ALWAYS <= 18MB (18,874,368 bytes = 9,437,184 samples)
-      let targetSampleRate = 16000;
-      if (duration > 0) {
-        const maxSamplesAllowed = 9437184;
-        const calculatedRate = Math.floor(maxSamplesAllowed / duration);
-        targetSampleRate = Math.max(8000, Math.min(16000, calculatedRate));
-      }
-
-      const offlineCtx = new OfflineAudioContext(1, Math.ceil(duration * targetSampleRate), targetSampleRate);
-
-      const source = offlineCtx.createBufferSource();
-      source.buffer = decodedBuffer;
-      source.connect(offlineCtx.destination);
-      source.start(0);
-
-      const renderedBuffer = await offlineCtx.startRendering();
-      const pcmData = renderedBuffer.getChannelData(0);
-
-      const wavBlob = encodeWavMono16Bit(pcmData, targetSampleRate);
-      const compressedName = file.name.replace(/\.[^/.]+$/, "") + "_opt.wav";
-      const compressedFile = new File([wavBlob], compressedName, { type: "audio/wav" });
-      console.log(`[Audio Transcoder] Transcoded audio from ${(file.size / 1024 / 1024).toFixed(1)}MB down to ${(compressedFile.size / 1024 / 1024).toFixed(1)}MB (SampleRate: ${targetSampleRate}Hz)`);
-      return compressedFile;
-    } catch (err) {
-      console.warn("[Audio Transcoder] Compression skipped, using original file:", err);
-      return file;
-    }
-  };
-
-  const encodeWavMono16Bit = (samples: Float32Array, sampleRate: number): Blob => {
-    const buffer = new ArrayBuffer(44 + samples.length * 2);
-    const view = new DataView(buffer);
-    const writeStr = (v: DataView, offset: number, str: string) => {
-      for (let i = 0; i < str.length; i++) v.setUint8(offset + i, str.charCodeAt(i));
-    };
-    writeStr(view, 0, 'RIFF');
-    view.setUint32(4, 36 + samples.length * 2, true);
-    writeStr(view, 8, 'WAVE');
-    writeStr(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    writeStr(view, 36, 'data');
-    view.setUint32(40, samples.length * 2, true);
-
-    let offset = 44;
-    for (let i = 0; i < samples.length; i++, offset += 2) {
-      const s = Math.max(-1, Math.min(1, samples[i]));
-      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-    }
-    return new Blob([buffer], { type: 'audio/wav' });
+    // Large audio optimization is handled safely server-side to prevent browser Out-of-Memory crashes
+    return file;
   };
 
   // Handle project creation with audio narration
@@ -3780,7 +3830,41 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       const audioEngine = transcriptionEngine || (selectedEngine === "openai" ? "openai" : selectedEngine === "gemini" ? "gemini" : (useOpenAiForPrompts ? "openai" : "gemini"));
       const isOpenAiEngine = audioEngine === "openai";
 
-      if (audioFile) {
+      if (audioPath) {
+        const streamUrl = `/api/storyboard/stream-local-audio?path=${encodeURIComponent(audioPath)}`;
+        setAudioNarrationUrl(streamUrl);
+        setOriginalAudioPath(audioPath);
+        setIsAudioMissing(false);
+        try {
+          if (activeProjectName) {
+            localStorage.setItem(`ethos_storyboard_original_audio_path_${activeProjectName}`, audioPath);
+            localStorage.setItem(`ethos_storyboard_audio_url_${activeProjectName}`, streamUrl);
+          }
+          localStorage.setItem("ethos_storyboard_original_audio_path", audioPath);
+          localStorage.setItem("ethos_storyboard_audio_url", streamUrl);
+        } catch (_) {}
+
+        response = await fetch("/api/storyboard/transcribe-audio", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
+            ...(isOpenAiEngine ? {
+              "x-use-openai": "true",
+              "x-openai-key": openAiKey,
+              "x-openai-model": openAiModel,
+              "x-openai-audio-model": effectiveAudioModel
+            } : {})
+          },
+          body: JSON.stringify({
+            audioPath,
+            projectName: activeProjectName,
+            documentId: persistence.currentLocation()?.id,
+            engine: audioEngine,
+            audioModel: effectiveAudioModel
+          })
+        });
+      } else if (audioFile) {
         // Set instant HD object URL for full quality local audio playback
         try {
           const localHdUrl = URL.createObjectURL(audioFile);
@@ -3791,7 +3875,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         const formData = new FormData();
         formData.append("audio", fileToUpload);
         formData.append("projectName", activeProjectName);
-      if (persistence.currentLocation()) formData.append("documentId", persistence.currentLocation()!.id);
+        if (persistence.currentLocation()) formData.append("documentId", persistence.currentLocation()!.id);
         formData.append("engine", audioEngine);
         formData.append("audioModel", effectiveAudioModel);
 
@@ -3809,9 +3893,6 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           body: formData
         });
       } else {
-        if (audioPath) {
-          setAudioNarrationUrl(`/api/storyboard/stream-local-audio?path=${encodeURIComponent(audioPath)}`);
-        }
         response = await fetch("/api/storyboard/transcribe-audio", {
           method: "POST",
           headers: {
@@ -3827,7 +3908,6 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           body: JSON.stringify({
             audioBase64,
             audioMimeType,
-            audioPath,
             projectName: activeProjectName,
             documentId: persistence.currentLocation()?.id,
             engine: audioEngine,
@@ -3842,8 +3922,18 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       }
 
       const audioData = await response.json();
-      if (audioData.audioUrl && !audioFile && !audioPath) {
+      if (audioData.audioUrl) {
         setAudioNarrationUrl(audioData.audioUrl);
+      }
+      if (audioData.originalAudioPath) {
+        setOriginalAudioPath(audioData.originalAudioPath);
+        setIsAudioMissing(false);
+        try {
+          if (activeProjectName) {
+            localStorage.setItem(`ethos_storyboard_original_audio_path_${activeProjectName}`, audioData.originalAudioPath);
+          }
+          localStorage.setItem("ethos_storyboard_original_audio_path", audioData.originalAudioPath);
+        } catch (_) {}
       }
 
       const scriptToUse = ((text && text.trim()) || audioData.fullScript || (audioData.scenes || []).map((s: any) => s.text).join("\n\n") || "").trim();
@@ -3940,6 +4030,16 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           }
           
           setAudioNarrationUrl(streamUrl);
+          setOriginalAudioPath(data.filePath);
+          setIsAudioMissing(false);
+          try {
+            if (projectName) {
+              localStorage.setItem(`ethos_storyboard_original_audio_path_${projectName}`, data.filePath);
+              localStorage.setItem(`ethos_storyboard_audio_url_${projectName}`, streamUrl);
+            }
+            localStorage.setItem("ethos_storyboard_original_audio_path", data.filePath);
+            localStorage.setItem("ethos_storyboard_audio_url", streamUrl);
+          } catch (_) {}
           setNotification("✓ Arquivo de áudio (NLE) vinculado e substituído com sucesso! (Nenhuma re-transcrição foi feita).");
         };
         
@@ -4437,6 +4537,15 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
             if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
             if (data.stylePreference !== undefined) setStylePreference(data.stylePreference);
             if (data.audioNarrationUrl !== undefined) setAudioNarrationUrl(data.audioNarrationUrl);
+            const importedAudioPath = data.originalAudioPath || (data.audioNarrationUrl?.includes("stream-local-audio?path=")
+              ? decodeURIComponent(data.audioNarrationUrl.match(/[?&]path=([^&]+)/)?.[1] || "")
+              : undefined);
+            setOriginalAudioPath(importedAudioPath);
+            if (importedAudioPath) {
+              checkAudioPathExists(importedAudioPath);
+            } else {
+              setIsAudioMissing(false);
+            }
             
             if (data.diaryDate !== undefined) {
               setDiaryDate(data.diaryDate);
@@ -4980,6 +5089,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                     setNewProjectScript("");
                     setNewProjectAudioFile(null);
                     setNewProjectAudioFileName(undefined);
+                    setNewProjectAudioPath(undefined);
                     if (newProjectAudioInputRef.current) newProjectAudioInputRef.current.value = "";
                     setNewProjectStyle("auto");
                     setNewProjectStyleRefImage(undefined);
@@ -7048,6 +7158,46 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               </div>
             )}
 
+            {/* Missing Audio Alert Banner */}
+            {isAudioMissing && originalAudioPath && (
+              <div className="bg-amber-950/80 border-2 border-amber-500 rounded-lg p-3.5 shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn shrink-0">
+                <div className="flex items-start sm:items-center gap-3">
+                  <div className="p-2 rounded bg-amber-500/20 text-amber-400 shrink-0">
+                    <AlertTriangle size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold font-mono uppercase tracking-wider text-amber-300">
+                      Arquivo de Áudio Original Não Encontrado
+                    </h4>
+                    <p className="text-[11px] text-zinc-300 font-mono mt-0.5 break-all">
+                      {originalAudioPath}
+                    </p>
+                    <p className="text-[10px] text-zinc-400 mt-0.5">
+                      O arquivo pode ter sido movido, renomeado ou a unidade de disco está desconectada.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                  <button
+                    type="button"
+                    onClick={handleRelinkAudio}
+                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold font-mono uppercase tracking-wider rounded transition-all cursor-pointer flex items-center gap-1.5 shadow-lg"
+                  >
+                    <FolderOpen size={14} />
+                    <span>Localizar Áudio…</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsAudioMissing(false)}
+                    className="px-2.5 py-1.5 text-zinc-400 hover:text-white text-xs font-mono rounded hover:bg-zinc-800 transition-all cursor-pointer"
+                    title="Dispensar aviso por enquanto"
+                  >
+                    Ignorar
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Card Flow List */}
             {scenes.length > 0 ? (
               <div className="space-y-6 flex-1 pr-1 pb-16 overflow-y-visible">
@@ -7227,7 +7377,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 return;
               }
               setProjectFolder(targetDir || derived);
-              setAudioNarrationUrl(undefined); setHistory([]); setRedoStack([]);
+              setAudioNarrationUrl(undefined); setOriginalAudioPath(undefined); setIsAudioMissing(false); setHistory([]); setRedoStack([]);
               // Clear editor state only; preserve other documents.
               setScenes([]);
               setSessionImageArchive([]);
@@ -7273,7 +7423,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
 
               setShowNewProjectModal(false);
 
-              if (newProjectAudioFile) {
+              if (newProjectAudioFile || newProjectAudioPath) {
                 handleGenerateStoryboardWithAudio({
                   text: newProjectScript.trim(),
                   style: newProjectStyle,
@@ -7281,6 +7431,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                   selectedEngine: newProjectEngine,
                   audioFile: newProjectAudioFile,
                   audioFileName: newProjectAudioFileName,
+                  audioPath: newProjectAudioPath,
                   explicitProjectName: initialProjectName,
                   openAiAudioModel: openAiAudioModel
                 });
@@ -7335,24 +7486,39 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                 </p>
               </div>
 
-              {/* Audio Upload Dropzone */}
+              {/* Audio Upload / NLE Link Dropzone */}
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-wider text-[#D4AF37] font-mono font-bold block flex items-center gap-1.5">
                   <Mic size={12} className="text-[#D4AF37]" />
                   <span>Narração em Áudio (MP3 / WAV) - Opcional</span>
                 </label>
-                <div className="p-3 bg-[#0a0a0a] border border-[#333] hover:border-[#D4AF37]/40 rounded flex items-center justify-between gap-3 transition-colors">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
+                <div className="p-3 bg-[#0a0a0a] border border-[#333] hover:border-[#D4AF37]/40 rounded flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-colors">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="p-2 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] shrink-0">
                       <Mic size={16} />
                     </div>
-                    <div>
-                      <span className="text-[11px] font-bold text-stone-200 block font-mono">
-                        {newProjectAudioFileName ? `🎙️ ${newProjectAudioFileName}` : "Anexar Arquivo de Narração em Áudio"}
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-bold text-stone-200 block font-mono truncate">
+                        {newProjectAudioFileName ? `🎙️ ${newProjectAudioFileName}` : "Anexar Narração em Áudio"}
                       </span>
-                      <span className="text-[9px] text-zinc-400 block">
-                        {newProjectAudioFileName ? "Áudio carregado. O DiarioMaker vai transcrever a voz e alinhar os timecodes." : "Transcreve a voz automaticamente e gera as cenas com timecodes exatos."}
-                      </span>
+                      {newProjectAudioPath ? (
+                        <div className="space-y-0.5">
+                          <span className="text-[9px] text-[#D4AF37] font-mono truncate block max-w-sm sm:max-w-md" title={newProjectAudioPath}>
+                            HD (NLE): {newProjectAudioPath}
+                          </span>
+                          <span className="text-[9px] text-emerald-400 block font-sans">
+                            ✓ Modo NLE: O arquivo original permanece intacto no HD e não ocupará espaço na pasta do projeto.
+                          </span>
+                        </div>
+                      ) : newProjectAudioFileName ? (
+                        <span className="text-[9px] text-zinc-400 block font-sans">
+                          Áudio carregado. O DiarioMaker vai transcrever a voz e alinhar os timecodes.
+                        </span>
+                      ) : (
+                        <span className="text-[9px] text-zinc-400 block font-sans">
+                          Transcreve a voz automaticamente e gera as cenas com timecodes exatos.
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -7366,6 +7532,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                         const file = e.target.files[0];
                         setNewProjectAudioFile(file);
                         setNewProjectAudioFileName(file.name);
+                        setNewProjectAudioPath(undefined);
                       }
                     }}
                   />
@@ -7376,21 +7543,34 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       onClick={() => {
                         setNewProjectAudioFile(null);
                         setNewProjectAudioFileName(undefined);
+                        setNewProjectAudioPath(undefined);
                         if (newProjectAudioInputRef.current) newProjectAudioInputRef.current.value = "";
                       }}
-                      className="px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-[9px] font-mono font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                      className="px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-[9px] font-mono font-bold uppercase tracking-wider transition-colors cursor-pointer shrink-0"
                     >
                       Remover
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => newProjectAudioInputRef.current?.click()}
-                      className="px-3 py-1.5 rounded bg-[#222] hover:bg-[#333] border border-[#444] text-[#D4AF37] hover:border-[#D4AF37] text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
-                    >
-                      <Upload size={11} />
-                      <span>Escolher Áudio</span>
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleBrowseNewProjectAudio}
+                        className="px-3 py-1.5 rounded bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-600/70 hover:border-emerald-400 text-emerald-300 text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
+                        title="Vincular arquivo direto do HD (Modo NLE) - Sem copiar arquivo pesado para a pasta do projeto"
+                      >
+                        <HardDrive size={12} />
+                        <span>Vincular do HD (NLE)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => newProjectAudioInputRef.current?.click()}
+                        className="px-2.5 py-1.5 rounded bg-[#222] hover:bg-[#333] border border-[#444] text-zinc-300 hover:text-white text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shadow"
+                        title="Fazer upload de arquivo pelo navegador"
+                      >
+                        <Upload size={11} />
+                        <span>Upload</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -7484,7 +7664,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               {/* Dynamic AI Prompt & Transcription Model Selector */}
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-wider text-slate-400 font-mono block">
-                  {newProjectAudioFile ? "Motor de IA para Transcrição e Roteiro" : "Motor de IA para Roteiro e Cenas"}
+                  {newProjectAudioFile || newProjectAudioPath ? "Motor de IA para Transcrição e Roteiro" : "Motor de IA para Roteiro e Cenas"}
                 </label>
                 <div className="flex flex-col gap-1.5 bg-[#0a0a0a] p-2 border border-[#333] rounded">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono">
@@ -7496,7 +7676,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                           ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
                           : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
                       }`}
-                      title={newProjectAudioFile ? "Usar Gemini (Google AI Studio) para transcrição e segmentação" : "Usar Gemini (Google AI Studio) para criação de cenas"}
+                      title={newProjectAudioFile || newProjectAudioPath ? "Usar Gemini (Google AI Studio) para transcrição e segmentação" : "Usar Gemini (Google AI Studio) para criação de cenas"}
                     >
                       <span>♊ Gemini</span>
                     </button>
@@ -7508,9 +7688,9 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                           ? "bg-[#D4AF37]/20 border-[#D4AF37] text-[#D4AF37] shadow"
                           : "bg-[#141414] border-[#333] text-zinc-400 hover:text-white hover:border-zinc-500"
                       }`}
-                      title={newProjectAudioFile ? "Usar Whisper (OpenAI) para transcrição" : "Usar ChatGPT (OpenAI) para criação de cenas"}
+                      title={newProjectAudioFile || newProjectAudioPath ? "Usar Whisper (OpenAI) para transcrição" : "Usar ChatGPT (OpenAI) para criação de cenas"}
                     >
-                      <span>{newProjectAudioFile ? "🎨 OpenAI (Whisper)" : "🎨 OpenAI (ChatGPT)"}</span>
+                      <span>{newProjectAudioFile || newProjectAudioPath ? "🎨 OpenAI (Whisper)" : "🎨 OpenAI (ChatGPT)"}</span>
                     </button>
                     <button
                       type="button"
@@ -7525,7 +7705,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                       <span>🦙 Ollama Local</span>
                     </button>
                   </div>
-                  {Boolean(newProjectAudioFile) && (newProjectEngine === "openai" || newProjectEngine?.includes("gpt") || newProjectEngine?.includes("whisper")) && (
+                  {Boolean(newProjectAudioFile || newProjectAudioPath) && (newProjectEngine === "openai" || newProjectEngine?.includes("gpt") || newProjectEngine?.includes("whisper")) && (
                     <div className="mt-2 pt-2 border-t border-[#222]">
                       <OpenAiTranscriptionModelRadios
                         value={openAiAudioModel}
@@ -7573,7 +7753,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                     className="px-5 py-2 bg-[#D4AF37] text-black hover:bg-white text-[10px] uppercase tracking-wider font-mono font-bold rounded transition-all cursor-pointer flex items-center gap-1.5"
                   >
                     <Film size={11} />
-                    <span>{newProjectAudioFile ? "Criar e Transcrever Áudio" : "Criar Novo Projeto"}</span>
+                    <span>{newProjectAudioFile || newProjectAudioPath ? "Criar e Transcrever Áudio" : "Criar Novo Projeto"}</span>
                   </button>
                 </div>
               </div>

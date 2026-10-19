@@ -163,6 +163,9 @@ export class ProjectRepository {
     const media = (url: string, key = ""): Promise<string> => {
       if (cache.has(url)) return cache.get(url)!;
       const work = (async () => {
+        if (url.startsWith("/api/storyboard/stream-local-audio?")) {
+          return url;
+        }
         if (url.startsWith("asset://") && doc.assets[url.slice(8)]) {
           try {
             await confinedFile(p.root, doc.assets[url.slice(8)].path);
@@ -310,6 +313,7 @@ export class ProjectRepository {
         }
         const validate = (value: any, key = ""): void => {
           if (typeof value === "string" && value && mediaKeys.has(key)) {
+            if (value.startsWith("/api/storyboard/stream-local-audio?")) return;
             if (!value.startsWith("asset://") || !document.assets[value.slice(8)]) {
               throw new ProjectError(`Mídia não incorporada em ${relative}. Abra e salve esse documento antes de transferir.`);
             }
