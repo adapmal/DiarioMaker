@@ -1764,7 +1764,11 @@ const deriveFolderFromDate = (dateStr: string): string => {
         await applyLoadedDocument(result);
         setIsHydrating(false);
         setRecoveryCandidate(await persistence.recovery(result.location.id));
-        setNotification(`✓ Projeto aberto: "${result.location.name}"`);
+        if (result.warning) {
+          setNotification(`⚠️ ${result.warning}`);
+        } else {
+          setNotification(`✓ Projeto aberto: "${result.location.name}"`);
+        }
       }
     } catch (err: any) {
       setNotification(`Erro ao abrir projeto: ${err.message || err}`);
@@ -1795,6 +1799,17 @@ const deriveFolderFromDate = (dateStr: string): string => {
   // Helper robusto para converter imagens base64 ou URLs externas via proxy do backend em Blobs binários para o Zip
   const fetchImageAsBlob = async (url: string): Promise<Blob | null> => {
     if (!url) return null;
+    if (url.startsWith("idb://")) {
+      try {
+        const key = url.slice(6);
+        const cached = await getCachedImage(key);
+        if (cached && typeof cached === "string" && cached.startsWith("data:")) {
+          return fetchImageAsBlob(cached);
+        }
+      } catch (err) {
+        console.warn("Failed to get cached image from idb", err);
+      }
+    }
     if (url.startsWith("data:")) {
       try {
         const parts = url.split(",");
@@ -1810,8 +1825,18 @@ const deriveFolderFromDate = (dateStr: string): string => {
         console.warn("Failed to parse inline base64 image data", err);
         return null;
       }
-    } else {
-      // É uma URL externa (como Unsplash), baixamos via proxy para burlar CORS no cliente
+    }
+    if (url.startsWith("/") || url.startsWith("blob:")) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          return await res.blob();
+        }
+      } catch (e) {
+        console.warn("Failed to fetch local image:", e);
+      }
+    }
+    if (/^https?:\/\//.test(url)) {
       try {
         const proxyUrl = `/api/storyboard/proxy-image?url=${encodeURIComponent(url)}`;
         const res = await fetch(proxyUrl);
@@ -1821,7 +1846,6 @@ const deriveFolderFromDate = (dateStr: string): string => {
       } catch (e) {
         console.warn("Failed to fetch proxy image:", e);
       }
-      // Fallback: Tentativa direta
       try {
         const res = await fetch(url);
         if (res.ok) {
@@ -1830,6 +1854,35 @@ const deriveFolderFromDate = (dateStr: string): string => {
       } catch (e) {
         console.error("Direct fetch failed too:", e);
       }
+    }
+    return null;
+  };
+
+  const fetchAudioAsBlob = async (url: string): Promise<Blob | null> => {
+    if (!url) return null;
+    if (url.startsWith("data:")) {
+      try {
+        const parts = url.split(",");
+        const byteString = atob(parts[1]);
+        const mimeString = parts[0].split(":")[1].split(";")[0] || "audio/wav";
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        return new Blob([ab], { type: mimeString });
+      } catch (err) {
+        console.warn("Failed to parse inline base64 audio data", err);
+        return null;
+      }
+    }
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        return await res.blob();
+      }
+    } catch (e) {
+      console.warn("Failed to fetch audio as blob:", e);
     }
     return null;
   };
@@ -4290,106 +4343,100 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     setNotification("✓ Timeline EDL exportada com sucesso!");
   };
 
-  // Export full project file (.dmaker) containing all text, state, prompts, and generated base64/remote images in a zip package
+  // Export full project file (.dmaker) containing all text, state, prompts, and generated base64/remote images and audio in a zip package
   const handleSaveProject = async () => {
     if (scenes.length === 0) return;
     setIsExporting(true);
-    
-    if (exportModeOption === "lightweight") {
-      setNotification("Empacotando metadados do projeto (Opção B - Ultraleve)...");
-    } else {
-      setNotification("Empacotando projeto e baixando imagens... Por favor, aguarde.");
-    }
+    setNotification("Empacotando projeto portátil, fotos e áudio... Por favor, aguarde.");
     
     try {
       const zip = new JSZip();
-      let exportedScenes = [];
-      let exportedArchive = [];
+      const activeSceneIds = new Set(scenes.map((s) => s.id));
+      const projectArchive = sessionImageArchive.filter((item) => activeSceneIds.has(item.sceneId));
 
-      if (exportModeOption === "lightweight") {
-        // Opção B: Save only metadata. Keep base64 images as idb:// keys, or keep remote URLs as they are.
-        exportedScenes = scenes.map((s) => {
-          const clonedScene = { ...s };
-          if (clonedScene.generatedImageUrl && clonedScene.generatedImageUrl.startsWith("data:")) {
-            clonedScene.generatedImageUrl = `idb://img_scene_${s.id}_active`;
+      // 1. Pack all scene images and visual instructions
+      const exportedScenes = await Promise.all(scenes.map(async (s) => {
+        const clonedScene = { ...s };
+        
+        if (s.generatedImageUrl) {
+          const blob = await fetchImageAsBlob(s.generatedImageUrl);
+          if (blob) {
+            const fileName = `images/${s.id}_active.png`;
+            zip.file(fileName, blob);
+            clonedScene.generatedImageUrl = fileName;
           }
-          if (clonedScene.imageVersions && clonedScene.imageVersions.length > 0) {
-            clonedScene.imageVersions = clonedScene.imageVersions.map((v) => {
-              const clonedV = { ...v };
-              if (clonedV.url && clonedV.url.startsWith("data:")) {
-                clonedV.url = `idb://img_version_${v.id}`;
+        }
+        
+        if (s.imageVersions && s.imageVersions.length > 0) {
+          clonedScene.imageVersions = await Promise.all(s.imageVersions.map(async (v) => {
+            const clonedVersion = { ...v };
+            if (v.url) {
+              const blob = await fetchImageAsBlob(v.url);
+              if (blob) {
+                const fileName = `images/${s.id}_version_${v.id}.png`;
+                zip.file(fileName, blob);
+                clonedVersion.url = fileName;
               }
-              return clonedV;
-            });
-          }
-          return clonedScene;
-        });
-
-        const activeSceneIds = new Set(scenes.map((s) => s.id));
-        const projectArchive = sessionImageArchive.filter((item) => activeSceneIds.has(item.sceneId));
-
-        exportedArchive = projectArchive.map((item) => {
-          const clonedItem = { ...item };
-          if (clonedItem.url && clonedItem.url.startsWith("data:")) {
-            clonedItem.url = `idb://img_archive_${item.id}`;
-          }
-          return clonedItem;
-        });
-
-      } else {
-        const activeSceneIds = new Set(scenes.map((s) => s.id));
-        const projectArchive = sessionImageArchive.filter((item) => activeSceneIds.has(item.sceneId));
-
-        // Opção A: Full package containing all image binaries embedded in the Zip.
-        exportedScenes = await Promise.all(scenes.map(async (s) => {
-          const clonedScene = { ...s };
-          
-          // 1. Pack the active generated image if any
-          if (s.generatedImageUrl) {
-            const blob = await fetchImageAsBlob(s.generatedImageUrl);
-            if (blob) {
-              const fileName = `images/${s.id}_active.png`;
-              zip.file(fileName, blob);
-              clonedScene.generatedImageUrl = fileName;
             }
-          }
-          
-          // 2. Pack the versions of the image
-          if (s.imageVersions && s.imageVersions.length > 0) {
-            clonedScene.imageVersions = await Promise.all(s.imageVersions.map(async (v) => {
-              const clonedVersion = { ...v };
-              if (v.url) {
-                const blob = await fetchImageAsBlob(v.url);
-                if (blob) {
-                  const fileName = `images/${s.id}_version_${v.id}.png`;
-                  zip.file(fileName, blob);
-                  clonedVersion.url = fileName;
-                }
-              }
-              return clonedVersion;
-            }));
-          }
-          
-          return clonedScene;
-        }));
+            return clonedVersion;
+          }));
+        }
 
-        // 3. Pack only the archived images belonging to this project's scenes
-        exportedArchive = await Promise.all(projectArchive.map(async (item) => {
-          const clonedItem = { ...item };
-          if (item.url) {
-            const blob = await fetchImageAsBlob(item.url);
-            if (blob) {
-              const fileName = `images/archive_${item.id}.png`;
-              zip.file(fileName, blob);
-              clonedItem.url = fileName;
-            }
+        if (s.visualInstructionImage) {
+          const viBlob = await fetchImageAsBlob(s.visualInstructionImage);
+          if (viBlob) {
+            const fileName = `images/${s.id}_visual_instruction.png`;
+            zip.file(fileName, viBlob);
+            clonedScene.visualInstructionImage = fileName;
           }
-          return clonedItem;
-        }));
+        }
+        
+        return clonedScene;
+      }));
+
+      // 2. Pack archived images
+      const exportedArchive = await Promise.all(projectArchive.map(async (item) => {
+        const clonedItem = { ...item };
+        if (item.url) {
+          const blob = await fetchImageAsBlob(item.url);
+          if (blob) {
+            const fileName = `images/archive_${item.id}.png`;
+            zip.file(fileName, blob);
+            clonedItem.url = fileName;
+          }
+        }
+        return clonedItem;
+      }));
+
+      // 3. Pack script reference image
+      let exportedScriptRef: string | undefined = undefined;
+      if (scriptReferenceImage) {
+        const refBlob = await fetchImageAsBlob(scriptReferenceImage);
+        if (refBlob) {
+          const fileName = "images/script_reference.png";
+          zip.file(fileName, refBlob);
+          exportedScriptRef = fileName;
+        }
+      }
+
+      // 4. Pack audio narration binary
+      let exportedAudioPath: string | undefined = undefined;
+      if (audioNarrationUrl) {
+        try {
+          const audioBlob = await fetchAudioAsBlob(audioNarrationUrl);
+          if (audioBlob) {
+            const ext = audioNarrationUrl.includes(".mp3") ? "mp3" : "wav";
+            const audioFileName = `audio/narration.${ext}`;
+            zip.file(audioFileName, audioBlob);
+            exportedAudioPath = audioFileName;
+          }
+        } catch (e) {
+          console.warn("Could not bundle audio into package:", e);
+        }
       }
 
       const projectData = {
-        version: "1.1",
+        version: "1.2",
         appName: "DiárioMaker",
         projectName,
         diaryDate,
@@ -4400,8 +4447,10 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         scriptText,
         selectedStyle,
         stylePreference,
-        isLightweight: exportModeOption === "lightweight",
-        audioNarrationUrl
+        isLightweight: false,
+        audioNarrationUrl: exportedAudioPath || audioNarrationUrl,
+        originalAudioPath: originalAudioPath || undefined,
+        scriptReferenceImage: exportedScriptRef || scriptReferenceImage
       };
 
       zip.file("project.json", JSON.stringify(projectData, null, 2));
@@ -4417,7 +4466,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         if (!dateStr) return "";
         const parts = dateStr.split("-");
         if (parts.length === 3) {
-          const year = parts[0].slice(-2); // last 2 digits of YYYY
+          const year = parts[0].slice(-2);
           const month = parts[1];
           const day = parts[2];
           return `${year}${month}${day}`;
@@ -4430,7 +4479,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       if (diaryDate) {
         const formattedDate = formatDiaryDate(diaryDate);
         const versionStr = String(saveVersion).padStart(2, "0");
-        downloadFilename = `DEMB_${formattedDate}_V${versionStr}${exportModeOption === "lightweight" ? "-light" : ""}.dmaker`;
+        downloadFilename = `DEMB_${formattedDate}_V${versionStr}.dmaker`;
         
         // Auto increment save version for the NEXT save
         const nextVersion = saveVersion + 1;
@@ -4447,21 +4496,16 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         } catch (_) {}
       } else {
         const safeProjectName = projectName.trim().toLowerCase().replace(/[^a-z0-9à-ú- ]/g, "").replace(/\s+/g, "-") || "meu-storyboard";
-        downloadFilename = `${safeProjectName}${exportModeOption === "lightweight" ? "-light" : ""}.dmaker`;
+        downloadFilename = `${safeProjectName}.dmaker`;
       }
       
       link.download = downloadFilename;
-      
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
-      if (exportModeOption === "lightweight") {
-        setNotification(`✓ Metadados do projeto "${projectName}" salvos com sucesso (Ultraleve)!`);
-      } else {
-        setNotification(`✓ Projeto "${projectName}" exportado com sucesso (.dmaker completo)!`);
-      }
+      setNotification(`✓ Pacote portátil "${projectName}" exportado com sucesso (.dmaker completo com fotos e áudio)!`);
     } catch (err: any) {
       console.error("Save project error:", err);
       setError(`Falha ao salvar o projeto: ${err.message}`);
@@ -4626,11 +4670,53 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
               return clonedVersion;
             }));
           }
+
+          // 3. Unpack visual instruction image
+          if (clonedScene.visualInstructionImage && clonedScene.visualInstructionImage.startsWith("images/")) {
+            const viFile = zip.file(clonedScene.visualInstructionImage);
+            if (viFile) {
+              const base64 = await viFile.async("base64");
+              clonedScene.visualInstructionImage = `data:image/png;base64,${base64}`;
+            }
+          }
           
           return clonedScene;
         }));
 
-        // 3. Unpack archive images back into Base64 URLs
+        // Unpack script reference image if present
+        if (data.scriptReferenceImage && data.scriptReferenceImage.startsWith("images/")) {
+          const refFile = zip.file(data.scriptReferenceImage);
+          if (refFile) {
+            const base64 = await refFile.async("base64");
+            setScriptReferenceImage(`data:image/png;base64,${base64}`);
+          }
+        }
+
+        // Unpack audio narration binary if present
+        let importedAudioUrl: string | undefined = undefined;
+        const audioFile = zip.file("audio/narration.wav") ||
+          zip.file("audio/narration.mp3") ||
+          (data.audioNarrationUrl && zip.file(data.audioNarrationUrl)) ||
+          Object.values(zip.files).find(f => !f.dir && /^audio\/.+\.(wav|mp3|ogg|m4a|aac|flac)$/i.test(f.name));
+
+        if (audioFile) {
+          const audioBase64 = await audioFile.async("base64");
+          const isMp3 = audioFile.name.endsWith(".mp3");
+          importedAudioUrl = `data:audio/${isMp3 ? "mp3" : "wav"};base64,${audioBase64}`;
+          setAudioNarrationUrl(importedAudioUrl);
+          setOriginalAudioPath(undefined);
+          setIsAudioMissing(false);
+        } else if (data.audioNarrationUrl) {
+          setAudioNarrationUrl(data.audioNarrationUrl);
+          const importedAudioPath = data.originalAudioPath || (data.audioNarrationUrl.includes("stream-local-audio?path=")
+            ? decodeURIComponent(data.audioNarrationUrl.match(/[?&]path=([^&]+)/)?.[1] || "")
+            : undefined);
+          setOriginalAudioPath(importedAudioPath);
+          if (importedAudioPath) checkAudioPathExists(importedAudioPath);
+          else setIsAudioMissing(false);
+        }
+
+        // 4. Unpack archive images back into Base64 URLs
         let unpackedArchive: ArchivedImage[] = [];
         if (data.sessionImageArchive && Array.isArray(data.sessionImageArchive)) {
           unpackedArchive = await Promise.all(data.sessionImageArchive.map(async (item: any) => {
@@ -4685,15 +4771,12 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         const hydratedScenes = await hydrateScenes(unpackedScenes);
         const hydratedArchive = await hydrateArchive(unpackedArchive);
 
-        const applyImportedZip = () => {
+        const applyImportedZip = async () => {
           pushToHistory();
           setScenes(hydratedScenes);
           setSessionImageArchive(hydratedArchive);
-          if (data.projectName !== undefined) setProjectName(data.projectName);
-          else {
-            const guessedName = fileName.replace(/\.(dmaker|diariomaker|zip)$/i, "").replace(/[-_]+/g, " ");
-            setProjectName(guessedName);
-          }
+          const activeProjName = data.projectName || fileName.replace(/\.(dmaker|diariomaker|zip)$/i, "").replace(/[-_]+/g, " ");
+          setProjectName(activeProjName);
           setProjectFolder("");
           if (data.scriptText !== undefined) setScriptText(data.scriptText);
           if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
@@ -4719,8 +4802,20 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
           setLocalStorageItemSafely("ethos_storyboard_image_archive", JSON.stringify(hydratedArchive));
           if (data.scriptText !== undefined) setLocalStorageItemSafely("ethos_storyboard_script_text", data.scriptText);
           if (data.selectedStyle !== undefined) setLocalStorageItemSafely("ethos_storyboard_selected_style", data.selectedStyle);
+
+          // Materialize and register on destination computer disk
+          try {
+            await persistence.startNew(undefined, undefined, activeProjName);
+            const saved = await persistence.save();
+            if (saved?.location) {
+              setNotification(`✓ Projeto "${saved.location.name}" importado e registrado no disco com sucesso!`);
+              return;
+            }
+          } catch (persistErr: any) {
+            console.warn("Could not immediately materialize imported project to disk:", persistErr);
+          }
           
-          setNotification(`✓ Projeto "${data.projectName || "Carregado"}" importado com sucesso com todas as fotos salvas!`);
+          setNotification(`✓ Projeto "${activeProjName}" importado com sucesso com todas as fotos e áudio!`);
         };
 
         checkProjectModelCompatibility(hydratedScenes, data.projectName || fileName, applyImportedZip);
@@ -5119,6 +5214,7 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
                   busy={persistence.busy}
                   name={persistence.location?.name || projectName || "meu-projeto"}
                   openSaveAsTrigger={saveAsTrigger}
+                  onExportPackage={handleSaveProject}
                   onSave={async () => {
                     const res = await persistence.save();
                     setNotification(`✓ Projeto salvo às ${new Date(res.updatedAt).toLocaleTimeString()}`);

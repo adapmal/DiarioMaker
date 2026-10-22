@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import JSZip from "jszip";
 import { storeProjectImage } from "./imageStore";
 
 export class ProjectError extends Error {
@@ -68,7 +69,7 @@ async function walk(root: string, dir = ""): Promise<string[]> {
 
 export class ProjectRepository {
   private tail: Promise<unknown> = Promise.resolve();
-  constructor(public workspace: string) {}
+  constructor(public workspace: string, _legacyParam?: any) {}
   private get registryFile() { return path.join(this.workspace, "project_registry.json"); }
   private async registry(): Promise<Registry> {
     if (!await exists(this.registryFile)) return { documents: {} };
@@ -138,7 +139,28 @@ export class ProjectRepository {
     } else if (url.startsWith("/api/storyboard/stream-local-audio?")) {
       source = new URL(url, "http://localhost").searchParams.get("path") || "";
       if (!path.isAbsolute(source) || !mimeByExtension[path.extname(source).toLowerCase()]?.startsWith("audio/")) throw new ProjectError("Áudio local inválido.");
-      source = await fs.realpath(source);
+      try {
+        source = await fs.realpath(source);
+      } catch {
+        const fallbacks = [
+          path.join(p.root, "narration_cache.wav"),
+          path.join(p.root, "narration.wav"),
+          path.join(p.root, "narration.mp3"),
+          path.join(p.root, "midias", "audio", path.basename(source))
+        ];
+        let found = "";
+        for (const fb of fallbacks) {
+          if (await exists(fb)) {
+            found = fb;
+            break;
+          }
+        }
+        if (found) {
+          source = await fs.realpath(found);
+        } else {
+          throw new ProjectError(`Arquivo de áudio local não encontrado: ${source}`);
+        }
+      }
     } else if (url.startsWith("/api/projects/")) {
       const match = /^\/api\/projects\/([^/]+)\/narration\.(\w+)$/.exec(decodeURIComponent(url));
       if (!match) throw new ProjectError("Referência de narração inválida.");
@@ -278,20 +300,151 @@ export class ProjectRepository {
       return this.saveUnlocked(next, state, 0, randomUUID(), { ...d, id: nextId, name, revision: 0 });
     });
   }
+  importPackage(filePath: string) {
+    return this.serial(async () => this.importPackageUnlocked(filePath));
+  }
+  private async importPackageUnlocked(packagePath: string) {
+    const realPath = await fs.realpath(packagePath);
+    const buffer = await fs.readFile(realPath);
+    const zip = await JSZip.loadAsync(buffer);
+    const jsonFile = zip.file("project.json");
+    if (!jsonFile) throw new ProjectError("Arquivo project.json não encontrado no pacote portátil.");
+    const data = JSON.parse(await jsonFile.async("string"));
+    if (!data || !Array.isArray(data.scenes)) throw new ProjectError("Conteúdo do pacote inválido (cenas ausentes).");
+
+    const baseName = data.projectName || path.basename(realPath).replace(/\.(dmaker|diariomaker|zip)$/i, "") || "Projeto Importado";
+    let safeName = "Projeto";
+    try { safeName = projectName(baseName); } catch { safeName = "Projeto Importado"; }
+    const id = randomUUID();
+    const root = path.join(this.workspace, "projects", `${safeName}-${id.slice(0, 8)}`);
+    await fs.mkdir(root, { recursive: true });
+    const realRoot = await fs.realpath(root);
+
+    const imgDir = path.join(realRoot, "midias", "imagens");
+    const audioDir = path.join(realRoot, "midias", "audio");
+    await fs.mkdir(imgDir, { recursive: true });
+    await fs.mkdir(audioDir, { recursive: true });
+
+    const assets: Record<string, Asset> = {};
+    const pathMapping = new Map<string, string>();
+
+    for (const [entryPath, entry] of Object.entries(zip.files)) {
+      if (entry.dir) continue;
+      const lower = entryPath.toLowerCase();
+      if (lower.startsWith("images/") || lower.startsWith("midias/imagens/")) {
+        const bytes = await entry.async("nodebuffer");
+        const digest = hash(bytes);
+        const ext = path.extname(entryPath).toLowerCase() || ".png";
+        const filename = await storeProjectImage(imgDir, bytes, ext);
+        const keyName = digest + ext;
+        const relative = `midias/imagens/${filename}`;
+        assets[keyName] = { path: relative, mime: mimeByExtension[ext] || "image/png", hash: digest, size: bytes.length };
+        pathMapping.set(entryPath, `asset://${keyName}`);
+      }
+    }
+
+    const audioEntry = zip.file("audio/narration.wav") ||
+      zip.file("audio/narration.mp3") ||
+      (data.audioNarrationUrl && zip.file(data.audioNarrationUrl)) ||
+      (data.portableAudioFile && zip.file(data.portableAudioFile)) ||
+      Object.values(zip.files).find(f => !f.dir && /^audio\/.+\.(wav|mp3|ogg|m4a|aac|flac)$/i.test(f.name));
+
+    let localAudioUrl: string | undefined = undefined;
+    if (audioEntry) {
+      const audioBytes = await audioEntry.async("nodebuffer");
+      const digest = hash(audioBytes);
+      const ext = path.extname(audioEntry.name).toLowerCase() || ".wav";
+      const audioFilename = digest + ext;
+      const relative = `midias/audio/${audioFilename}`;
+      await fs.writeFile(path.join(realRoot, relative), audioBytes);
+      const mime = ext === ".mp3" ? "audio/mpeg" : (mimeByExtension[ext] || "audio/wav");
+      assets[audioFilename] = { path: relative, mime, hash: digest, size: audioBytes.length };
+      localAudioUrl = `asset://${audioFilename}`;
+      try {
+        await fs.writeFile(path.join(realRoot, `narration_cache${ext}`), audioBytes);
+      } catch {}
+    }
+
+    const remap = (val: any): any => {
+      if (typeof val === "string") {
+        if (pathMapping.has(val)) return pathMapping.get(val);
+        for (const [zipPath, assetUrl] of pathMapping) {
+          if (val === zipPath || val.endsWith("/" + zipPath) || zipPath.endsWith("/" + val)) return assetUrl;
+        }
+      }
+      if (Array.isArray(val)) return val.map(remap);
+      if (val && typeof val === "object") return Object.fromEntries(Object.entries(val).map(([k, v]) => [k, remap(v)]));
+      return val;
+    };
+
+    const remappedScenes = remap(data.scenes);
+    const remappedArchive = data.sessionImageArchive ? remap(data.sessionImageArchive) : [];
+    const scriptReference = data.scriptReferenceImage ? remap(data.scriptReferenceImage) : undefined;
+
+    const stateToSave = {
+      ...data,
+      scenes: remappedScenes,
+      sessionImageArchive: remappedArchive,
+      scriptReferenceImage: scriptReference,
+      audioNarrationUrl: localAudioUrl || data.audioNarrationUrl,
+      projectName: safeName
+    };
+
+    const fileName = `${safeName}.dmproj`;
+    const doc: Document = {
+      format: "diariomaker",
+      version: 2,
+      id,
+      name: safeName,
+      revision: 1,
+      updatedAt: new Date().toISOString(),
+      assets,
+      state: stateToSave
+    };
+
+    await atomicJson(path.join(realRoot, fileName), doc);
+    const p: ProjectLocation = { id, root: realRoot, fileName, name: safeName, revision: 1 };
+    const r = await this.registry();
+    r.documents[id] = p;
+    r.current = id;
+    await atomicJson(this.registryFile, r);
+    return this.result(p, doc);
+  }
   open(file: string) {
     return this.serial(async () => {
       const real = await fs.realpath(file);
-      if (!real.toLowerCase().endsWith(".dmproj")) throw new ProjectError("Selecione um arquivo .dmproj.");
+      const lower = real.toLowerCase();
+      if (lower.endsWith(".dmaker") || lower.endsWith(".zip") || lower.endsWith(".diariomaker")) {
+        return this.importPackageUnlocked(real);
+      }
+      if (!lower.endsWith(".dmproj")) throw new ProjectError("Selecione um arquivo .dmproj ou pacote .dmaker.");
       const d: Document = JSON.parse(await fs.readFile(real, "utf8"));
       if (d.format !== "diariomaker" || d.version !== 2 || !Array.isArray(d.state?.scenes) || !/^[\w-]+$/.test(d.id)) throw new ProjectError("Arquivo de projeto inválido.");
       const p = { id: d.id, root: path.dirname(real), fileName: path.basename(real), name: d.name, revision: d.revision };
-      for (const a of Object.values(d.assets)) await confinedFile(p.root, a.path);
+      let missingCount = 0;
+      for (const a of Object.values(d.assets)) {
+        try {
+          await confinedFile(p.root, a.path);
+        } catch {
+          missingCount++;
+        }
+      }
       const r = await this.registry();
-      if (r.documents[p.id] && r.documents[p.id].root !== p.root && await exists(path.join(r.documents[p.id].root, r.documents[p.id].fileName))) {
-        throw new ProjectError("Este arquivo é uma cópia manual de um projeto ainda registrado. Use Copiar projeto para criar uma cópia independente.", 409);
+      if (r.documents[p.id] && r.documents[p.id].root !== p.root) {
+        const newId = randomUUID();
+        d.id = newId;
+        p.id = newId;
+        await atomicJson(real, d);
       }
       r.documents[p.id] = p; r.current = p.id; await atomicJson(this.registryFile, r);
-      return this.result(p, d);
+      const res = this.result(p, d);
+      if (missingCount > 0) {
+        return {
+          ...res,
+          warning: `${missingCount} arquivo(s) de mídia não foram encontrados nesta pasta. Cenas e texto carregados com sucesso.`
+        };
+      }
+      return res;
     });
   }
   transfer(id: string, destination: string, mode: "copy" | "move") {

@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Save, ChevronDown, Loader2, X } from "lucide-react";
 
-export default function ProjectSaveMenu({ disabled, busy, name, onSave, onSaveAs, onTransfer, openSaveAsTrigger }: {
+export default function ProjectSaveMenu({ disabled, busy, name, onSave, onSaveAs, onTransfer, onExportPackage, openSaveAsTrigger }: {
   disabled: boolean; busy: boolean; name: string;
   onSave: () => Promise<void>; onSaveAs: (name: string) => Promise<void>;
   onTransfer: (mode: "move" | "copy") => Promise<void>;
+  onExportPackage?: () => void;
   openSaveAsTrigger?: number;
 }) {
   const [open, setOpen] = useState(false);
@@ -50,6 +51,15 @@ export default function ProjectSaveMenu({ disabled, busy, name, onSave, onSaveAs
       }}>
       <button role="menuitem" className="block w-full rounded-lg px-3 py-2 text-left hover:bg-zinc-800/80 transition-colors font-sans cursor-pointer" onClick={() => void execute(onSave)}>Salvar <span className="float-right text-zinc-500 font-mono text-[10px]">Ctrl+S</span></button>
       <button role="menuitem" className="block w-full rounded-lg px-3 py-2 text-left hover:bg-zinc-800/80 transition-colors font-sans cursor-pointer" onClick={() => { setDraft(name); setError(""); setDialog("name"); setOpen(false); }}>Salvar como…</button>
+      {onExportPackage && (
+        <>
+          <div className="my-1 border-t border-zinc-850" />
+          <button role="menuitem" className="block w-full rounded-lg px-3 py-2 text-left hover:bg-zinc-800/80 transition-colors font-sans cursor-pointer text-[#D4AF37]/95 hover:text-[#D4AF37]" onClick={() => { setOpen(false); onExportPackage(); }}>
+            Exportar pacote portátil…
+            <span className="block mt-0.5 text-[10px] text-zinc-400 font-normal">.dmaker (inclui fotos e áudio para outro PC)</span>
+          </button>
+        </>
+      )}
       <div className="my-1 border-t border-zinc-850" />
       <button role="menuitem" className="block w-full rounded-lg px-3 py-2 text-left hover:bg-zinc-800/80 transition-colors font-sans cursor-pointer" onClick={() => { setError(""); setDialog("move"); setOpen(false); }}>Mover projeto para…</button>
       <button role="menuitem" className="block w-full rounded-lg px-3 py-2 text-left hover:bg-zinc-800/80 transition-colors font-sans cursor-pointer" onClick={() => { setError(""); setDialog("copy"); setOpen(false); }}>Copiar projeto para…</button>

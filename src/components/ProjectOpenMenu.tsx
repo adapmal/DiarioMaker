@@ -52,16 +52,16 @@ export default function ProjectOpenMenu({ disabled, onOpen, onImport }: {
       }}>
       <button type="button" role="menuitem" className={itemClass} onClick={() => { close(); onOpen(); }}>
         Abrir projeto…
-        <span className="block mt-0.5 text-[10px] text-zinc-500">.dmproj</span>
+        <span className="block mt-0.5 text-[10px] text-zinc-500">.dmproj ou .dmaker</span>
       </button>
       <button type="button" role="menuitem" className={itemClass} onClick={() => {
         close();
         if (input.current) { input.current.value = ""; input.current.click(); }
       }}>
-        Importar projeto antigo…
-        <span className="block mt-0.5 text-[10px] text-zinc-500">.dmaker, .diariomaker, .json</span>
+        Importar pacote portátil…
+        <span className="block mt-0.5 text-[10px] text-zinc-500">.dmaker, .diariomaker, .zip, .json</span>
       </button>
     </div>}
-    <input ref={input} type="file" accept=".dmaker,.diariomaker,.json" className="hidden" disabled={disabled} onChange={onImport} />
+    <input ref={input} type="file" accept=".dmaker,.diariomaker,.zip,.json" className="hidden" disabled={disabled} onChange={onImport} />
   </div>;
 }
