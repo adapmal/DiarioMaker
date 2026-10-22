@@ -4503,7 +4503,8 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      // Delay revocation so Chrome/Edge can finish streaming the full file to disk
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
       
       setNotification(`✓ Pacote portátil "${projectName}" exportado com sucesso (.dmaker completo com fotos e áudio)!`);
     } catch (err: any) {
@@ -4520,111 +4521,114 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
     if (!file) return;
     
     setIsImporting(true);
-    setNotification("Carregando projeto... Por favor, aguarde.");
-    
+    setNotification("Lendo arquivo do projeto... Por favor, aguarde.");
+    const fileName = file.name;
+
+    // Synchronously read buffer immediately to avoid browser permission revocation
+    let fileBuffer: ArrayBuffer;
     try {
-      requireIdle(); await persistence.startNew();
-      setAudioNarrationUrl(undefined); setSessionImageArchive([]);
-      const fileName = file.name;
-      
-      if (fileName.endsWith(".json")) {
+      fileBuffer = await file.arrayBuffer();
+    } catch (readErr: any) {
+      console.error("Browser failed to read file from input:", readErr);
+      setError(`O navegador não conseguiu ler o arquivo (${readErr.message || "Permissão expirada"}). Dica: use 'Abrir ▾' -> 'Abrir projeto no computador…' para abrir diretamente pelo Windows.`);
+      setIsImporting(false);
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      if (fileName.toLowerCase().endsWith(".json")) {
         // Handle legacy raw json format
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-          try {
-            const content = event.target?.result as string;
-            const data = JSON.parse(content);
-            
-            if (!data || !Array.isArray(data.scenes)) {
-              throw new Error("O arquivo não parece ser um projeto válido do DiárioMaker (campo 'scenes' ausente ou inválido).");
-            }
-            
-            const rawScenes = data.scenes.map((scene: any) => {
-              if (scene) {
-                if (scene.generatedImageUrl && scene.generatedImageUrl.startsWith("images/")) {
-                  scene.generatedImageUrl = `/projects/260802/imagens/${scene.generatedImageUrl.replace("images/", "")}`;
-                }
-                if (Array.isArray(scene.imageVersions)) {
-                  scene.imageVersions = scene.imageVersions.map((v: any) => {
-                    if (v && v.url && v.url.startsWith("images/")) {
-                      v.url = `/projects/260802/imagens/${v.url.replace("images/", "")}`;
-                    }
-                    return v;
-                  });
-                }
-              }
-              return scene;
-            });
-            const rawArchive = (data.sessionImageArchive || []).map((item: any) => {
-              if (item && item.url && item.url.startsWith("images/")) {
-                item.url = `/projects/260802/imagens/${item.url.replace("images/", "")}`;
-              }
-              return item;
-            });
+        const content = new TextDecoder("utf-8").decode(fileBuffer);
+        const data = JSON.parse(content);
+        
+        if (!data || !Array.isArray(data.scenes)) {
+          throw new Error("O arquivo não parece ser um projeto válido do DiárioMaker (campo 'scenes' ausente ou inválido).");
+        }
 
-            const hydratedScenes = await hydrateScenes(rawScenes);
-            const hydratedArchive = await hydrateArchive(rawArchive);
-
-            pushToHistory();
-            setScenes(hydratedScenes);
-            if (hydratedArchive.length > 0) {
-              setSessionImageArchive(hydratedArchive);
+        requireIdle(); await persistence.startNew();
+        setAudioNarrationUrl(undefined); setSessionImageArchive([]);
+        
+        const rawScenes = data.scenes.map((scene: any) => {
+          if (scene) {
+            if (scene.generatedImageUrl && scene.generatedImageUrl.startsWith("images/")) {
+              scene.generatedImageUrl = `/projects/260802/imagens/${scene.generatedImageUrl.replace("images/", "")}`;
             }
-            if (data.projectName !== undefined) setProjectName(data.projectName);
-            else {
-              // Guess project name from file name
-              const guessedName = fileName.replace(/\.json$/i, "").replace(/[-_]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-              setProjectName(guessedName);
+            if (Array.isArray(scene.imageVersions)) {
+              scene.imageVersions = scene.imageVersions.map((v: any) => {
+                if (v && v.url && v.url.startsWith("images/")) {
+                  v.url = `/projects/260802/imagens/${v.url.replace("images/", "")}`;
+                }
+                return v;
+              });
             }
-            setProjectFolder("");
-            if (data.scriptText !== undefined) setScriptText(data.scriptText);
-            if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
-            if (data.stylePreference !== undefined) setStylePreference(data.stylePreference);
-            if (data.audioNarrationUrl !== undefined) setAudioNarrationUrl(data.audioNarrationUrl);
-            const importedAudioPath = data.originalAudioPath || (data.audioNarrationUrl?.includes("stream-local-audio?path=")
-              ? decodeURIComponent(data.audioNarrationUrl.match(/[?&]path=([^&]+)/)?.[1] || "")
-              : undefined);
-            setOriginalAudioPath(importedAudioPath);
-            if (importedAudioPath) {
-              checkAudioPathExists(importedAudioPath);
-            } else {
-              setIsAudioMissing(false);
-            }
-            
-            if (data.diaryDate !== undefined) {
-              setDiaryDate(data.diaryDate);
-              setLocalStorageItemSafely("ethos_storyboard_diary_date", data.diaryDate);
-            } else {
-              setDiaryDate("");
-              localStorage.removeItem("ethos_storyboard_diary_date");
-            }
-            if (data.saveVersion !== undefined) {
-              setSaveVersion(data.saveVersion);
-              setLocalStorageItemSafely("ethos_storyboard_save_version", String(data.saveVersion));
-            } else {
-              setSaveVersion(1);
-              setLocalStorageItemSafely("ethos_storyboard_save_version", "1");
-            }
-            
-            // Sync with local storage immediately for auto-recovery safety
-            setLocalStorageItemSafely("ethos_storyboard_scenes", JSON.stringify(hydratedScenes));
-            if (hydratedArchive.length > 0) {
-              setLocalStorageItemSafely("ethos_storyboard_image_archive", JSON.stringify(hydratedArchive));
-            }
-            if (data.scriptText !== undefined) setLocalStorageItemSafely("ethos_storyboard_script_text", data.scriptText);
-            if (data.selectedStyle !== undefined) setLocalStorageItemSafely("ethos_storyboard_selected_style", data.selectedStyle);
-            
-            setNotification("✓ Projeto DiárioMaker legado carregado com sucesso!");
-          } catch (err: any) {
-            setError(`Erro ao carregar o arquivo do projeto legatário: ${err.message}`);
-          } finally {
-            setIsImporting(false);
           }
-        };
-        reader.readAsText(file);
+          return scene;
+        });
+        const rawArchive = (data.sessionImageArchive || []).map((item: any) => {
+          if (item && item.url && item.url.startsWith("images/")) {
+            item.url = `/projects/260802/imagens/${item.url.replace("images/", "")}`;
+          }
+          return item;
+        });
+
+        const hydratedScenes = await hydrateScenes(rawScenes);
+        const hydratedArchive = await hydrateArchive(rawArchive);
+
+        pushToHistory();
+        setScenes(hydratedScenes);
+        if (hydratedArchive.length > 0) {
+          setSessionImageArchive(hydratedArchive);
+        }
+        if (data.projectName !== undefined) setProjectName(data.projectName);
+        else {
+          // Guess project name from file name
+          const guessedName = fileName.replace(/\.json$/i, "").replace(/[-_]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+          setProjectName(guessedName);
+        }
+        setProjectFolder("");
+        if (data.scriptText !== undefined) setScriptText(data.scriptText);
+        if (data.selectedStyle !== undefined) setSelectedStyle(data.selectedStyle);
+        if (data.stylePreference !== undefined) setStylePreference(data.stylePreference);
+        if (data.audioNarrationUrl !== undefined) setAudioNarrationUrl(data.audioNarrationUrl);
+        const importedAudioPath = data.originalAudioPath || (data.audioNarrationUrl?.includes("stream-local-audio?path=")
+          ? decodeURIComponent(data.audioNarrationUrl.match(/[?&]path=([^&]+)/)?.[1] || "")
+          : undefined);
+        setOriginalAudioPath(importedAudioPath);
+        if (importedAudioPath) {
+          checkAudioPathExists(importedAudioPath);
+        } else {
+          setIsAudioMissing(false);
+        }
+        
+        if (data.diaryDate !== undefined) {
+          setDiaryDate(data.diaryDate);
+          setLocalStorageItemSafely("ethos_storyboard_diary_date", data.diaryDate);
+        } else {
+          setDiaryDate("");
+          localStorage.removeItem("ethos_storyboard_diary_date");
+        }
+        if (data.saveVersion !== undefined) {
+          setSaveVersion(data.saveVersion);
+          setLocalStorageItemSafely("ethos_storyboard_save_version", String(data.saveVersion));
+        } else {
+          setSaveVersion(1);
+          setLocalStorageItemSafely("ethos_storyboard_save_version", "1");
+        }
+        
+        // Sync with local storage immediately for auto-recovery safety
+        setLocalStorageItemSafely("ethos_storyboard_scenes", JSON.stringify(hydratedScenes));
+        if (hydratedArchive.length > 0) {
+          setLocalStorageItemSafely("ethos_storyboard_image_archive", JSON.stringify(hydratedArchive));
+        }
+        if (data.scriptText !== undefined) setLocalStorageItemSafely("ethos_storyboard_script_text", data.scriptText);
+        if (data.selectedStyle !== undefined) setLocalStorageItemSafely("ethos_storyboard_selected_style", data.selectedStyle);
+        
+        setNotification("✓ Projeto DiárioMaker legado carregado com sucesso!");
+        setIsImporting(false);
       } else {
         // Load with JSZip for self-contained packages (.dmaker / .diariomaker / .zip)
-        const zip = await JSZip.loadAsync(file);
+        const zip = await JSZip.loadAsync(fileBuffer);
         const jsonFile = zip.file("project.json");
         
         if (!jsonFile) {
@@ -4637,6 +4641,9 @@ Current Prompt: "${nextToGenerate.prompt || ""}"`;
         if (!data || !Array.isArray(data.scenes)) {
           throw new Error("O arquivo 'project.json' interno é inválido ou não possui o campo 'scenes'.");
         }
+
+        requireIdle(); await persistence.startNew();
+        setAudioNarrationUrl(undefined); setSessionImageArchive([]);
         
         // Unpack scenes and extract images back into Base64 URLs
         const unpackedScenes = await Promise.all(data.scenes.map(async (s: any) => {

@@ -62,13 +62,13 @@ test("open tolerates missing media files and reports warning without crashing th
 
   const docPath = path.join(created.location.root, created.location.fileName);
   const doc = JSON.parse(await fs.readFile(docPath, "utf8"));
-  const assetPath = Object.values(doc.assets)[0].path;
+  const assetPath = (Object.values(doc.assets)[0] as any).path;
 
   // Unlink physical media file
   await fs.unlink(path.join(created.location.root, assetPath));
 
   // Opening should succeed with a warning rather than throwing fatal 404
-  const result = await repository.open(docPath);
+  const result: any = await repository.open(docPath);
   assert.ok(result.location);
   assert.equal(result.data.scenes[0].text, "Cena Texto");
   assert.ok(result.warning && result.warning.includes("mídia não foram encontrados"));
@@ -161,7 +161,7 @@ test("UI includes portable export in Save Menu and portable open in Open Menu", 
 
   const openMenuSrc = await fs.readFile(path.resolve("src", "components", "ProjectOpenMenu.tsx"), "utf8");
   assert.match(openMenuSrc, /\.dmproj ou \.dmaker/);
-  assert.match(openMenuSrc, /Importar pacote portátil…/);
+  assert.match(openMenuSrc, /Importar pelo navegador…/);
 
   const appSrc = await fs.readFile(path.resolve("src", "App.tsx"), "utf8");
   assert.match(appSrc, /fetchAudioAsBlob/);

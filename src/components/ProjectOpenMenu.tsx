@@ -51,15 +51,15 @@ export default function ProjectOpenMenu({ disabled, onOpen, onImport }: {
         }
       }}>
       <button type="button" role="menuitem" className={itemClass} onClick={() => { close(); onOpen(); }}>
-        Abrir projeto…
-        <span className="block mt-0.5 text-[10px] text-zinc-500">.dmproj ou .dmaker</span>
+        Abrir projeto no computador…
+        <span className="block mt-0.5 text-[10px] text-zinc-400 font-normal">.dmproj ou .dmaker (Recomendado — Seletor Windows)</span>
       </button>
       <button type="button" role="menuitem" className={itemClass} onClick={() => {
         close();
         if (input.current) { input.current.value = ""; input.current.click(); }
       }}>
-        Importar pacote portátil…
-        <span className="block mt-0.5 text-[10px] text-zinc-500">.dmaker, .diariomaker, .zip, .json</span>
+        Importar pelo navegador…
+        <span className="block mt-0.5 text-[10px] text-zinc-500 font-normal">.dmaker ou .json (Seletor web alternativo)</span>
       </button>
     </div>}
     <input ref={input} type="file" accept=".dmaker,.diariomaker,.zip,.json" className="hidden" disabled={disabled} onChange={onImport} />
