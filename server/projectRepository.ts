@@ -306,7 +306,16 @@ export class ProjectRepository {
   private async importPackageUnlocked(packagePath: string) {
     const realPath = await fs.realpath(packagePath);
     const buffer = await fs.readFile(realPath);
-    const zip = await JSZip.loadAsync(buffer);
+    let zip: JSZip;
+    try {
+      zip = await JSZip.loadAsync(buffer);
+    } catch (zipErr: any) {
+      const mb = (buffer.length / (1024 * 1024)).toFixed(1);
+      if (zipErr.message && zipErr.message.includes("end of central directory")) {
+        throw new ProjectError(`O arquivo .dmaker selecionado está incompleto ou corrompido (${mb} MB lidos). O final do arquivo zip não foi encontrado. Isso ocorre se a cópia do arquivo (via pendrive, rede ou nuvem) ainda não terminou de transferir ou foi interrompida antes de concluir. Aguarde a cópia finalizar ou copie novamente o arquivo completo.`);
+      }
+      throw new ProjectError(`Falha ao descompactar o pacote .dmaker: ${zipErr.message}`);
+    }
     const jsonFile = zip.file("project.json");
     if (!jsonFile) throw new ProjectError("Arquivo project.json não encontrado no pacote portátil.");
     const data = JSON.parse(await jsonFile.async("string"));
