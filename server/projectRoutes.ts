@@ -13,7 +13,7 @@ async function nativePicker(kind: "folder" | "file") {
   if (process.platform !== "win32") throw new ProjectError("O seletor de arquivos é exclusivo do Windows.");
   const code = `[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; ${kind === "folder"
     ? "$d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description='Escolha uma pasta vazia para o projeto'; if($d.ShowDialog() -eq 'OK'){[Console]::Write($d.SelectedPath)}"
-    : "$d=New-Object System.Windows.Forms.OpenFileDialog; $d.Filter='Projeto DiarioMaker (*.dmproj;*.dmaker)|*.dmproj;*.dmaker|Pacote Portatil (*.dmaker;*.zip)|*.dmaker;*.zip|Todos os suportados (*.dmproj;*.dmaker;*.zip)|*.dmproj;*.dmaker;*.zip|Todos os arquivos (*.*)|*.*'; if($d.ShowDialog() -eq 'OK'){[Console]::Write($d.SelectedPath)}"}`;
+    : "$d=New-Object System.Windows.Forms.OpenFileDialog; $d.Filter='Projeto DiarioMaker (*.dmproj;*.dmaker)|*.dmproj;*.dmaker|Pacote Portatil (*.dmaker;*.zip)|*.dmaker;*.zip|Todos os suportados (*.dmproj;*.dmaker;*.zip)|*.dmproj;*.dmaker;*.zip|Todos os arquivos (*.*)|*.*'; if($d.ShowDialog() -eq 'OK'){[Console]::Write($d.FileName)}"}`;
   try {
     const { stdout } = await run("powershell.exe", ["-NoProfile", "-STA", "-EncodedCommand", Buffer.from(code, "utf16le").toString("base64")], { windowsHide: true, timeout: 120000, encoding: "utf8" });
     return stdout.trim();
